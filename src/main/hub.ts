@@ -1,0 +1,378 @@
+import { app, dialog } from 'electron'
+import { randomUUID } from 'node:crypto'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { buildApi } from './api.ts'
+import { ProjectContext, type AgentHandle, type ContextPaths } from './context.ts'
+import { identify, normalizeRoot, type ProjectIdentity } from './project.ts'
+import { PROTOCOL_VERSION, type ClientMessage, type ErrorCode, type ServerMessage } from './protocol.ts'
+import { runScript, ScriptError } from './runner.ts'
+import { BridgeServer, type Connection } from './server.ts'
+import { pause } from './tab.ts'
+
+export interface HubOptions extends ContextPaths {
+  /** How long a project may sit with no agent and no interaction before its renderers are freed. */
+  idleUnloadMs: number
+  /** How long a call waits for a tab another agent is holding. */
+  contentionWaitMs: number
+  /** Ceiling on a single script's run time unless the caller asks for more. */
+  defaultScriptTimeoutMs: number
+  /** Skips the admission dialog. Used by the test harness, never in a shipped build. */
+  admitEverything?: boolean
+  /** Keeps windows off the screen. Used by the test harness. */
+  headless?: boolean
+}
+
+type Decision = 'allowed' | 'denied'
+
+interface AdmissionRecord {
+  decision: Decision
+  name: string
+  root: string
+  at: number
+}
+
+/**
+ * Holds every project, admits the agents that ask to join one, and routes their
+ * calls. This is where the product's central promise is enforced: a connection
+ * announces a directory, that directory decides which context it gets, and
+ * there is no call that reaches across contexts.
+ */
+export class Hub {
+  readonly contexts = new Map<string, ProjectContext>()
+  readonly #admissions = new Map<string, AdmissionRecord>()
+  readonly #server: BridgeServer
+  readonly #agentsByConnection = new Map<number, { agentId: string; projectId: string }>()
+  #idleTimer: NodeJS.Timeout | null = null
+  #admissionInFlight: Promise<unknown> = Promise.resolve()
+
+  readonly #options: HubOptions
+
+  constructor(options: HubOptions) {
+    this.#options = options
+    this.#server = new BridgeServer((connection) => this.#onConnection(connection))
+    this.#loadAdmissions()
+  }
+
+  get port(): number {
+    return this.#server.port
+  }
+
+  async start(preferredPort?: number): Promise<number> {
+    const port = await this.#server.listen(preferredPort)
+    this.#idleTimer = setInterval(() => this.#sweepIdle(), 60_000)
+    this.#idleTimer.unref?.()
+    return port
+  }
+
+  stop(): void {
+    if (this.#idleTimer) clearInterval(this.#idleTimer)
+    this.#server.close()
+  }
+
+  // -------------------------------------------------------------- admissions
+
+  #admissionsFile(): string {
+    return join(app.getPath('userData'), 'projects.json')
+  }
+
+  #loadAdmissions(): void {
+    try {
+      const raw = JSON.parse(readFileSync(this.#admissionsFile(), 'utf8')) as Record<string, AdmissionRecord>
+      for (const [key, record] of Object.entries(raw)) this.#admissions.set(key, record)
+    } catch {
+      // First run, or a file we cannot read; either way there is nothing admitted yet.
+    }
+  }
+
+  #saveAdmissions(): void {
+    const out: Record<string, AdmissionRecord> = {}
+    for (const [key, record] of this.#admissions) out[key] = record
+    try {
+      writeFileSync(this.#admissionsFile(), JSON.stringify(out, null, 2))
+    } catch (error) {
+      console.error('could not save the list of admitted projects:', error)
+    }
+  }
+
+  admissions(): AdmissionRecord[] {
+    return [...this.#admissions.values()]
+  }
+
+  forget(root: string): void {
+    this.#admissions.delete(normalizeRoot(root))
+    this.#saveAdmissions()
+  }
+
+  /**
+   * Ask about an unknown folder once, and remember the answer. Dialogs are
+   * serialised: five agents starting at once in a fresh checkout must not
+   * produce five stacked prompts about the same directory.
+   */
+  async #admit(identity: ProjectIdentity, agentLabel: string): Promise<Decision> {
+    const key = normalizeRoot(identity.root)
+    const known = this.#admissions.get(key)
+    if (known) return known.decision
+    if (this.#options.admitEverything) {
+      this.#admissions.set(key, { decision: 'allowed', name: identity.name, root: identity.root, at: Date.now() })
+      return 'allowed'
+    }
+
+    const ask = this.#admissionInFlight.then(async () => {
+      const again = this.#admissions.get(key)
+      if (again) return again.decision
+      const answer = await dialog.showMessageBox({
+        type: 'question',
+        buttons: ['Allow', 'Refuse'],
+        defaultId: 0,
+        cancelId: 1,
+        title: 'A new project wants a browser',
+        message: `Let agents working in “${identity.name}” open a browser?`,
+        detail:
+          `${agentLabel} is asking on behalf of:\n${identity.root}\n\n` +
+          `This project gets its own window, its own cookies and its own logins. ` +
+          `Nothing in it is visible to agents working in any other project.`,
+      })
+      const decision: Decision = answer.response === 0 ? 'allowed' : 'denied'
+      this.#admissions.set(key, { decision, name: identity.name, root: identity.root, at: Date.now() })
+      this.#saveAdmissions()
+      return decision
+    })
+    this.#admissionInFlight = ask.catch(() => undefined)
+    return ask
+  }
+
+  // ---------------------------------------------------------------- contexts
+
+  contextFor(identity: ProjectIdentity): ProjectContext {
+    const existing = this.contexts.get(identity.id)
+    if (existing) return existing
+    const created = new ProjectContext(identity, {
+      preload: this.#options.preload,
+      chromeHtml: this.#options.chromeHtml,
+      headless: this.#options.headless,
+    })
+    this.contexts.set(identity.id, created)
+    return created
+  }
+
+  #sweepIdle(): void {
+    const now = Date.now()
+    for (const context of this.contexts.values()) {
+      if (!context.loaded) continue
+      if (context.agents.size > 0) continue
+      if (context.pendingHuman.size > 0) continue
+      if (now - context.lastTouched < this.#options.idleUnloadMs) continue
+      // The session stays on disk: a login done by hand outlives the window.
+      context.unload()
+    }
+  }
+
+  // -------------------------------------------------------------- connections
+
+  #onConnection(connection: Connection): void {
+    let agent: AgentHandle | null = null
+    let context: ProjectContext | null = null
+
+    connection.onMessage((message) => {
+      void this.#dispatch(connection, message, {
+        get agent() {
+          return agent
+        },
+        get context() {
+          return context
+        },
+        attach(nextAgent, nextContext) {
+          agent = nextAgent
+          context = nextContext
+        },
+      })
+    })
+
+    connection.onClose(() => {
+      const known = this.#agentsByConnection.get(connection.id)
+      if (!known) return
+      this.#agentsByConnection.delete(connection.id)
+      this.contexts.get(known.projectId)?.removeAgent(known.agentId)
+    })
+  }
+
+  async #dispatch(
+    connection: Connection,
+    message: ClientMessage,
+    slot: {
+      readonly agent: AgentHandle | null
+      readonly context: ProjectContext | null
+      attach(agent: AgentHandle, context: ProjectContext): void
+    },
+  ): Promise<void> {
+    if (message?.type === 'hello') {
+      await this.#onHello(connection, message, slot)
+      return
+    }
+    if (message?.type === 'bye') {
+      connection.close()
+      return
+    }
+    if (message?.type !== 'call') return
+
+    const agent = slot.agent
+    const context = slot.context
+    if (!agent || !context) {
+      this.#fail(connection, message.id, 'denied', 'say hello before calling anything')
+      return
+    }
+    try {
+      const value = await this.#call(context, agent, message.method, message.params)
+      connection.send({ type: 'result', id: message.id, value })
+    } catch (error) {
+      const code = ((error as { code?: ErrorCode }).code ?? 'internal') as ErrorCode
+      const detail = error instanceof ScriptError ? error.detail : undefined
+      this.#fail(connection, message.id, code, error instanceof Error ? error.message : String(error), detail)
+    }
+  }
+
+  async #onHello(
+    connection: Connection,
+    message: Extract<ClientMessage, { type: 'hello' }>,
+    slot: { attach(agent: AgentHandle, context: ProjectContext): void },
+  ): Promise<void> {
+    if (message.protocol !== PROTOCOL_VERSION) {
+      connection.send({
+        type: 'denied',
+        id: message.id,
+        reason: `this app speaks protocol ${PROTOCOL_VERSION}, the bridge speaks ${message.protocol}; update the bridge`,
+      })
+      connection.close()
+      return
+    }
+
+    const identity = identify(message.projectDir)
+    const decision = await this.#admit(identity, message.agent.label)
+    if (decision === 'denied') {
+      connection.send({
+        type: 'denied',
+        id: message.id,
+        reason: `“${identity.name}” is not allowed to open a browser here; clear the decision in the app's settings to be asked again`,
+      })
+      connection.close()
+      return
+    }
+
+    const context = this.contextFor(identity)
+    const agentId = randomUUID()
+    const agent: AgentHandle = {
+      id: agentId,
+      label: message.agent.label,
+      descriptor: message.agent,
+      currentTabId: null,
+      send: (outgoing: ServerMessage) => connection.send(outgoing),
+    }
+    context.addAgent(agent)
+    context.show()
+    slot.attach(agent, context)
+    this.#agentsByConnection.set(connection.id, { agentId, projectId: identity.id })
+
+    connection.send({
+      type: 'welcome',
+      id: message.id,
+      project: { id: identity.id, name: identity.name, root: identity.root },
+      agentId,
+      appVersion: app.getVersion(),
+    })
+  }
+
+  #fail(connection: Connection, id: number, code: ErrorCode, message: string, details?: unknown): void {
+    connection.send({ type: 'error', id, error: { code, message, details } })
+  }
+
+  // ------------------------------------------------------------------- calls
+
+  async #call(context: ProjectContext, agent: AgentHandle, method: string, params: unknown): Promise<unknown> {
+    const args = (params ?? {}) as Record<string, unknown>
+    context.touch()
+
+    switch (method) {
+      case 'status':
+        return {
+          port: this.port,
+          appVersion: app.getVersion(),
+          project: { id: context.identity.id, name: context.identity.name, root: context.identity.root },
+          agents: [...context.agents.values()].map((other) => ({
+            id: other.id,
+            label: other.label,
+            ide: other.descriptor.ide,
+            self: other.id === agent.id,
+          })),
+          tabs: context.describeTabs(),
+        }
+
+      case 'eval': {
+        const code = String(args.code ?? '')
+        if (!code.trim()) throw badParams('there is no code to run')
+        const timeout = Number(args.timeout ?? this.#options.defaultScriptTimeoutMs)
+        return await this.#runEval(context, agent, code, timeout)
+      }
+
+      // Only reachable in a test run. The person's side of `requestHuman` is a
+      // button in the window, and no agent may press it for them — but a test
+      // has no hands, so the test harness gets this one door and a shipped
+      // build has no door at all.
+      case 'test:human-done': {
+        if (!this.#options.admitEverything) {
+          throw Object.assign(new Error(`unknown method ${method}`), { code: 'unknown-method' as ErrorCode })
+        }
+        const tabId = String(args.tabId ?? '')
+        const pending = context.pendingHuman.get(tabId)
+        if (!pending) return false
+        pending.resolve('done')
+        return true
+      }
+
+      default:
+        throw Object.assign(new Error(`unknown method ${method}`), { code: 'unknown-method' as ErrorCode })
+    }
+  }
+
+  async #runEval(context: ProjectContext, agent: AgentHandle, code: string, timeoutMs: number): Promise<unknown> {
+    const target = context.tabFor(agent)
+    // The lease is checked per action, not once for the whole script: a script
+    // that only lists tabs, or works on a different tab, has no business
+    // waiting for somebody else's page.
+    const api = buildApi(context, agent, (text) => context.log(agent.label, text, agent.currentTabId), {
+      waitForTab: (tabId) => this.#waitForTab(context, agent, tabId),
+    })
+    const outcome = await context.queue.run(
+      target.id,
+      () => runScript(code, api, timeoutMs),
+      { label: agent.label, waitMs: this.#options.contentionWaitMs, runMs: timeoutMs + 5_000 },
+    )
+    return outcome
+  }
+
+  /**
+   * Wait out another agent's lease, but not the person's. An agent that has
+   * claimed a tab is mid-scenario and will be done shortly; a person holding a
+   * tab may be reading it for ten minutes, and the honest answer to the caller
+   * is an error, not a hang.
+   */
+  async #waitForTab(context: ProjectContext, agent: AgentHandle, tabId: string): Promise<void> {
+    const deadline = Date.now() + this.#options.contentionWaitMs
+    for (;;) {
+      const holder = context.leases.holderOf(tabId)
+      if (!holder) return
+      if (holder.kind === 'agent' && holder.id === agent.id) return
+      if (holder.kind === 'human') {
+        throw Object.assign(new Error('the person at the keyboard is using this tab'), { code: 'taken-over' as ErrorCode })
+      }
+      if (Date.now() >= deadline) {
+        throw Object.assign(new Error(`tab is held by ${holder.label}`), { code: 'tab-held' as ErrorCode })
+      }
+      await pause(100)
+    }
+  }
+}
+
+function badParams(message: string): Error {
+  return Object.assign(new Error(message), { code: 'bad-params' as ErrorCode })
+}

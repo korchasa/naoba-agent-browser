@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Checkout — Example Shop</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        margin: 0;
+        font: 15px/1.55 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+        color: #1a1a1e;
+        background: #fff;
+      }
+      @media (prefers-color-scheme: dark) { body { color: #f0f0f4; background: #131316; } }
+      header { padding: 18px 32px; border-bottom: 1px solid rgba(128,128,140,0.28); font-weight: 600; }
+      main { padding: 28px 32px; max-width: 620px; }
+      h1 { margin: 0 0 6px; font-size: 26px; }
+      p.lede { margin: 0 0 22px; color: #6a6a72; }
+      @media (prefers-color-scheme: dark) { p.lede { color: #9a9aa4; } }
+      .row { display: flex; justify-content: space-between; padding: 11px 0; border-bottom: 1px solid rgba(128,128,140,0.2); }
+      .total { font-weight: 600; border-bottom: none; padding-top: 16px; }
+      form { display: flex; gap: 8px; margin: 22px 0 0; }
+      input {
+        flex: 1; font: inherit; padding: 9px 12px; border-radius: 8px;
+        border: 1px solid rgba(128,128,140,0.4); background: transparent; color: inherit;
+      }
+      button {
+        font: inherit; padding: 9px 18px; border: none; border-radius: 8px;
+        background: #2f6df6; color: #fff; font-weight: 500;
+      }
+      .note { margin-top: 26px; padding: 14px 16px; border-radius: 9px; background: rgba(47,109,246,0.1); }
+    </style>
+  </head>
+  <body>
+    <header>Example Shop</header>
+    <main>
+      <h1>Your basket</h1>
+      <p class="lede">Two items, ready to check out.</p>
+      <div class="row"><span>Mechanical keyboard</span><span>€129.00</span></div>
+      <div class="row"><span>Braided cable, 2 m</span><span>€19.00</span></div>
+      <div class="row total"><span>Total</span><span>€148.00</span></div>
+      <form onsubmit="return false">
+        <input placeholder="Discount code" value="SPRING20" />
+        <button class="apply">Apply</button>
+      </form>
+      <div class="note">Sign in to use the card ending 4417.</div>
+    </main>
+  </body>
+</html>

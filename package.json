@@ -1,0 +1,22 @@
+{
+  "name": "agent-browser",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A browser many AI agents drive at once, isolated per project.",
+  "license": "SEE LICENSE IN LICENSE",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "electron dist/main.js",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --test-concurrency=1 --test-timeout=90000 test/*.test.mjs",
+    "dist": "electron-builder --mac dir --publish never"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "electron": "^38.0.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.0"
+  }
+}

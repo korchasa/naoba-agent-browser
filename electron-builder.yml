@@ -1,0 +1,25 @@
+appId: dev.korchasa.AgentBrowser
+productName: Agent Browser
+copyright: © korchasa
+
+directories:
+  output: build
+  buildResources: build-resources
+
+# Only what the application actually runs. The bridge is a separate package an
+# IDE launches on its own, so it is not part of the bundle.
+files:
+  - dist/**/*
+  - package.json
+
+mac:
+  category: public.app-category.developer-tools
+  darkModeSupport: true
+  # Signing, packaging and upload all happen outside this repository; `dist`
+  # produces an unsigned bundle and nothing more.
+  identity: null
+  target:
+    - target: dir
+      arch: [arm64]
+
+npmRebuild: false

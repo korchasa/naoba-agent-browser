@@ -1,0 +1,15 @@
+{
+  "tasks": {
+    "check": "deno run -A scripts/task.ts check",
+    "test": "deno run -A scripts/task.ts test",
+    "dev": "deno run -A scripts/task.ts dev",
+    "fmt": "deno run -A scripts/task.ts fmt",
+    "dist": "deno run -A scripts/task.ts dist"
+  },
+  "fmt": {
+    "lineWidth": 120,
+    "semiColons": false,
+    "singleQuote": true,
+    "include": ["src", "scripts", "test", "packages"]
+  }
+}

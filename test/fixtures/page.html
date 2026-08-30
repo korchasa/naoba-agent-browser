@@ -1,0 +1,44 @@
+<!doctype html>
+<html>
+  <head><meta charset="utf-8" /><title>Fixture</title></head>
+  <body>
+    <h1 id="heading">Fixture page</h1>
+    <p id="trusted">untested</p>
+    <button id="go">Press me</button>
+    <input id="field" placeholder="type here" />
+    <input id="check" type="checkbox" />
+    <select id="picker"><option value="a">A</option><option value="b">B</option></select>
+    <form id="search" action="/second.html" method="get">
+      <input id="query" name="q" placeholder="search" />
+    </form>
+    <div id="late"></div>
+    <a id="link" href="/second.html">second page</a>
+    <div id="zoomed" style="margin-top: 40px; width: 120px; height: 40px; background: #cfc">zoom target</div>
+    <p id="zoomhit">no</p>
+    <script>
+      document.getElementById('go').addEventListener('click', (event) => {
+        document.getElementById('trusted').textContent = 'isTrusted=' + event.isTrusted
+      })
+      document.getElementById('zoomed').addEventListener('click', () => {
+        document.getElementById('zoomhit').textContent = 'yes'
+      })
+      document.getElementById('field').addEventListener('input', (event) => {
+        document.title = 'Fixture: ' + event.target.value
+      })
+      setTimeout(() => {
+        const el = document.createElement('div')
+        el.id = 'appeared'
+        el.textContent = 'here now'
+        document.getElementById('late').append(el)
+      }, 400)
+      window.addEventListener('load', () => {
+        fetch('/data.json').then((r) => r.json()).then((d) => {
+          document.getElementById('heading').dataset.loaded = d.ok
+        })
+      })
+      document.getElementById('link').addEventListener('click', (e) => {
+        if (e.isTrusted) document.body.dataset.linkTrusted = 'yes'
+      })
+    </script>
+  </body>
+</html>

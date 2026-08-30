@@ -1,0 +1,10 @@
+{
+  "name": "agent-browser-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Connects one AI agent to the Agent Browser application over stdio.",
+  "type": "module",
+  "bin": { "agent-browser-bridge": "./index.mjs" },
+  "main": "./index.mjs",
+  "engines": { "node": ">=20" }
+}
