@@ -69,6 +69,20 @@ test('pressing Enter in a field submits the form, the way a person searching wou
   agent.close()
 })
 
+test('a drag is a press, a run of moves, and a release — not a click', async () => {
+  // A canvas app or a sortable list follows the pointer. One jump from start to
+  // finish reads to them as no movement at all.
+  const agent = await app.agent(PROJECT_A, 'drag')
+  const outcome = await agent.run(`
+    await api.navigate(${JSON.stringify(origin + '/page.html')})
+    await api.drag('#drag-area', { x: 500, y: 200 })
+    return await api.getText('#drag-report')
+  `)
+  assert.match(outcome.value, /^dragged -?\d+px in \d+ moves$/)
+  assert.ok(Number(/in (\d+) moves/.exec(outcome.value)[1]) >= 5, outcome.value)
+  agent.close()
+})
+
 test('a snapshot ref can be used wherever a selector can', async () => {
   const agent = await app.agent(PROJECT_A, 'refs')
   const outcome = await agent.run(`
@@ -108,6 +122,25 @@ test('a login survives the application being restarted, not just the tab being c
 
   assert.match(outcome.value.cookie, /session=alive/)
   assert.equal(outcome.value.who, 'the person')
+})
+
+test('keys reach the page even though the window is not the one the person is using', async () => {
+  // Chromium drops key events aimed at a widget that holds no focus, and the
+  // window an agent works in never holds any. Mouse events arrive regardless,
+  // so this failed as "typing does nothing while clicking works" — and only
+  // outside headless, which is why the rest of the suite never saw it.
+  const own = await startApp({ port: nextPort(), headless: false })
+  const agent = await own.agent(PROJECT_A, 'keys-in-a-window')
+  const outcome = await agent.run(`
+    await api.navigate(${JSON.stringify(origin + '/page.html')})
+    await api.click('#field')
+    await api.press('h')
+    await api.press('i')
+    return { value: await api.eval('document.getElementById("field").value'), title: await api.getTitle() }
+  `)
+  await own.stop()
+  assert.equal(outcome.value.value, 'hi')
+  assert.equal(outcome.value.title, 'Fixture: hi')
 })
 
 test('two agents in one project share the same tabs', async () => {

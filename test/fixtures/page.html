@@ -14,6 +14,9 @@
     <form id="search" action="/second.html" method="get">
       <input id="query" name="q" placeholder="search" />
     </form>
+    <div id="drag-area" style="width: 200px; height: 80px; background: #eef">drag me</div>
+    <p id="drag-report">idle</p>
+    <iframe id="inner" src="/inner.html" style="width: 220px; height: 90px; border: 1px solid #999"></iframe>
     <div id="late"></div>
     <a id="link" href="/second.html">second page</a>
     <div id="zoomed" style="margin-top: 40px; width: 120px; height: 40px; background: #cfc">zoom target</div>
@@ -24,6 +27,23 @@
     })
     document.getElementById('zoomed').addEventListener('click', () => {
       document.getElementById('zoomhit').textContent = 'yes'
+    })
+    // A drag is a press, a run of moves, and a release — a page that only sees
+    // the first and the last cannot tell a drag from a click.
+    let dragStart = null
+    let dragMoves = 0
+    document.getElementById('drag-area').addEventListener('mousedown', (event) => {
+      dragStart = [event.clientX, event.clientY]
+      dragMoves = 0
+    })
+    window.addEventListener('mousemove', () => {
+      if (dragStart) dragMoves++
+    })
+    window.addEventListener('mouseup', (event) => {
+      if (!dragStart) return
+      const dx = Math.round(event.clientX - dragStart[0])
+      document.getElementById('drag-report').textContent = 'dragged ' + dx + 'px in ' + dragMoves + ' moves'
+      dragStart = null
     })
     document.getElementById('field').addEventListener('input', (event) => {
       document.title = 'Fixture: ' + event.target.value

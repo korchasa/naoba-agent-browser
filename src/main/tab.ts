@@ -50,6 +50,8 @@ export class Tab {
   #networkCapturing = false
   #dialogRule: DialogRule | null = null
   #debuggerAttached = false
+  /** Whether this page has painted since it was last loaded. */
+  #painted = false
   #dialogsEnabled = false
   #destroyed = false
   readonly dialogs: { type: string; message: string; at: number; handled: 'accept' | 'dismiss' }[] = []
@@ -118,6 +120,8 @@ export class Tab {
 
   async navigate(url: string): Promise<void> {
     await this.#ready
+    // A new document has painted nothing yet.
+    this.#painted = false
     const target = normalizeUrl(url)
     try {
       await this.wc.loadURL(target)
@@ -133,6 +137,7 @@ export class Tab {
 
   async goBack(): Promise<boolean> {
     if (!this.wc.navigationHistory.canGoBack()) return false
+    this.#painted = false
     this.wc.navigationHistory.goBack()
     await this.waitForLoad()
     return true
@@ -140,12 +145,14 @@ export class Tab {
 
   async goForward(): Promise<boolean> {
     if (!this.wc.navigationHistory.canGoForward()) return false
+    this.#painted = false
     this.wc.navigationHistory.goForward()
     await this.waitForLoad()
     return true
   }
 
   async reload(): Promise<void> {
+    this.#painted = false
     this.wc.reload()
     await this.waitForLoad()
   }
@@ -247,6 +254,36 @@ export class Tab {
   }
 
   /**
+   * Where to click so the click actually reaches this element.
+   *
+   * A page still laying itself out — a font arriving, an image sizing, a frame
+   * loading, an animation running — moves things under the pointer between the
+   * moment a rectangle is measured and the moment the click is sent. So the
+   * point is measured and then checked against what sits there: if it is not
+   * this element or something inside it, wait a beat and measure again.
+   */
+  async clickPointFor(selector: string, timeoutMs: number): Promise<{ x: number; y: number }> {
+    const deadline = Date.now() + Math.min(timeoutMs, 3_000)
+    let point = await this.centerOf(selector, timeoutMs)
+    for (;;) {
+      const hit = await this.call<boolean>(
+        `(sel, x, y) => {
+          const el = window.__abQuery(sel)
+          if (!el) return false
+          const at = document.elementFromPoint(x, y)
+          return !!at && (at === el || el.contains(at) || at.contains(el))
+        }`,
+        selector,
+        point.x / this.wc.getZoomFactor(),
+        point.y / this.wc.getZoomFactor(),
+      )
+      if (hit || Date.now() > deadline) return point
+      await pause(80)
+      point = await this.centerOf(selector, timeoutMs)
+    }
+  }
+
+  /**
    * Input goes through the DevTools protocol rather than `sendInputEvent`.
    *
    * Both produce events the page sees as `isTrusted: true`, but
@@ -257,10 +294,58 @@ export class Tab {
    */
   async clickAt(x: number, y: number, clickCount = 1, button: 'left' | 'right' | 'middle' = 'left'): Promise<void> {
     this.#attachDebugger()
+    await this.#awaitFirstPaint()
     const common = { x, y, button, clickCount, buttons: button === 'left' ? 1 : button === 'right' ? 2 : 4 }
     await this.#input('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none', buttons: 0 })
     await this.#input('Input.dispatchMouseEvent', { type: 'mousePressed', ...common })
     await this.#input('Input.dispatchMouseEvent', { type: 'mouseReleased', ...common })
+    await pause(INPUT_SETTLE_MS)
+  }
+
+  /**
+   * Press at one point, move, release at another — the way a person drags.
+   *
+   * The move is broken into steps on purpose: a canvas app or a sortable list
+   * follows the pointer, and one jump from start to finish reads to them as no
+   * movement at all.
+   */
+  async dragFromTo(from: { x: number; y: number }, to: { x: number; y: number }, steps = 12): Promise<void> {
+    this.#attachDebugger()
+    await this.#awaitFirstPaint()
+    await this.#input('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: from.x,
+      y: from.y,
+      button: 'none',
+      buttons: 0,
+    })
+    await this.#input('Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x: from.x,
+      y: from.y,
+      button: 'left',
+      clickCount: 1,
+      buttons: 1,
+    })
+    for (let step = 1; step <= steps; step++) {
+      const at = step / steps
+      await this.#input('Input.dispatchMouseEvent', {
+        type: 'mouseMoved',
+        x: Math.round(from.x + (to.x - from.x) * at),
+        y: Math.round(from.y + (to.y - from.y) * at),
+        button: 'left',
+        buttons: 1,
+      })
+      await pause(16)
+    }
+    await this.#input('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: to.x,
+      y: to.y,
+      button: 'left',
+      clickCount: 1,
+      buttons: 1,
+    })
     await pause(INPUT_SETTLE_MS)
   }
 
@@ -287,15 +372,37 @@ export class Tab {
     }
   }
 
+  /**
+   * Wait until the page has actually painted since it was loaded.
+   *
+   * Input sent before the first frame is composited is accepted and dropped:
+   * the click leaves, nothing receives it, and the page looks like it ignored
+   * it. Two animation frames is the first moment the page's own pixels exist.
+   */
+  async #awaitFirstPaint(): Promise<void> {
+    if (this.#painted) return
+    this.#painted = true
+    try {
+      await this.wc.executeJavaScript(
+        'new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(1))))',
+        true,
+      )
+    } catch {
+      // A page that went away mid-wait needs no frame.
+    }
+  }
+
   /** Insert text into whatever holds focus, as an input event the page cannot tell from typing. */
   async insertText(text: string): Promise<void> {
     this.#attachDebugger()
+    await this.#awaitFirstPaint()
     await this.#input('Input.insertText', { text })
     await pause(INPUT_SETTLE_MS)
   }
 
   async pressKey(key: string, modifiers: string[] = []): Promise<void> {
     this.#attachDebugger()
+    await this.#awaitFirstPaint()
     const known = KEYS[key]
     const modifierMask = modifiers.reduce((mask, name) => mask | (MODIFIERS[name.toLowerCase()] ?? 0), 0)
     const base = {
@@ -452,6 +559,14 @@ export class Tab {
       'message',
       (_event, method, params) => this.#onDebuggerMessage(method, params as Record<string, unknown>),
     )
+    // The window an agent works in is not the window the person is using, so
+    // it holds no keyboard focus — and Chromium drops key events aimed at a
+    // widget that is not focused. Mouse events arrive either way, which is why
+    // clicking worked while typing silently did nothing. This tells the page to
+    // consider itself focused without taking the screen from anybody.
+    void this.wc.debugger
+      .sendCommand('Emulation.setFocusEmulationEnabled', { enabled: true })
+      .catch(() => undefined)
   }
 
   #detachDebugger(): void {

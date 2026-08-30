@@ -1,0 +1,18 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Inner</title>
+  </head>
+  <body>
+    <h2 id="inner-heading">Inside the frame</h2>
+    <input id="inner-field" placeholder="type in the frame" />
+    <button id="inner-button">Press inside</button>
+    <p id="inner-result">nothing yet</p>
+    <script>
+    document.getElementById('inner-button').addEventListener('click', (event) => {
+      document.getElementById('inner-result').textContent = 'clicked, isTrusted=' + event.isTrusted
+    })
+    </script>
+  </body>
+</html>

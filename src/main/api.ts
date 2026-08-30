@@ -6,6 +6,19 @@ import type { Holder } from './lease.ts'
 export interface ApiOptions {
   timeout?: number
   visible?: boolean
+  /** How many moves a drag is broken into; more is smoother, and slower. */
+  steps?: number
+}
+
+/** A place on the page, in CSS pixels from the top-left of the view. */
+export interface Point {
+  x: number
+  y: number
+}
+
+/** How a drag end reads in the activity log. */
+function label(what: string | Point): string {
+  return typeof what === 'string' ? what : `${what.x},${what.y}`
 }
 
 const DEFAULT_TIMEOUT = 5_000
@@ -47,7 +60,7 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
 
     async click(selector: string, options?: ApiOptions) {
       return guard(`click(${selector})`, async (tab) => {
-        const point = await tab.centerOf(selector, t(options))
+        const point = await tab.clickPointFor(selector, t(options))
         await tab.clickAt(point.x, point.y)
         return true
       })
@@ -55,7 +68,7 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
 
     async dblclick(selector: string, options?: ApiOptions) {
       return guard(`dblclick(${selector})`, async (tab) => {
-        const point = await tab.centerOf(selector, t(options))
+        const point = await tab.clickPointFor(selector, t(options))
         await tab.clickAt(point.x, point.y, 2)
         return true
       })
@@ -63,7 +76,7 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
 
     async rightClick(selector: string, options?: ApiOptions) {
       return guard(`rightClick(${selector})`, async (tab) => {
-        const point = await tab.centerOf(selector, t(options))
+        const point = await tab.clickPointFor(selector, t(options))
         await tab.clickAt(point.x, point.y, 1, 'right')
         return true
       })
@@ -118,9 +131,22 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
       return guard(`uncheck(${selector})`, (tab) => setChecked(tab, selector, false, t(options)))
     },
 
+    /**
+     * Drag from one place to another. Either end may be a selector, a snapshot
+     * ref, or a point — a canvas takes points, a sortable list takes selectors.
+     */
+    async drag(from: string | Point, to: string | Point, options?: ApiOptions) {
+      return guard(`drag(${label(from)} → ${label(to)})`, async (tab) => {
+        const start = typeof from === 'string' ? await tab.clickPointFor(from, t(options)) : from
+        const end = typeof to === 'string' ? await tab.centerOf(to, t(options)) : to
+        await tab.dragFromTo(start, end, options?.steps ?? 12)
+        return true
+      })
+    },
+
     async hover(selector: string, options?: ApiOptions) {
       return guard(`hover(${selector})`, async (tab) => {
-        const point = await tab.centerOf(selector, t(options))
+        const point = await tab.clickPointFor(selector, t(options))
         await tab.hoverAt(point.x, point.y)
         return true
       })
@@ -478,7 +504,7 @@ async function setChecked(tab: Tab, selector: string, wanted: boolean, timeout: 
   )
   if (already === null) throw new Error(`no element matches ${selector}`)
   if (already === wanted) return true
-  const point = await tab.centerOf(selector, timeout)
+  const point = await tab.clickPointFor(selector, timeout)
   await tab.clickAt(point.x, point.y)
   return await tab.call<boolean>(`(sel) => !!window.__abQuery(sel)?.checked`, selector) === wanted
 }

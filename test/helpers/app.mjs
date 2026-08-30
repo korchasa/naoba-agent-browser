@@ -12,7 +12,9 @@ const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))))
  * own state directory, so a test run never touches the browser the owner is
  * actually using, and never inherits its admitted projects.
  */
-export async function startApp({ port = 8951, extraArgs = [], userDataDir = null, keepState = false } = {}) {
+export async function startApp(
+  { port = 8951, extraArgs = [], userDataDir = null, keepState = false, headless = true } = {},
+) {
   // A caller that passes a directory it already owns is restarting the app on
   // purpose — that is the only way to prove a login outlives the application.
   const userData = userDataDir ?? (await mkdtemp(join(tmpdir(), 'agent-browser-test-')))
@@ -22,7 +24,10 @@ export async function startApp({ port = 8951, extraArgs = [], userDataDir = null
       join(root, 'dist/main.js'),
       '--admit-everything',
       // Tests drive a browser; they must not put windows on the owner's screen.
-      '--headless',
+      // A test that needs the real windowing path passes headless: false — the
+      // window is still invisible, but Chromium treats input the way it does
+      // for the person's own machine, which is where key events go missing.
+      ...(headless ? ['--headless'] : []),
       '--port',
       String(port),
       '--user-data-dir',
