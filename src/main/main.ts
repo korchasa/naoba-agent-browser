@@ -9,6 +9,14 @@ import { normalizeUrl } from './tab.ts'
 // their content security policy would drown the console an agent reads.
 process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true'
 
+// The default user agent announces both this application and Electron, and a
+// bot check reads that as an automated client: Cloudflare's sign-in page
+// refuses its own verification widget before a person can even use it. What is
+// underneath is Chromium, so that is what the browser says it is.
+app.userAgentFallback = app.userAgentFallback
+  .replace(/ agent-browser\/[\d.]+/, '')
+  .replace(/ Electron\/[\d.]+/, '')
+
 // Held for the lifetime of the app; a tray dropped by the collector disappears
 // from the menu bar.
 let trayHandle: import('electron').Tray | null = null

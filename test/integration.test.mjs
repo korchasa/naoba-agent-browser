@@ -40,6 +40,38 @@ test('input reaches the page as a real event, not a synthetic one', async () => 
   agent.close()
 })
 
+test('the browser does not announce itself as an automated client', async () => {
+  const agent = await app.agent(PROJECT_A, 'ua')
+  const outcome = await agent.run(`
+    await api.navigate(${JSON.stringify(origin + '/page.html')})
+    return await api.eval('navigator.userAgent')
+  `)
+  // Cloudflare's sign-in page refused to run its own verification widget while
+  // the user agent carried these two words, and the person could not sign in at
+  // all. What is underneath is Chromium, and that is what it must say.
+  assert.doesNotMatch(outcome.value, /Electron/)
+  assert.doesNotMatch(outcome.value, /agent-browser/)
+  assert.match(outcome.value, /Chrome\/\d+/)
+  agent.close()
+})
+
+test('a screenshot reaches the agent as a file, even with no window on screen', async () => {
+  const agent = await app.agent(PROJECT_A, 'shot')
+  const target = join(await mkdtemp(join(tmpdir(), 'agent-browser-shot-')), 'page.png')
+  const outcome = await agent.run(`
+    await api.navigate(${JSON.stringify(origin + '/page.html')})
+    return await api.screenshot(${JSON.stringify(target)})
+  `)
+  assert.equal(outcome.value, target)
+  // A real page is a couple of hundred kilobytes of base64, which the wire
+  // truncates and no agent wants to read; and Chromium refuses capturePage for
+  // a window nobody is looking at, which is how this browser normally runs.
+  const bytes = await readFile(target)
+  assert.equal(bytes.subarray(1, 4).toString(), 'PNG')
+  assert.ok(bytes.length > 1000, `the picture is only ${bytes.length} bytes`)
+  agent.close()
+})
+
 test('a click lands on the right element when the page is zoomed', async () => {
   const agent = await app.agent(PROJECT_A, 'zoom')
   const outcome = await agent.run(`
@@ -332,7 +364,11 @@ test('a FoxCode scenario runs unchanged', async () => {
   assert.equal(value.cookieValue, 'was-here')
   assert.equal(value.secondTitle, 'Second')
   assert.equal(value.snapshotHasRefs, true)
-  assert.ok(value.screenshotBytes > 1000, 'the screenshot is suspiciously small')
+  // The one place this browser deliberately parts company with FoxCode: a
+  // picture comes back as a path, not as base64, because base64 of a real page
+  // is too big for the wire and useless in an agent's context.
+  const shot = await readFile(value.screenshotPath)
+  assert.ok(shot.length > 1000, `the picture is only ${shot.length} bytes`)
   agent.close()
 })
 

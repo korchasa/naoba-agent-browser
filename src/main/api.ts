@@ -2,6 +2,8 @@ import type { AgentHandle, ProjectContext } from './context.ts'
 import type { Tab } from './tab.ts'
 import { pause } from './tab.ts'
 import type { Holder } from './lease.ts'
+import { app } from 'electron'
+import { join } from 'node:path'
 
 export interface ApiOptions {
   timeout?: number
@@ -338,8 +340,14 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
 
     // ---------------------------------------------------------------- capture
 
-    async screenshot() {
-      return guard('screenshot()', (tab) => tab.screenshot())
+    /**
+     * The picture goes to a file and the agent gets its path. A PNG of a real
+     * page is a couple of hundred kilobytes of base64 — more than the wire
+     * carries in one value, and more than any agent wants to read as text.
+     */
+    async screenshot(path?: string) {
+      const target = path ?? defaultShotPath(context.identity.id)
+      return guard(`screenshot() to ${target}`, (tab) => tab.screenshot(target))
     },
 
     async resize(width: number, height: number) {
@@ -578,3 +586,13 @@ const SNAPSHOT_FN = `(rootSel) => {
   walk(root, 0)
   return lines.join('\\n')
 }`
+
+/**
+ * Where a screenshot lands when the agent did not say. One directory per
+ * project, so two projects photographing the same site do not overwrite each
+ * other, and a name that sorts by time.
+ */
+function defaultShotPath(projectId: string): string {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+  return join(app.getPath('userData'), 'screenshots', projectId, `${stamp}.png`)
+}

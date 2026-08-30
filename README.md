@@ -123,6 +123,17 @@ frame of their own, and a selector run against the page never sees inside one.
 `api.frames()` lists them; every helper takes `{ frame }` — an index, or any
 part of the frame's address or name.
 
+When you want to look at the page yourself:
+
+```js
+const path = await api.screenshot()
+```
+
+The picture is written to a file and you get its path — a PNG of a real page is
+a couple of hundred kilobytes of base64, which is more than the wire carries in
+one value and more than any agent wants to read as text. Pass a path of your own
+if you care where it lands.
+
 The full list of helpers is in the tool description the bridge publishes, so an
 agent has it without being told.
 

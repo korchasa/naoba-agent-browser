@@ -2,6 +2,8 @@ import { WebContentsView } from 'electron'
 import type { Session, WebContents, WebFrameMain } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { toTransferable } from './serialize.ts'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { dirname } from 'node:path'
 
 export interface ConsoleEntry {
   level: string
@@ -560,9 +562,22 @@ export class Tab {
 
   // ------------------------------------------------------------------- capture
 
-  async screenshot(): Promise<string> {
-    const image = await this.wc.capturePage()
-    return image.toPNG().toString('base64')
+  /**
+   * The window spends most of its life hidden in the menu bar, and Chromium
+   * refuses `capturePage` for a view it is not compositing — an agent asking
+   * for a picture got "Current display surface not available for capture"
+   * instead. The debugger paints its own copy and does not care whether
+   * anybody is looking.
+   */
+  async screenshot(path: string): Promise<string> {
+    this.#attachDebugger()
+    const shot = await this.wc.debugger.sendCommand('Page.captureScreenshot', {
+      format: 'png',
+      captureBeyondViewport: false,
+    }) as { data: string }
+    await mkdir(dirname(path), { recursive: true })
+    await writeFile(path, Buffer.from(shot.data, 'base64'))
+    return path
   }
 
   captureConsole(on: boolean): void {

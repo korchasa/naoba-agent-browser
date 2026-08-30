@@ -43,7 +43,7 @@ const secondTitle = await api.getTitle()
 await api.closeTab()
 
 const snapshot = await api.snapshot()
-const shot = await api.screenshot()
+const shotPath = await api.screenshot()
 
 return {
   title,
@@ -56,5 +56,5 @@ return {
   tabsBefore: tabs.length,
   secondTitle,
   snapshotHasRefs: snapshot.includes('[ref_0]'),
-  screenshotBytes: shot.length,
+  screenshotPath: shotPath,
 }

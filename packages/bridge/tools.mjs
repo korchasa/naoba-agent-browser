@@ -48,7 +48,7 @@ Moving around
 State
   api.getCookies(filter) / api.setCookie(details) / api.deleteCookie(url, name)
   api.clearStorage()
-  api.screenshot()                   base64 PNG
+  api.screenshot(path?)              writes a PNG and returns its path
   api.resize(width, height)
 
 Watching
