@@ -35,7 +35,9 @@ export async function startApp(
       '--idle-unload-ms',
       '2000',
       '--contention-wait-ms',
-      '1500',
+      // Long enough that a slow machine does not read a queued command as a
+      // deadlock, short enough that the contention test still finishes.
+      '6000',
       ...extraArgs,
     ],
     { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] },

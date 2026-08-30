@@ -110,6 +110,19 @@ return await api.getText('.balance')
 The window comes forward with that sentence on it. Your call resumes when the
 person marks it done.
 
+When the thing you need is inside a frame:
+
+```js
+await api.navigate('https://example.com/checkout')
+await api.type('#card', '4242…', { frame: 'payments.example' })
+return await api.getText('#result', { frame: 'payments.example' })
+```
+
+A payment form, an embedded editor and a documentation sandbox each live in a
+frame of their own, and a selector run against the page never sees inside one.
+`api.frames()` lists them; every helper takes `{ frame }` — an index, or any
+part of the frame's address or name.
+
 The full list of helpers is in the tool description the bridge publishes, so an
 agent has it without being told.
 

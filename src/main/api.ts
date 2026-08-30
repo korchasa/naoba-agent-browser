@@ -8,6 +8,13 @@ export interface ApiOptions {
   visible?: boolean
   /** How many moves a drag is broken into; more is smoother, and slower. */
   steps?: number
+  /**
+   * Work inside one of the page's frames instead of the page: an index from
+   * `frames()`, or any part of the frame's address or name. A payment form, an
+   * embedded editor and a documentation sandbox are all frames, and a selector
+   * run against the page never sees inside them.
+   */
+  frame?: string | number
 }
 
 /** A place on the page, in CSS pixels from the top-left of the view. */
@@ -41,13 +48,13 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
   const tab = (): Tab => context.tabFor(agent)
   const t = (options?: ApiOptions) => options?.timeout ?? DEFAULT_TIMEOUT
 
-  const guard = async <T>(what: string, run: (tab: Tab) => Promise<T>): Promise<T> => {
+  const guard = async <T>(what: string, run: (tab: Tab) => Promise<T>, options?: ApiOptions): Promise<T> => {
     const target = tab()
     await target.whenReady()
     await hooks.waitForTab(target.id)
     context.touch()
-    const result = await run(target)
-    log(what)
+    const result = await target.withFrame(options?.frame, () => run(target))
+    log(options?.frame === undefined ? what : `${what} in frame ${options.frame}`)
     return result
   }
 
@@ -55,7 +62,11 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
     // ------------------------------------------------------------------ DOM
 
     async waitFor(selector: string, options?: ApiOptions) {
-      return guard(`waitFor(${selector})`, (tab) => tab.waitFor(selector, t(options), options?.visible ?? false))
+      return guard(
+        `waitFor(${selector})`,
+        (tab) => tab.waitFor(selector, t(options), options?.visible ?? false),
+        options,
+      )
     },
 
     async click(selector: string, options?: ApiOptions) {
@@ -63,7 +74,7 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
         const point = await tab.clickPointFor(selector, t(options))
         await tab.clickAt(point.x, point.y)
         return true
-      })
+      }, options)
     },
 
     async dblclick(selector: string, options?: ApiOptions) {
@@ -71,7 +82,7 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
         const point = await tab.clickPointFor(selector, t(options))
         await tab.clickAt(point.x, point.y, 2)
         return true
-      })
+      }, options)
     },
 
     async rightClick(selector: string, options?: ApiOptions) {
@@ -79,7 +90,7 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
         const point = await tab.clickPointFor(selector, t(options))
         await tab.clickAt(point.x, point.y, 1, 'right')
         return true
-      })
+      }, options)
     },
 
     /** Append text, the way typing does. */
@@ -88,7 +99,7 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
         await tab.focus(selector, t(options))
         await tab.insertText(text)
         return true
-      })
+      }, options)
     },
 
     /** Replace the field's contents. */
@@ -102,7 +113,7 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
           await tab.insertText(value)
         }
         return true
-      })
+      }, options)
     },
 
     async select(selector: string, value: string, options?: ApiOptions) {
@@ -120,15 +131,15 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
           selector,
           value,
         )
-      })
+      }, options)
     },
 
     async check(selector: string, options?: ApiOptions) {
-      return guard(`check(${selector})`, (tab) => setChecked(tab, selector, true, t(options)))
+      return guard(`check(${selector})`, (tab) => setChecked(tab, selector, true, t(options)), options)
     },
 
     async uncheck(selector: string, options?: ApiOptions) {
-      return guard(`uncheck(${selector})`, (tab) => setChecked(tab, selector, false, t(options)))
+      return guard(`uncheck(${selector})`, (tab) => setChecked(tab, selector, false, t(options)), options)
     },
 
     /**
@@ -141,7 +152,7 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
         const end = typeof to === 'string' ? await tab.centerOf(to, t(options)) : to
         await tab.dragFromTo(start, end, options?.steps ?? 12)
         return true
-      })
+      }, options)
     },
 
     async hover(selector: string, options?: ApiOptions) {
@@ -149,7 +160,7 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
         const point = await tab.clickPointFor(selector, t(options))
         await tab.hoverAt(point.x, point.y)
         return true
-      })
+      }, options)
     },
 
     async press(key: string, modifiers: string[] = []) {
@@ -185,15 +196,20 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
       return guard(`snapshot(${selector ?? 'document'})`, async (tab) => {
         if (selector) await tab.waitFor(selector, t(options), false)
         return tab.call<string>(SNAPSHOT_FN, selector ?? null)
-      })
+      }, options)
     },
 
-    async getText(selector?: string) {
+    async getText(selector?: string, options?: ApiOptions) {
       return guard(`getText(${selector ?? 'body'})`, (tab) =>
         tab.call<string>(
           `(sel) => { const el = sel ? window.__abQuery(sel) : document.body; return el ? el.innerText : '' }`,
           selector ?? null,
-        ))
+        ), options)
+    },
+
+    /** The frames inside this page: their index, address and name. */
+    async frames() {
+      return guard('frames()', (tab) => Promise.resolve(tab.frames()))
     },
 
     async getTitle() {
@@ -208,17 +224,17 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
       return guard('getSelectedText()', (tab) => tab.call<string>(`() => String(window.getSelection() ?? '')`))
     },
 
-    async eval(expression: string) {
-      return guard('eval()', (tab) => tab.js(expression))
+    async eval(expression: string, options?: ApiOptions) {
+      return guard('eval()', (tab) => tab.js(expression), options)
     },
 
-    async attr(selector: string, name: string) {
+    async attr(selector: string, name: string, options?: ApiOptions) {
       return guard(`attr(${selector}, ${name})`, (tab) =>
         tab.call<string | null>(
           `(sel, name) => { const el = window.__abQuery(sel); return el ? el.getAttribute(name) : null }`,
           selector,
           name,
-        ))
+        ), options)
     },
 
     // ------------------------------------------------------------- navigation
@@ -249,7 +265,7 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
       return guard('waitForLoad()', async (tab) => {
         await tab.waitForLoad(options?.timeout ?? 30_000)
         return true
-      })
+      }, options)
     },
 
     // ------------------------------------------------------------------- tabs
@@ -380,6 +396,9 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
      * what it means.
      */
     async getResponseBody(requestId: string) {
+      if (typeof requestId !== 'string' || requestId === '') {
+        throw new Error('getResponseBody needs a requestId from getNetworkLog — the log may still be empty')
+      }
       return guard('getResponseBody()', async (tab) => {
         try {
           return await tab.responseBody(requestId)

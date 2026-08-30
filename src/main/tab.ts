@@ -1,5 +1,5 @@
 import { WebContentsView } from 'electron'
-import type { Session, WebContents } from 'electron'
+import type { Session, WebContents, WebFrameMain } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { toTransferable } from './serialize.ts'
 
@@ -28,6 +28,7 @@ export interface DialogRule {
   promptText?: string
 }
 
+const FIRST_PAINT_WAIT_MS = 400
 const INPUT_SETTLE_MS = 16
 
 /**
@@ -52,6 +53,9 @@ export class Tab {
   #debuggerAttached = false
   /** Whether this page has painted since it was last loaded. */
   #painted = false
+  /** The frame the current call runs against, or the page itself. */
+  #frame: WebFrameMain | null = null
+  #frameOffset = { x: 0, y: 0 }
   #dialogsEnabled = false
   #destroyed = false
   readonly dialogs: { type: string; message: string; at: number; handled: 'accept' | 'dismiss' }[] = []
@@ -182,8 +186,79 @@ export class Tab {
 
   /** Run an expression in the page's own world and bring the value back JSON-safe. */
   async js<T = unknown>(expression: string): Promise<T> {
-    const value = await this.wc.executeJavaScript(expression, true)
+    const target = this.#frame ?? this.wc.mainFrame
+    const value = await target.executeJavaScript(expression, true)
     return toTransferable(value) as T
+  }
+
+  /**
+   * The frames inside this page, in the order they appear in it.
+   *
+   * A page is often not one document: a payment form, an embedded editor, a
+   * documentation sandbox all live in frames of their own, and a selector run
+   * against the page never sees inside them.
+   */
+  frames(): { index: number; url: string; name: string }[] {
+    return this.#frameList().map((frame, index) => ({ index, url: frame.url, name: frame.name }))
+  }
+
+  /**
+   * Run everything inside `run` against one frame instead of the page.
+   *
+   * Clicks need more than a different document: the point measured inside a
+   * frame is relative to that frame, so where the frame itself sits has to be
+   * added back before the click is sent.
+   */
+  async withFrame<T>(match: string | number | null | undefined, run: () => Promise<T>): Promise<T> {
+    if (match === null || match === undefined) return await run()
+    const frame = this.#resolveFrame(match)
+    const previousFrame = this.#frame
+    const previousOffset = this.#frameOffset
+    this.#frame = frame
+    this.#frameOffset = await this.#offsetOf(frame)
+    try {
+      return await run()
+    } finally {
+      this.#frame = previousFrame
+      this.#frameOffset = previousOffset
+    }
+  }
+
+  #frameList(): WebFrameMain[] {
+    const main = this.wc.mainFrame
+    return main.framesInSubtree.filter((frame) => frame !== main)
+  }
+
+  #resolveFrame(match: string | number): WebFrameMain {
+    const frames = this.#frameList()
+    if (frames.length === 0) throw new Error('this page has no frames')
+    if (typeof match === 'number') {
+      const frame = frames[match]
+      if (!frame) throw new Error(`this page has ${frames.length} frames, so there is no frame ${match}`)
+      return frame
+    }
+    const found = frames.find((frame) => frame.url.includes(match) || frame.name === match)
+    if (found) return found
+    const listed = frames.map((frame, index) => `${index}: ${frame.name || frame.url || 'unnamed'}`).join(', ')
+    throw new Error(`no frame matches ${match}. This page has: ${listed}`)
+  }
+
+  /** Where a frame sits in the page, so a click inside it lands in the right place. */
+  async #offsetOf(frame: WebFrameMain): Promise<{ x: number; y: number }> {
+    const index = this.#frameList().indexOf(frame)
+    const boxes = await this.wc.mainFrame.executeJavaScript(
+      `[...document.querySelectorAll('iframe,frame')].map((f) => {
+        const r = f.getBoundingClientRect()
+        return { src: f.src || '', x: r.x, y: r.y }
+      })`,
+      true,
+    ) as { src: string; x: number; y: number }[]
+    // Match by address first — a frame that carries one is unambiguous. A frame
+    // written inline (`srcdoc`) has no address, so fall back to its position in
+    // the page, which is the same order both lists are built in.
+    const byUrl = frame.url ? boxes.find((box) => box.src === frame.url) : undefined
+    const box = byUrl ?? boxes[index]
+    return box ? { x: box.x, y: box.y } : { x: 0, y: 0 }
   }
 
   /** Run a function body in the page with arguments, without string-splicing the caller's data in. */
@@ -250,7 +325,10 @@ export class Tab {
       throw new Error(`element ${selector} has no size, so it cannot be clicked: ${others}`)
     }
     const zoom = this.wc.getZoomFactor()
-    return { x: (rect.x + rect.w / 2) * zoom, y: (rect.y + rect.h / 2) * zoom }
+    return {
+      x: (this.#frameOffset.x + rect.x + rect.w / 2) * zoom,
+      y: (this.#frameOffset.y + rect.y + rect.h / 2) * zoom,
+    }
   }
 
   /**
@@ -274,8 +352,8 @@ export class Tab {
           return !!at && (at === el || el.contains(at) || at.contains(el))
         }`,
         selector,
-        point.x / this.wc.getZoomFactor(),
-        point.y / this.wc.getZoomFactor(),
+        point.x / this.wc.getZoomFactor() - this.#frameOffset.x,
+        point.y / this.wc.getZoomFactor() - this.#frameOffset.y,
       )
       if (hit || Date.now() > deadline) return point
       await pause(80)
@@ -383,10 +461,16 @@ export class Tab {
     if (this.#painted) return
     this.#painted = true
     try {
-      await this.wc.executeJavaScript(
-        'new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(1))))',
-        true,
-      )
+      // Capped on purpose: a page whose window is not on screen may never run
+      // an animation frame at all, and waiting for one that never comes would
+      // hang every click instead of the one it was meant to save.
+      await Promise.race([
+        this.wc.executeJavaScript(
+          'new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(1))))',
+          true,
+        ),
+        pause(FIRST_PAINT_WAIT_MS),
+      ])
     } catch {
       // A page that went away mid-wait needs no frame.
     }
@@ -544,11 +628,23 @@ export class Tab {
 
   async responseBody(requestId: string): Promise<{ body: string; base64Encoded: boolean }> {
     this.#attachDebugger()
-    const result = (await this.wc.debugger.sendCommand('Network.getResponseBody', { requestId })) as {
-      body: string
-      base64Encoded: boolean
+    // A body exists only once the response has finished arriving, and a request
+    // shows up in the log before that. Asking a moment too early answers "no
+    // data found", which reads as a lost body rather than an unfinished one —
+    // so wait for it, and only then say it is gone.
+    const deadline = Date.now() + 3_000
+    for (;;) {
+      try {
+        return (await this.wc.debugger.sendCommand('Network.getResponseBody', { requestId })) as {
+          body: string
+          base64Encoded: boolean
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        if (!/No data found/i.test(message) || Date.now() > deadline) throw error
+        await pause(100)
+      }
     }
-    return result
   }
 
   #attachDebugger(): void {

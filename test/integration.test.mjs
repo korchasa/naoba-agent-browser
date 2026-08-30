@@ -143,6 +143,34 @@ test('keys reach the page even though the window is not the one the person is us
   assert.equal(outcome.value.title, 'Fixture: hi')
 })
 
+test('a frame is reachable: read it, type in it, click in it', async () => {
+  // A page is often not one document — a payment form, an embedded editor, a
+  // documentation sandbox each live in a frame, and a selector run against the
+  // page never sees inside them.
+  const agent = await app.agent(PROJECT_A, 'frames')
+  const outcome = await agent.run(`
+    await api.navigate(${JSON.stringify(origin + '/page.html')})
+    await api.waitFor('#inner')
+    const frames = await api.frames()
+    const inner = { frame: 'inner.html' }
+    await api.type('#inner-field', 'typed inside', inner)
+    await api.click('#inner-button', inner)
+    return {
+      frames: frames.map((f) => f.url.replace(${JSON.stringify(origin)}, '')),
+      heading: await api.getText('#inner-heading', inner),
+      field: await api.eval('document.getElementById("inner-field").value', inner),
+      clicked: await api.getText('#inner-result', inner),
+      outerStillWorks: await api.getText('#heading'),
+    }
+  `)
+  assert.deepEqual(outcome.value.frames, ['/inner.html'])
+  assert.equal(outcome.value.heading, 'Inside the frame')
+  assert.equal(outcome.value.field, 'typed inside')
+  assert.equal(outcome.value.clicked, 'clicked, isTrusted=true')
+  assert.equal(outcome.value.outerStillWorks, 'Fixture page')
+  agent.close()
+})
+
 test('two agents in one project share the same tabs', async () => {
   const one = await app.agent(PROJECT_A, 'shared-one')
   const two = await app.agent(PROJECT_A, 'shared-two')
@@ -315,7 +343,12 @@ test('the network log carries requests and their bodies', async () => {
     await api.captureNetwork(true)
     await api.navigate(${JSON.stringify(origin + '/page.html')})
     await api.waitFor('#appeared', { timeout: 4000 })
-    const log = await api.getNetworkLog({ url: 'data.json' })
+    // The page asks for it on load, so the entry can arrive after the element.
+    let log = []
+    for (let tries = 0; tries < 20 && log.length === 0; tries++) {
+      log = await api.getNetworkLog({ url: 'data.json' })
+      if (log.length === 0) await api.sleep(150)
+    }
     const last = log[log.length - 1]
     const body = await api.getResponseBody(last.requestId)
     return { status: last.status, body: body.body }

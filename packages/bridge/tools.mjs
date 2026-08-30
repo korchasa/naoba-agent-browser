@@ -24,7 +24,19 @@ Acting (real input events — the page sees isTrusted: true)
   api.select(sel, value)             a <select>
   api.check(sel) / api.uncheck(sel)
   api.hover(sel) / api.press(key, modifiers) / api.scrollTo(x, y) / api.scrollBy(dx, dy)
+  api.drag(from, to, {steps})        press, move, release — a canvas, a slider, a
+                                     sortable list. Either end is a selector, a
+                                     [ref_N], or a point {x, y}
   api.waitFor(sel, {timeout, visible})
+
+Frames
+  api.frames()                       the frames inside the page: index, url, name
+  every call above takes {frame}     an index from frames(), or any part of a
+                                     frame's address or name. A payment form, an
+                                     embedded editor and a documentation sandbox
+                                     each live in a frame, and a selector run
+                                     against the page never sees inside one:
+                                     api.click('#pay', {frame: 'stripe'})
 
 Moving around
   api.navigate(url) / api.goBack() / api.goForward() / api.reload() / api.waitForLoad()
