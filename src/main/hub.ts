@@ -65,6 +65,11 @@ export class Hub {
     return port
   }
 
+  /** Write every project's session to disk, and never fail the shutdown for it. */
+  async flushAll(): Promise<void> {
+    await Promise.allSettled([...this.contexts.values()].map((context) => context.flush()))
+  }
+
   stop(): void {
     if (this.#idleTimer) clearInterval(this.#idleTimer)
     this.#server.close()

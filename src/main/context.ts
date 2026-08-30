@@ -252,6 +252,16 @@ export class ProjectContext {
   }
 
   /** Free the renderers of a project nobody is using; its session stays on disk. */
+  /**
+   * Push the session to disk. Cookies and local storage are written lazily, so
+   * a login made a moment ago is still only in memory: without this, quitting
+   * loses it and the person is asked to sign in again for no reason.
+   */
+  async flush(): Promise<void> {
+    await this.session.cookies.flushStore()
+    await this.session.flushStorageData()
+  }
+
   unload(): void {
     if (!this.#window) return
     for (const tab of this.#tabs) tab.destroy()

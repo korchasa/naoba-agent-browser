@@ -12,8 +12,10 @@ const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))))
  * own state directory, so a test run never touches the browser the owner is
  * actually using, and never inherits its admitted projects.
  */
-export async function startApp({ port = 8951, extraArgs = [] } = {}) {
-  const userData = await mkdtemp(join(tmpdir(), 'agent-browser-test-'))
+export async function startApp({ port = 8951, extraArgs = [], userDataDir = null, keepState = false } = {}) {
+  // A caller that passes a directory it already owns is restarting the app on
+  // purpose — that is the only way to prove a login outlives the application.
+  const userData = userDataDir ?? (await mkdtemp(join(tmpdir(), 'agent-browser-test-')))
   const child = spawn(
     join(root, 'node_modules/.bin/electron'),
     [
@@ -78,12 +80,14 @@ export async function startApp({ port = 8951, extraArgs = [] } = {}) {
       for (const client of clients) client.close()
       child.kill('SIGTERM')
       await new Promise((resolve) => child.on('exit', resolve))
-      await rm(userData, { recursive: true, force: true })
+      if (!keepState) await rm(userData, { recursive: true, force: true })
     },
   }
 }
 
+// Well clear of the port the shared test app holds, so a test that starts its
+// own copy cannot end up talking to that one instead.
 export const nextPort = (() => {
-  let next = 8951
+  let next = 8960
   return () => next++
 })()

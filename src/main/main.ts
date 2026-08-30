@@ -87,11 +87,24 @@ async function start(): Promise<void> {
   // The app is a server as much as a window: closing every window leaves it
   // running so the next agent call still has somewhere to land.
   app.on('window-all-closed', () => undefined)
-  app.on('before-quit', () => {
+
+  // Quitting has to wait for the sessions to reach disk. Cookies and local
+  // storage are written lazily, so a sign-in from a minute ago can still be
+  // memory-only — and losing it means asking the person to sign in again.
+  let leaving = false
+  app.on('before-quit', (event) => {
+    if (leaving) return
+    leaving = true
+    event.preventDefault()
     hub.stop()
     trayHandle?.destroy()
     trayHandle = null
+    void hub.flushAll().finally(() => app.exit(0))
   })
+
+  // A supervisor (or a test) ends the app with a signal; without this the
+  // sessions never get their chance to be written.
+  for (const signal of ['SIGTERM', 'SIGINT'] as const) process.on(signal, () => app.quit())
 }
 
 function stringFlag(name: string): string | null {

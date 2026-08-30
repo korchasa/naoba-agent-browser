@@ -1,9 +1,10 @@
 import { strict as assert } from 'node:assert'
 import { after, before, test } from 'node:test'
-import { readFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { startApp } from './helpers/app.mjs'
+import { nextPort, startApp } from './helpers/app.mjs'
 import { startFixtureServer } from './fixtures/server.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -79,6 +80,34 @@ test('a snapshot ref can be used wherever a selector can', async () => {
   `)
   assert.equal(outcome.value.trusted, 'isTrusted=true')
   agent.close()
+})
+
+test('a login survives the application being restarted, not just the tab being closed', async () => {
+  // The session lives on disk, keyed to the project. Closing a window must not
+  // take it, and neither must quitting: the person signs in once. The cookie
+  // carries an expiry on purpose — a cookie without one is a session cookie,
+  // and every browser is meant to drop those when it quits.
+  const dir = await mkdtemp(join(tmpdir(), 'agent-browser-restart-'))
+  const port = nextPort()
+  const first = await startApp({ port, userDataDir: dir, keepState: true })
+  const before = await first.agent(PROJECT_A, 'restart-before')
+  await before.run(`
+    await api.navigate(${JSON.stringify(origin + '/page.html')})
+    await api.eval('document.cookie = "session=alive; path=/; max-age=3600"; localStorage.setItem("who", "the person")')
+  `)
+  await first.stop()
+
+  const second = await startApp({ port, userDataDir: dir, keepState: true })
+  const after = await second.agent(PROJECT_A, 'restart-after')
+  const outcome = await after.run(`
+    await api.navigate(${JSON.stringify(origin + '/page.html')})
+    return await api.eval('({ cookie: document.cookie, who: localStorage.getItem("who") })')
+  `)
+  await second.stop()
+  await rm(dir, { recursive: true, force: true })
+
+  assert.match(outcome.value.cookie, /session=alive/)
+  assert.equal(outcome.value.who, 'the person')
 })
 
 test('two agents in one project share the same tabs', async () => {
