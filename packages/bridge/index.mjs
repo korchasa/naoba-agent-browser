@@ -36,7 +36,9 @@ async function ensureConnected() {
       port = await waitForPort(20_000)
       if (port === null) {
         throw new Error(
-          `Agent Browser was started but nothing is listening on ${DEFAULT_PORT}–${DEFAULT_PORT + PORT_RANGE - 1} yet. ` +
+          `Agent Browser was started but nothing is listening on ${DEFAULT_PORT}–${
+            DEFAULT_PORT + PORT_RANGE - 1
+          } yet. ` +
             'Give it a moment and call again.',
         )
       }

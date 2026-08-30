@@ -1,4 +1,4 @@
-import { Menu, Tray, app, nativeImage } from 'electron'
+import { app, Menu, nativeImage, Tray } from 'electron'
 import { deflateSync } from 'node:zlib'
 import type { Hub } from './hub.ts'
 
@@ -20,8 +20,7 @@ export function installTray(hub: Hub): Tray {
       const tabs = context.tabs.length
       const asking = context.pendingHuman.size > 0
       return {
-        label:
-          `${asking ? '✋ ' : ''}${context.identity.name}` +
+        label: `${asking ? '✋ ' : ''}${context.identity.name}` +
           `  —  ${agents} agent${agents === 1 ? '' : 's'}, ${tabs} tab${tabs === 1 ? '' : 's'}`,
         click: () => context.reveal(true),
       }

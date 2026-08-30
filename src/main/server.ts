@@ -1,5 +1,12 @@
 import { createServer, type Server, type Socket } from 'node:net'
-import { DEFAULT_PORT, PORT_RANGE, decodeLines, encodeMessage, type ClientMessage, type ServerMessage } from './protocol.ts'
+import {
+  type ClientMessage,
+  decodeLines,
+  DEFAULT_PORT,
+  encodeMessage,
+  PORT_RANGE,
+  type ServerMessage,
+} from './protocol.ts'
 
 export interface Connection {
   readonly id: number

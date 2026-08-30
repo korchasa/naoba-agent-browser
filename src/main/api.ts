@@ -1,4 +1,4 @@
-import type { ProjectContext, AgentHandle } from './context.ts'
+import type { AgentHandle, ProjectContext } from './context.ts'
 import type { Tab } from './tab.ts'
 import { pause } from './tab.ts'
 import type { Holder } from './lease.ts'

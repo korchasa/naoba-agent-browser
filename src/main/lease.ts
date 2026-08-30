@@ -62,7 +62,12 @@ export class LeaseTable {
   }
 
   /** Take the tab, or return the holder standing in the way. Re-claiming your own tab extends it. */
-  claim(tabId: string, holder: Holder, ttlMs: number, reason: string | null = null): { ok: true } | { ok: false; heldBy: Holder } {
+  claim(
+    tabId: string,
+    holder: Holder,
+    ttlMs: number,
+    reason: string | null = null,
+  ): { ok: true } | { ok: false; heldBy: Holder } {
     const current = this.holderOf(tabId)
     if (current && !sameHolder(current, holder)) return { ok: false, heldBy: current }
     this.#leases.set(tabId, { tabId, holder, reason, expiresAt: this.#now() + ttlMs })

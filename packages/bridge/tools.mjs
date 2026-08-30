@@ -66,8 +66,7 @@ Notes
 export const TOOLS = [
   {
     name: 'evalInBrowser',
-    description:
-      'Run a browser scenario in this project\'s window and get the result. ' +
+    description: "Run a browser scenario in this project's window and get the result. " +
       'Put the whole flow in one call — navigate, act, read, return.\n\n' +
       API_REFERENCE,
     inputSchema: {
@@ -88,7 +87,7 @@ export const TOOLS = [
   {
     name: 'status',
     description:
-      'What this project\'s browser looks like right now: the tabs and their state, the agents connected to it, ' +
+      "What this project's browser looks like right now: the tabs and their state, the agents connected to it, " +
       'and which of them is you.',
     inputSchema: { type: 'object', properties: {} },
   },

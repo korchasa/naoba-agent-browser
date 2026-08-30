@@ -69,7 +69,10 @@ function walk(value: unknown, limits: SerializeLimits, depth: number, seen: Weak
       }
     }
     if (value instanceof Set) {
-      return { $type: 'set', values: [...value].slice(0, limits.maxArrayLength).map((v) => walk(v, limits, depth + 1, seen)) }
+      return {
+        $type: 'set',
+        values: [...value].slice(0, limits.maxArrayLength).map((v) => walk(v, limits, depth + 1, seen)),
+      }
     }
     if (Array.isArray(value)) {
       const items = value.slice(0, limits.maxArrayLength).map((item) => walk(item, limits, depth + 1, seen))

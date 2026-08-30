@@ -160,9 +160,15 @@ function wireChrome(hub: Hub): void {
     return context.describeTab(tab)
   })
 
-  ipcMain.handle('ab:select-tab', (_event, projectId: string, tabId: string) => contextOf(projectId)?.selectTab(tabId) ?? false)
+  ipcMain.handle(
+    'ab:select-tab',
+    (_event, projectId: string, tabId: string) => contextOf(projectId)?.selectTab(tabId) ?? false,
+  )
 
-  ipcMain.handle('ab:close-tab', (_event, projectId: string, tabId: string) => contextOf(projectId)?.closeTab(tabId) ?? false)
+  ipcMain.handle(
+    'ab:close-tab',
+    (_event, projectId: string, tabId: string) => contextOf(projectId)?.closeTab(tabId) ?? false,
+  )
 
   ipcMain.handle('ab:navigate', async (_event, projectId: string, tabId: string, url: string) => {
     const context = contextOf(projectId)
@@ -201,7 +207,9 @@ function wireChrome(hub: Hub): void {
   })
 
   ipcMain.on('ab:chrome-height', (_event, projectId: string, height: number) => {
-    if (process.env.AB_SNAPSHOT_DEBUG) process.stdout.write(`chrome-height ${projectId} ${height} ctx=${!!contextOf(projectId)}\n`)
+    if (process.env.AB_SNAPSHOT_DEBUG) {
+      process.stdout.write(`chrome-height ${projectId} ${height} ctx=${!!contextOf(projectId)}\n`)
+    }
     contextOf(projectId)?.setChromeHeight(height)
   })
 

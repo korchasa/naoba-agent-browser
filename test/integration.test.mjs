@@ -120,7 +120,7 @@ test('two projects share nothing: not cookies, not storage, not tabs', async () 
   assert.notEqual(a.project.id, b.project.id)
   assert.deepEqual(inB.value.cookies, [], 'a cookie from another project is visible')
   assert.equal(inB.value.storage, null, 'storage from another project is visible')
-  assert.equal(inB.value.tabs, 1, 'another project\'s tabs are visible')
+  assert.equal(inB.value.tabs, 1, "another project's tabs are visible")
   a.close()
   b.close()
 })
@@ -150,7 +150,9 @@ test('two agents typing into one field produce whole words, not interleaved lett
   const final = await one.run(`return await api.eval('document.getElementById("field").value')`)
   assert.ok(
     final.value === 'alphabeta' || final.value === 'betaalpha',
-    `expected two whole words in queue order, got ${JSON.stringify(final.value)} after ${JSON.stringify(outcomes.map((outcome) => outcome.value))}`,
+    `expected two whole words in queue order, got ${JSON.stringify(final.value)} after ${
+      JSON.stringify(outcomes.map((outcome) => outcome.value))
+    }`,
   )
   one.close()
   two.close()
@@ -306,7 +308,10 @@ test('a login made by hand survives the tab being closed', async () => {
     await api.navigate(${JSON.stringify(origin + '/page.html')})
     return (await api.getCookies({ name: 'fixture' })).map((cookie) => cookie.value)
   `)
-  assert.ok(outcome.value.includes('persisted'), `expected the cookie to outlive the tab, got ${JSON.stringify(outcome.value)}`)
+  assert.ok(
+    outcome.value.includes('persisted'),
+    `expected the cookie to outlive the tab, got ${JSON.stringify(outcome.value)}`,
+  )
   agent.close()
 })
 

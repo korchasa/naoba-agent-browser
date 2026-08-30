@@ -15,14 +15,17 @@ export async function startFixtureServer(port = 0) {
       return
     }
     if (url.pathname === '/set-cookie') {
-      response.writeHead(200, { 'content-type': 'text/html', 'set-cookie': `fixture=${url.searchParams.get('v') ?? '1'}; Path=/` })
+      response.writeHead(200, {
+        'content-type': 'text/html',
+        'set-cookie': `fixture=${url.searchParams.get('v') ?? '1'}; Path=/`,
+      })
       response.end('<!doctype html><title>cookie set</title><h1>cookie set</h1>')
       return
     }
     if (url.pathname === '/dialog') {
       response.writeHead(200, { 'content-type': 'text/html' })
       response.end(
-        '<!doctype html><title>dialog</title><button id="ask" onclick="document.title = confirm(\'ok?\') ? \'accepted\' : \'dismissed\'">ask</button>',
+        "<!doctype html><title>dialog</title><button id=\"ask\" onclick=\"document.title = confirm('ok?') ? 'accepted' : 'dismissed'\">ask</button>",
       )
       return
     }

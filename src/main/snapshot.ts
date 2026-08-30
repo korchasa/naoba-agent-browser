@@ -21,10 +21,12 @@ export async function writeSnapshots(hub: Hub, directory: string, demoPage: stri
   const context = hub.contextFor({ ...identity, name: 'checkout' })
 
   // A window with one agent and an empty log photographs as an empty product.
-  for (const [label, ide] of [
-    ['claude · checkout', 'claude'],
-    ['codex · checkout', 'codex'],
-  ] as const) {
+  for (
+    const [label, ide] of [
+      ['claude · checkout', 'claude'],
+      ['codex · checkout', 'codex'],
+    ] as const
+  ) {
     const agent: AgentHandle = {
       id: `demo-${label}`,
       label,
@@ -40,14 +42,16 @@ export async function writeSnapshots(hub: Hub, directory: string, demoPage: stri
   context.openTab(demoPage)
   context.selectTab(second.id)
 
-  for (const [who, what] of [
-    ['claude · checkout', 'navigate(https://shop.example/cart)'],
-    ['claude · checkout', 'fill(#coupon)'],
-    ['claude · checkout', 'click(button.apply)'],
-    ['codex · checkout', 'snapshot(document)'],
-    ['codex · checkout', 'getNetworkLog()'],
-    ['claude · checkout', 'requestHuman(sign in to the shop)'],
-  ] as const) {
+  for (
+    const [who, what] of [
+      ['claude · checkout', 'navigate(https://shop.example/cart)'],
+      ['claude · checkout', 'fill(#coupon)'],
+      ['claude · checkout', 'click(button.apply)'],
+      ['codex · checkout', 'snapshot(document)'],
+      ['codex · checkout', 'getNetworkLog()'],
+      ['claude · checkout', 'requestHuman(sign in to the shop)'],
+    ] as const
+  ) {
     context.log(who, what, second.id)
     await pause(20)
   }

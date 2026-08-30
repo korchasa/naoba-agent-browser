@@ -4,31 +4,83 @@
     <meta charset="utf-8" />
     <title>Checkout — Example Shop</title>
     <style>
-      :root { color-scheme: light dark; }
+    :root {
+      color-scheme: light dark;
+    }
+    body {
+      margin: 0;
+      font: 15px/1.55 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      color: #1a1a1e;
+      background: #fff;
+    }
+    @media (prefers-color-scheme: dark) {
       body {
-        margin: 0;
-        font: 15px/1.55 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-        color: #1a1a1e;
-        background: #fff;
+        color: #f0f0f4;
+        background: #131316;
       }
-      @media (prefers-color-scheme: dark) { body { color: #f0f0f4; background: #131316; } }
-      header { padding: 18px 32px; border-bottom: 1px solid rgba(128,128,140,0.28); font-weight: 600; }
-      main { padding: 28px 32px; max-width: 620px; }
-      h1 { margin: 0 0 6px; font-size: 26px; }
-      p.lede { margin: 0 0 22px; color: #6a6a72; }
-      @media (prefers-color-scheme: dark) { p.lede { color: #9a9aa4; } }
-      .row { display: flex; justify-content: space-between; padding: 11px 0; border-bottom: 1px solid rgba(128,128,140,0.2); }
-      .total { font-weight: 600; border-bottom: none; padding-top: 16px; }
-      form { display: flex; gap: 8px; margin: 22px 0 0; }
-      input {
-        flex: 1; font: inherit; padding: 9px 12px; border-radius: 8px;
-        border: 1px solid rgba(128,128,140,0.4); background: transparent; color: inherit;
+    }
+    header {
+      padding: 18px 32px;
+      border-bottom: 1px solid rgba(128,128,140,0.28);
+      font-weight: 600;
+    }
+    main {
+      padding: 28px 32px;
+      max-width: 620px;
+    }
+    h1 {
+      margin: 0 0 6px;
+      font-size: 26px;
+    }
+    p.lede {
+      margin: 0 0 22px;
+      color: #6a6a72;
+    }
+    @media (prefers-color-scheme: dark) {
+      p.lede {
+        color: #9a9aa4;
       }
-      button {
-        font: inherit; padding: 9px 18px; border: none; border-radius: 8px;
-        background: #2f6df6; color: #fff; font-weight: 500;
-      }
-      .note { margin-top: 26px; padding: 14px 16px; border-radius: 9px; background: rgba(47,109,246,0.1); }
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      padding: 11px 0;
+      border-bottom: 1px solid rgba(128,128,140,0.2);
+    }
+    .total {
+      font-weight: 600;
+      border-bottom: none;
+      padding-top: 16px;
+    }
+    form {
+      display: flex;
+      gap: 8px;
+      margin: 22px 0 0;
+    }
+    input {
+      flex: 1;
+      font: inherit;
+      padding: 9px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(128,128,140,0.4);
+      background: transparent;
+      color: inherit;
+    }
+    button {
+      font: inherit;
+      padding: 9px 18px;
+      border: none;
+      border-radius: 8px;
+      background: #2f6df6;
+      color: #fff;
+      font-weight: 500;
+    }
+    .note {
+      margin-top: 26px;
+      padding: 14px 16px;
+      border-radius: 9px;
+      background: rgba(47,109,246,0.1);
+    }
     </style>
   </head>
   <body>

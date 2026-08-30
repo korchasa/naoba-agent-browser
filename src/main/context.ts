@@ -1,6 +1,6 @@
-import { BaseWindow, WebContentsView, screen, session as electronSession } from 'electron'
+import { BaseWindow, screen, session as electronSession, WebContentsView } from 'electron'
 import type { Session } from 'electron'
-import { LeaseTable, holderLabel, type Holder } from './lease.ts'
+import { type Holder, holderLabel, LeaseTable } from './lease.ts'
 import { KeyedQueue } from './queue.ts'
 import { partitionFor, type ProjectIdentity } from './project.ts'
 import { Tab } from './tab.ts'
@@ -179,7 +179,12 @@ export class ProjectContext {
     this.#chrome?.setBounds({ x: 0, y: 0, width, height: chromeHeight })
     this.#panel?.setVisible(this.#panelOpen)
     if (this.#panelOpen) {
-      this.#panel?.setBounds({ x: width - panelWidth, y: chromeHeight, width: panelWidth, height: Math.max(0, height - chromeHeight) })
+      this.#panel?.setBounds({
+        x: width - panelWidth,
+        y: chromeHeight,
+        width: panelWidth,
+        height: Math.max(0, height - chromeHeight),
+      })
     }
     for (const tab of this.#tabs) {
       const visible = tab.id === this.#activeTabId

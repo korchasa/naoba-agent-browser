@@ -210,7 +210,9 @@ export class Tab {
    */
   async centerOf(selector: string, timeoutMs: number): Promise<{ x: number; y: number }> {
     await this.waitFor(selector, timeoutMs, false)
-    const rect = await this.call<{ x: number; y: number; w: number; h: number; matches: number; visible: number } | null>(
+    const rect = await this.call<
+      { x: number; y: number; w: number; h: number; matches: number; visible: number } | null
+    >(
       `(sel) => {
         const el = window.__abQuery(sel)
         if (!el) return null
@@ -446,7 +448,10 @@ export class Tab {
     if (this.#debuggerAttached) return
     if (!this.wc.debugger.isAttached()) this.wc.debugger.attach('1.3')
     this.#debuggerAttached = true
-    this.wc.debugger.on('message', (_event, method, params) => this.#onDebuggerMessage(method, params as Record<string, unknown>))
+    this.wc.debugger.on(
+      'message',
+      (_event, method, params) => this.#onDebuggerMessage(method, params as Record<string, unknown>),
+    )
   }
 
   #detachDebugger(): void {

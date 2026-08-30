@@ -3,9 +3,9 @@ import { randomUUID } from 'node:crypto'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { buildApi } from './api.ts'
-import { ProjectContext, type AgentHandle, type ContextPaths } from './context.ts'
+import { type AgentHandle, type ContextPaths, ProjectContext } from './context.ts'
 import { identify, normalizeRoot, type ProjectIdentity } from './project.ts'
-import { PROTOCOL_VERSION, type ClientMessage, type ErrorCode, type ServerMessage } from './protocol.ts'
+import { type ClientMessage, type ErrorCode, PROTOCOL_VERSION, type ServerMessage } from './protocol.ts'
 import { runScript, ScriptError } from './runner.ts'
 import { BridgeServer, type Connection } from './server.ts'
 import { pause } from './tab.ts'
@@ -128,8 +128,7 @@ export class Hub {
         cancelId: 1,
         title: 'A new project wants a browser',
         message: `Let agents working in “${identity.name}” open a browser?`,
-        detail:
-          `${agentLabel} is asking on behalf of:\n${identity.root}\n\n` +
+        detail: `${agentLabel} is asking on behalf of:\n${identity.root}\n\n` +
           `This project gets its own window, its own cookies and its own logins. ` +
           `Nothing in it is visible to agents working in any other project.`,
       })
@@ -241,7 +240,8 @@ export class Hub {
       connection.send({
         type: 'denied',
         id: message.id,
-        reason: `this app speaks protocol ${PROTOCOL_VERSION}, the bridge speaks ${message.protocol}; update the bridge`,
+        reason:
+          `this app speaks protocol ${PROTOCOL_VERSION}, the bridge speaks ${message.protocol}; update the bridge`,
       })
       connection.close()
       return
@@ -253,7 +253,8 @@ export class Hub {
       connection.send({
         type: 'denied',
         id: message.id,
-        reason: `“${identity.name}” is not allowed to open a browser here; clear the decision in the app's settings to be asked again`,
+        reason:
+          `“${identity.name}” is not allowed to open a browser here; clear the decision in the app's settings to be asked again`,
       })
       connection.close()
       return
@@ -363,7 +364,9 @@ export class Hub {
       if (!holder) return
       if (holder.kind === 'agent' && holder.id === agent.id) return
       if (holder.kind === 'human') {
-        throw Object.assign(new Error('the person at the keyboard is using this tab'), { code: 'taken-over' as ErrorCode })
+        throw Object.assign(new Error('the person at the keyboard is using this tab'), {
+          code: 'taken-over' as ErrorCode,
+        })
       }
       if (Date.now() >= deadline) {
         throw Object.assign(new Error(`tab is held by ${holder.label}`), { code: 'tab-held' as ErrorCode })
