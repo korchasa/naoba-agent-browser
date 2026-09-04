@@ -61,6 +61,34 @@ export function buildTree(
   return groups
 }
 
+/** The order the agents' groups are drawn in. */
+export type SortMode = 'arrival' | 'activity' | 'name'
+
+export const SORT_MODES: readonly { mode: SortMode; label: string }[] = [
+  { mode: 'arrival', label: 'In order of arrival' },
+  { mode: 'activity', label: 'Most recent activity first' },
+  { mode: 'name', label: 'By name' },
+]
+
+/**
+ * Put the groups in the chosen order. `arrival` is the order the main process
+ * lists agents in — connection order, the departed ones last. `activity` puts
+ * the agent with the newest call first, so the one working right now is at
+ * the top; an agent that has done nothing yet sinks. Ties keep arrival order.
+ */
+export function sortGroups(groups: readonly TreeGroup[], mode: SortMode): TreeGroup[] {
+  const arrival = new Map(groups.map((group, at) => [group, at]))
+  const latest = (group: TreeGroup): number =>
+    Math.max(0, ...group.tabs.flatMap((entry) => entry.commands.map((command) => command.at)))
+  const sorted = [...groups]
+  if (mode === 'activity') {
+    sorted.sort((a, b) => latest(b) - latest(a) || arrival.get(a)! - arrival.get(b)!)
+  } else if (mode === 'name') {
+    sorted.sort((a, b) => a.label.localeCompare(b.label) || arrival.get(a)! - arrival.get(b)!)
+  }
+  return sorted
+}
+
 export function groupKey(group: TreeGroup): string {
   return `group:${group.id}`
 }

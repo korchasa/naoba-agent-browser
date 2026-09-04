@@ -4,7 +4,18 @@
  * in, and what each did there.
  */
 import type { AgentCommand, TabDescriptor } from '../main/protocol.ts'
-import { type AgentRow, buildTree, expandNew, groupKey, tabKey, type TreeGroup, type TreeTab } from './tree.ts'
+import {
+  type AgentRow,
+  buildTree,
+  expandNew,
+  groupKey,
+  SORT_MODES,
+  type SortMode,
+  sortGroups,
+  tabKey,
+  type TreeGroup,
+  type TreeTab,
+} from './tree.ts'
 
 declare const ab: {
   state(projectId: string): Promise<
@@ -35,6 +46,37 @@ const commands = new Map<string, AgentCommand[]>()
  * itself shut each time an agent clicked something would be unusable.
  */
 const expanded = new Set<string>()
+
+/**
+ * How the agents are ordered. Remembered per machine: a person who prefers
+ * the busiest agent on top wants that tomorrow too. The store can be absent
+ * or refuse — a private window, a cleared profile — and the panel then just
+ * starts from the default.
+ */
+const SORT_KEY = 'naoba.sort'
+let sort: SortMode = readSort()
+let sortMenuOpen = false
+
+function readSort(): SortMode {
+  try {
+    const stored = localStorage.getItem(SORT_KEY)
+    if (SORT_MODES.some((entry) => entry.mode === stored)) return stored as SortMode
+  } catch {
+    // No store here; the default is fine.
+  }
+  return 'arrival'
+}
+
+function setSort(mode: SortMode): void {
+  sort = mode
+  sortMenuOpen = false
+  try {
+    localStorage.setItem(SORT_KEY, mode)
+  } catch {
+    // The choice still holds for this window.
+  }
+  render()
+}
 /** Every branch key already decided on, so a fold by hand is not undone. */
 const seen = new Set<string>()
 
@@ -43,7 +85,7 @@ function activeTab(): TabDescriptor | null {
 }
 
 function render(): void {
-  const groups = buildTree(tabs, agents, commands)
+  const groups = sortGroups(buildTree(tabs, agents, commands), sort)
   expandNew(groups, seen, expanded)
   root.innerHTML = ''
   root.append(renderPanel(groups))
@@ -113,7 +155,31 @@ function renderBar(): HTMLElement {
   const plus = iconButton('plus', () => void ab.newTab(projectId), 'New tab beside this agent')
   if (!current?.openedBy) plus.disabled = true
   bar.append(plus)
+  bar.append(sortControl())
   return bar
+}
+
+/** The sliders button and, while it is open, the list of orders under it. */
+function sortControl(): HTMLElement {
+  const wrap = el('div', 'sort')
+  const button = iconButton('sliders', () => {
+    sortMenuOpen = !sortMenuOpen
+    render()
+  }, 'Order of agents')
+  if (sortMenuOpen) button.classList.add('open')
+  wrap.append(button)
+  if (!sortMenuOpen) return wrap
+
+  const menu = el('div', 'menu')
+  menu.append(el('h6', '', 'Order agents'))
+  for (const entry of SORT_MODES) {
+    const item = el('button', entry.mode === sort ? 'item chosen' : 'item')
+    item.append(icon('check', 'tick'), el('span', '', entry.label))
+    item.onclick = () => setSort(entry.mode)
+    menu.append(item)
+  }
+  wrap.append(menu)
+  return wrap
 }
 
 // ------------------------------------------------------------------- the tree
@@ -271,6 +337,9 @@ const ICONS: Record<string, string> = {
   back: '<path d="M10 3 5 8l5 5"/>',
   reload: '<path d="M13 8a5 5 0 1 1-1.5-3.6"/><path d="M13 2.5V6h-3.5"/>',
   plus: '<path d="M8 3v10M3 8h10"/>',
+  // Two vertical sliders, the way the system draws a settings control.
+  sliders: '<path d="M5.5 2v12M10.5 2v12"/><circle cx="5.5" cy="10" r="1.8" fill="var(--color-surface)"/><circle cx="10.5" cy="6" r="1.8" fill="var(--color-surface)"/>',
+  check: '<path d="M3.5 8.5 6.5 11.5 12.5 4.5"/>',
   chevron: '<path d="M6 3l5 5-5 5"/>',
   x: '<path d="M4 4l8 8M12 4l-8 8"/>',
   lock: '<rect x="3.5" y="7" width="9" height="6.5" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/>',

@@ -9,7 +9,7 @@ import { LeaseTable } from '../src/main/lease.ts'
 import { toTransferable } from '../src/main/serialize.ts'
 import { decodeLines } from '../src/main/protocol.ts'
 import { CommandLog } from '../src/main/commands.ts'
-import { buildTree, expandNew, groupKey, tabKey } from '../src/renderer/tree.ts'
+import { buildTree, expandNew, groupKey, sortGroups, tabKey } from '../src/renderer/tree.ts'
 
 test('a project is the repository the agent is working in, not its subdirectory', () => {
   const base = mkdtempSync(join(tmpdir(), 'ab-project-'))
@@ -228,6 +228,21 @@ test('an agent with no tab still has a place in the tree', () => {
   const groups = buildTree([], [here('agent-1', 'claude', 'claude')], new Map())
   assert.deepEqual(groups.map((group) => group.id), ['agent-1'])
   assert.deepEqual(groups[0].tabs, [])
+})
+
+test('the agents can be ordered by arrival, by latest activity, or by name', () => {
+  const at = (when) => ({ at: when, agentId: 'x', agentLabel: 'x', text: 'click(a)' })
+  const groups = buildTree(
+    [tabAt(0, 'tab-a', 'agent-1'), tabAt(1, 'tab-b', 'agent-2'), tabAt(2, 'tab-c', 'agent-3')],
+    [here('agent-1', 'cursor', 'cursor', 'tab-a'), here('agent-2', 'claude', 'claude', 'tab-b'), here('agent-3', 'bob', 'codex', 'tab-c')],
+    new Map([['tab-a', [at(10)]], ['tab-b', [at(5), at(30)]]]),
+  )
+  const names = (list) => list.map((group) => group.label)
+  assert.deepEqual(names(sortGroups(groups, 'arrival')), ['cursor', 'claude', 'bob'])
+  // The busiest agent on top; one that has done nothing sinks to the bottom.
+  assert.deepEqual(names(sortGroups(groups, 'activity')), ['claude', 'cursor', 'bob'])
+  assert.deepEqual(names(sortGroups(groups, 'name')), ['bob', 'claude', 'cursor'])
+  assert.deepEqual(names(groups), ['cursor', 'claude', 'bob'], 'the input is left as it was')
 })
 
 test('the tree opens on every agent and on the tab in front', () => {

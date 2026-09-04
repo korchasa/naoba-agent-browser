@@ -72,6 +72,61 @@ svg {
   padding: 0 10px 10px;
 }
 
+/* The order control: a sliders button, and a small sheet that drops from it. */
+.sort {
+  position: relative;
+  flex: none;
+}
+.sort button.open {
+  background: var(--fill-strong);
+}
+.sort .menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 2;
+  min-width: 15rem;
+  padding: 6px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+.sort .menu h6 {
+  margin: 4px 8px 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.sort .item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  min-height: 2rem;
+  padding: 0 8px;
+  justify-content: flex-start;
+  text-align: left;
+  white-space: nowrap;
+  font-weight: 500;
+  background: none;
+  border: none;
+  box-shadow: none;
+  color: var(--text);
+}
+.sort .item:hover {
+  background: var(--fill);
+}
+.sort .item .tick {
+  visibility: hidden;
+  color: var(--accent);
+}
+.sort .item.chosen .tick {
+  visibility: visible;
+}
+
 button {
   -webkit-app-region: no-drag;
   display: inline-flex;
