@@ -108,7 +108,11 @@ function renderBar(): HTMLElement {
     else void ab.newTab(projectId, value)
   }
   bar.append(url)
-  bar.append(iconButton('plus', () => void ab.newTab(projectId), 'New tab'))
+  // A new tab joins the agent whose tab is in front; with no agent here there
+  // is nobody to open one for.
+  const plus = iconButton('plus', () => void ab.newTab(projectId), 'New tab beside this agent')
+  if (!current?.openedBy) plus.disabled = true
+  bar.append(plus)
   return bar
 }
 
@@ -158,15 +162,16 @@ function renderTab(into: HTMLElement, group: TreeGroup, entry: TreeTab): void {
 }
 
 function groupRow(group: TreeGroup, open: boolean, key: string, at: number): HTMLElement {
-  const row = depth(el('div', group.id === null ? 'row group you' : 'row group'), 0)
+  const row = depth(el('div', group.gone ? 'row group gone' : 'row group'), 0)
   row.append(twist(open))
   // Each agent keeps its colour for as long as it is connected: the dot is
-  // how a person tells three agents apart across the whole tree. The person
-  // has a colour of their own, outside the agents' run.
-  row.style.setProperty('--agent', group.id === null ? 'var(--you)' : `var(--agent-${at % 5})`)
+  // how a person tells three agents apart across the whole tree. One that
+  // has gone keeps its place but loses its colour, and says so on its badge.
+  row.style.setProperty('--agent', `var(--agent-${at % 5})`)
   row.append(el('span', 'dot'))
   row.append(el('span', 'name', group.label))
-  if (group.ide) row.append(el('span', 'ide', group.ide))
+  row.append(el('span', 'ide', group.gone ? 'gone' : group.ide))
+  if (group.gone) row.title = `${group.label} has disconnected; its tabs close in a while unless somebody picks them up`
   row.onclick = () => toggle(key)
   return row
 }
@@ -292,7 +297,7 @@ function icon(name: string, className = ''): SVGElement {
   return svg
 }
 
-function iconButton(name: string, onClick: () => void, title: string): HTMLElement {
+function iconButton(name: string, onClick: () => void, title: string): HTMLButtonElement {
   const node = document.createElement('button')
   node.className = 'icon'
   node.title = title

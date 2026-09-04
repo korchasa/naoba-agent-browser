@@ -183,20 +183,21 @@ function wireChrome(hub: Hub): void {
     return {
       project: context.identity,
       tabs: context.describeTabs(),
-      agents: [...context.agents.values()].map((agent) => ({
-        id: agent.id,
-        label: agent.label,
-        ide: agent.descriptor.ide,
-        tabId: agent.currentTabId,
-      })),
+      agents: context.agentRows(),
       commands: context.commandsByTab(),
     }
   })
 
+  /**
+   * A tab the person opens belongs to the agent whose tab is in front: the
+   * person works alongside an agent, never in a corner of their own, so with
+   * no agent in the window there is nothing to open a tab for.
+   */
   ipcMain.handle('ab:new-tab', (_event, projectId: string, url?: string) => {
     const context = contextOf(projectId)
-    if (!context) return null
-    const tab = context.openTab(url ? normalizeUrl(url) : undefined)
+    const owner = context?.activeTab()?.openedBy ?? null
+    if (!context || !owner) return null
+    const tab = context.openTab(url ? normalizeUrl(url) : undefined, owner)
     context.log(YOU, `opened a tab`, tab.id)
     return context.describeTab(tab)
   })

@@ -1,20 +1,15 @@
-import type { AgentCommand, TabDescriptor } from '../main/protocol.ts'
+import type { AgentCommand, AgentRow, TabDescriptor } from '../main/protocol.ts'
 
-/** An agent as the panel knows it. */
-export interface AgentRow {
+export type { AgentRow }
+
+/** An agent and the tabs it opened. */
+export interface TreeGroup {
   id: string
   label: string
+  /** The badge: the agent's IDE. */
   ide: string
-  tabId: string | null
-}
-
-/** One actor and the tabs it opened: an agent, or the person. */
-export interface TreeGroup {
-  /** The agent's id, or `null` for the person. */
-  id: string | null
-  label: string
-  /** The badge: the agent's IDE, or `you`. */
-  ide: string
+  /** Disconnected; its tabs are here until the grace period runs out. */
+  gone: boolean
   tabs: TreeTab[]
 }
 
@@ -30,12 +25,14 @@ export interface TreeTab {
  * A tab belongs to the agent that opened it, and its history holds every call
  * made in it, whoever made it. So a tab borrowed with `selectTab` stays in
  * one place, and the borrower's calls read in order next to the owner's,
- * marked with the borrower's name. The person's own actions land the same way.
+ * marked with the borrower's name. The person's own actions land the same way:
+ * the person has no branch of their own, because they work alongside an
+ * agent, never apart from one.
  *
- * The person is an actor like the others, drawn last: their group holds the
- * tabs they opened by hand and any tab whose agent has gone — a tab in no
- * branch would be one nobody can select or close. The group is left out
- * while it is empty.
+ * An agent that has gone keeps its row, dimmed, for as long as tabs of its
+ * own are open — the main process lists it among the agents until then. A
+ * tab whose owner is in no list at all still gets a row to hang under, since
+ * a tab in no branch is one nobody can select or close.
  */
 export function buildTree(
   tabs: readonly TabDescriptor[],
@@ -46,24 +43,30 @@ export function buildTree(
     id: agent.id,
     label: agent.label,
     ide: agent.ide,
+    gone: agent.gone,
     tabs: [],
   }))
   const byAgent = new Map(groups.map((group) => [group.id, group]))
-  const mine: TreeGroup = { id: null, label: 'you', ide: 'you', tabs: [] }
   for (const tab of [...tabs].sort((a, b) => a.index - b.index)) {
     const entry: TreeTab = { tab, commands: [...(commands.get(tab.id) ?? [])] }
-    const owner = tab.openedBy ? byAgent.get(tab.openedBy) : undefined
-    ;(owner ?? mine).tabs.push(entry)
+    const ownerId = tab.openedBy ?? 'nobody'
+    let owner = byAgent.get(ownerId)
+    if (!owner) {
+      owner = { id: ownerId, label: tab.openedBy ? 'an agent that left' : 'nobody', ide: 'gone', gone: true, tabs: [] }
+      byAgent.set(ownerId, owner)
+      groups.push(owner)
+    }
+    owner.tabs.push(entry)
   }
-  return mine.tabs.length > 0 ? [...groups, mine] : groups
+  return groups
 }
 
 export function groupKey(group: TreeGroup): string {
-  return `group:${group.id ?? 'you'}`
+  return `group:${group.id}`
 }
 
 export function tabKey(group: TreeGroup, tab: TabDescriptor): string {
-  return `tab:${group.id ?? 'you'}:${tab.id}`
+  return `tab:${group.id}:${tab.id}`
 }
 
 /**

@@ -22,7 +22,7 @@ export async function writeSnapshots(hub: Hub, directory: string, demoPage: stri
 
   // A window with one agent and an empty tree photographs as an empty product.
   // The tree is the picture, so the demo needs what a tree is for: several
-  // agents, a tab each, one tab two of them share, and one the person opened.
+  // agents, a tab each, and one tab two of them share.
   const actors = [
     ['claude · checkout', 'claude'],
     ['codex · checkout', 'codex'],
@@ -43,7 +43,6 @@ export async function writeSnapshots(hub: Hub, directory: string, demoPage: stri
   const cart = context.openTab(demoPage, claude!.id)
   const docs = context.openTab(demoPage, codex!.id)
   const admin = context.openTab(demoPage, cursor!.id)
-  const mine = context.openTab(demoPage)
   context.selectTab(cart.id)
 
   // Every demo tab shows the same fixture page, so without this they all carry
@@ -52,7 +51,6 @@ export async function writeSnapshots(hub: Hub, directory: string, demoPage: stri
   await named(cart, 'Your basket — Example Shop')
   await named(docs, 'Payments API — Docs')
   await named(admin, 'Orders — Admin')
-  await named(mine, 'Example Shop')
 
   for (
     const [who, what, where] of [
@@ -111,11 +109,10 @@ export async function writeSnapshots(hub: Hub, directory: string, demoPage: stri
   await shoot('03-large-text')
   await setTextSize(context, '13px')
 
-  // What the first launch actually looks like: one blank tab, no agent yet.
+  // What the first launch actually looks like: no agent yet, and so no tab.
   context.pendingHuman.clear()
   context.agents.clear()
-  for (const tab of context.tabs) tab.commands.clear()
-  for (const tab of [...context.tabs.values()].slice(1)) context.closeTab(tab.id)
+  for (const tab of [...context.tabs.values()]) context.closeTab(tab.id)
   refresh(context)
   await shoot('04-first-run')
 }

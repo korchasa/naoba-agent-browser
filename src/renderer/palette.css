@@ -53,9 +53,6 @@
   --agent-2: var(--color-accent-700);
   --agent-3: var(--color-neutral-800);
   --agent-4: var(--color-accent-600);
-  /* The person's own mark: the ink at half strength, so it never reads as
-     one more agent. */
-  --you: var(--text-dim);
   /* One step of the tree. Rows carry their level in --depth and multiply. */
   --indent: 16px;
 }

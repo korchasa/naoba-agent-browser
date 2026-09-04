@@ -51,6 +51,16 @@ export interface TabDescriptor {
  * change, so a history hung off it would cross the wire dozens of times a
  * minute to readers with no use for it. The panel gets it on its own channel.
  */
+/** An agent as the panel draws it. */
+export interface AgentRow {
+  id: string
+  label: string
+  ide: string
+  tabId: string | null
+  /** Disconnected, but tabs of its own are still open under its name. */
+  gone: boolean
+}
+
 export interface AgentCommand {
   at: number
   /** The agent that made the call, or `null` when the person did. */

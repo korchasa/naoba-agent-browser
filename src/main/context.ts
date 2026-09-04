@@ -4,7 +4,7 @@ import { type Holder, holderLabel, LeaseTable } from './lease.ts'
 import { KeyedQueue } from './queue.ts'
 import { partitionFor, type ProjectIdentity } from './project.ts'
 import { Tab } from './tab.ts'
-import type { AgentCommand, AgentDescriptor, AppEvent, ServerMessage, TabDescriptor } from './protocol.ts'
+import type { AgentCommand, AgentDescriptor, AgentRow, AppEvent, ServerMessage, TabDescriptor } from './protocol.ts'
 
 /**
  * The panel is the window's whole chrome, so it has to hold an address bar and
@@ -58,6 +58,12 @@ export class ProjectContext {
   #activeTabId: string | null = null
   /** Pending closes of tabs whose agent has gone, keyed by that agent. */
   readonly #orphanTimers = new Map<string, NodeJS.Timeout>()
+  /**
+   * Agents that have disconnected while tabs of theirs are still open. The
+   * panel keeps drawing such an agent, dimmed, so its tabs have a heading to
+   * hang under until they go.
+   */
+  readonly #departed = new Map<string, { label: string; ide: string }>()
   #lastTouched = Date.now()
 
   readonly #paths: ContextPaths
@@ -154,6 +160,7 @@ export class ProjectContext {
       this.#tabs = []
       for (const timer of this.#orphanTimers.values()) clearTimeout(timer)
       this.#orphanTimers.clear()
+      this.#departed.clear()
       this.#activeTabId = null
     })
 
@@ -310,6 +317,12 @@ export class ProjectContext {
     this.layout()
     this.broadcast({ type: 'tab-closed', tabId })
     this.notifyTabs()
+    // The last tab of a departed agent takes the agent's row with it.
+    const owner = tab.openedBy
+    if (owner && this.#departed.has(owner) && !this.#tabs.some((left) => left.openedBy === owner)) {
+      this.#departed.delete(owner)
+      this.notifyAgents()
+    }
     return true
   }
 
@@ -399,6 +412,9 @@ export class ProjectContext {
     // page it was on — a form half filled, a login just made — is gone with
     // the old one. So the tabs wait a while, and go only if nobody has picked
     // them up.
+    if (this.#tabs.some((tab) => tab.openedBy === agentId)) {
+      this.#departed.set(agentId, { label: agent.label, ide: agent.descriptor.ide })
+    }
     const grace = this.#paths.orphanCloseMs ?? 0
     const timer = setTimeout(() => {
       this.#orphanTimers.delete(agentId)
@@ -461,15 +477,20 @@ export class ProjectContext {
   }
 
   notifyAgents(): void {
-    this.toChrome(
-      'agents',
-      [...this.agents.values()].map((agent) => ({
-        id: agent.id,
-        label: agent.label,
-        ide: agent.descriptor.ide,
-        tabId: agent.currentTabId,
-      })),
-    )
+    this.toChrome('agents', this.agentRows())
+  }
+
+  /** The agents the panel draws: the connected ones, then the departed ones whose tabs are still here. */
+  agentRows(): AgentRow[] {
+    const connected = [...this.agents.values()].map((agent) => ({
+      id: agent.id,
+      label: agent.label,
+      ide: agent.descriptor.ide,
+      tabId: agent.currentTabId,
+      gone: false,
+    }))
+    const departed = [...this.#departed].map(([id, { label, ide }]) => ({ id, label, ide, tabId: null, gone: true }))
+    return [...connected, ...departed]
   }
 
   toChrome(channel: string, payload: unknown): void {

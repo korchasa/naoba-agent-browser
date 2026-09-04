@@ -99,6 +99,10 @@ button.icon {
   width: 2.3rem;
   padding: 0;
 }
+button:disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
 button.primary {
   width: 100%;
   background: var(--color-accent);
@@ -300,9 +304,16 @@ input.url:focus {
   font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
 }
-.row.group.you .ide {
-  color: var(--color-accent-800);
-  background: var(--color-accent-100);
+/* An agent that has gone: no colour, quieter name, and the badge says why. */
+.row.group.gone .dot {
+  background: var(--text-faint);
+}
+.row.group.gone .name {
+  color: var(--text-dim);
+}
+.row.group.gone .ide {
+  color: var(--text-dim);
+  background: var(--fill);
 }
 
 .row.cmd .who {
