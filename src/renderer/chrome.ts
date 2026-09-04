@@ -66,9 +66,7 @@ function renderPanel(groups: TreeGroup[]): HTMLElement {
     heading.append(icon('hand'), el('span', '', `${current.askedBy ?? 'An agent'} needs you`))
     callout.append(heading)
     callout.append(el('p', '', current.waitingForHuman))
-    const actions = el('div', 'actions')
-    actions.append(primary('I have done it', () => void ab.humanDone(projectId, current.id)))
-    callout.append(actions)
+    callout.append(primary('I have done it', () => void ab.humanDone(projectId, current.id)))
     wrap.append(callout)
   } else if (current?.heldBy) {
     const held = el('div', 'held-row')
@@ -185,7 +183,9 @@ function tabRow(tab: TabDescriptor, count: number, open: boolean, key: string): 
   }
   row.append(arrow)
 
-  row.append(el('span', 'icon'))
+  const glyph = el('span', 'icon')
+  glyph.append(icon('globe'))
+  row.append(glyph)
   const title = el('span', 'name', tab.title || hostOf(tab.url) || 'New tab')
   title.title = tab.heldBy ? `${tab.title}\nheld by ${tab.heldBy}` : tab.title
   row.append(title)
@@ -268,8 +268,9 @@ const ICONS: Record<string, string> = {
   hand:
     '<path d="M5 8V3.5a1 1 0 0 1 2 0V7M7 6.5V2.5a1 1 0 0 1 2 0V7M9 6.5V3.5a1 1 0 0 1 2 0V7M11 7V5a1 1 0 0 1 2 0v4.5c0 2.5-2 4.5-4.5 4.5S4 12 4 9.5V7.5a1 1 0 0 1 1-1"/>',
   bolt: '<path d="M9.5 1 3 9h4l-.5 6L13 7H9l.5-6z" fill="currentColor" stroke="none"/>',
+  globe: '<circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c2 2 2 10 0 12M8 2c-2 2-2 10 0 12"/>',
 }
-const ICON_SIZE: Record<string, number> = { back: 14, reload: 14, plus: 14, chevron: 10, x: 10, lock: 12, hand: 12, bolt: 14 }
+const ICON_SIZE: Record<string, number> = { back: 14, reload: 14, plus: 14, chevron: 10, x: 10, lock: 12, hand: 12, bolt: 14, globe: 14 }
 
 function icon(name: string, className = ''): SVGElement {
   const size = ICON_SIZE[name] ?? 14

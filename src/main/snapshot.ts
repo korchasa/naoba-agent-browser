@@ -162,9 +162,15 @@ async function composeWindow(context: {
     view.webContents.invalidate()
     // Wait for the renderer to have actually painted: two frames after the
     // change is the first moment its own pixels exist.
-    await view.webContents.executeJavaScript(
-      'new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(1))))',
-    )
+    // Bounded: a view the compositor has throttled may never run the frame
+    // callback at all, and a walk that stops there photographs nothing. The
+    // captures below re-check the pixels anyway.
+    await Promise.race([
+      view.webContents.executeJavaScript(
+        'new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(1))))',
+      ),
+      pause(1500),
+    ])
     // Two frames in the renderer are not two frames on screen: the window is
     // shown transparent and unfocused, so its compositor commits lazily and
     // `capturePage` hands back whatever was last committed. Measured on the
@@ -172,11 +178,18 @@ async function composeWindow(context: {
     // tree as it had been a step earlier, while the page it was drawn from
     // already held the new rows. Three captures with a pause between them is
     // what makes the picture match the state.
-    for (let attempt = 0; attempt < 2; attempt++) {
-      await view.webContents.capturePage()
+    // A translucent view over the window's material commits even later, and a
+    // capture taken mid-commit is half a frame: the previous picture with the
+    // new one bleeding through. So the picture is taken until two in a row
+    // agree byte for byte — that, and nothing shorter, is a settled frame.
+    let image = await view.webContents.capturePage()
+    for (let attempt = 0; attempt < 10; attempt++) {
       await pause(300)
+      const next = await view.webContents.capturePage()
+      const settled = next.toBitmap().equals(image.toBitmap())
+      image = next
+      if (settled && attempt > 0) break
     }
-    const image = await view.webContents.capturePage()
     const size = image.getSize()
     return { bitmap: image.toBitmap(), width: size.width, height: size.height }
   }
@@ -198,7 +211,13 @@ async function composeWindow(context: {
   }
   const width = Math.round(bounds.width * scale)
   const height = Math.round(bounds.height * scale)
+  // The panel is translucent — it sits on the window's sidebar material, which
+  // a capture of the view alone does not contain. So the photograph starts
+  // from a flat stand-in for that material and the panel is blended onto it;
+  // without this the panel comes out transparent and reads as black.
   const canvas = Buffer.alloc(width * height * 4, 0)
+  const [b, g, r] = nativeTheme.shouldUseDarkColors ? [0x24, 0x22, 0x21] : [0xf2, 0xef, 0xec]
+  for (let at = 0; at < canvas.length; at += 4) canvas[at] = b, canvas[at + 1] = g, canvas[at + 2] = r, canvas[at + 3] = 255
 
   const paste = (piece: { bitmap: Buffer; width: number; height: number } | null, atX: number, atY: number) => {
     if (!piece) return
@@ -209,7 +228,17 @@ async function composeWindow(context: {
       if (columns <= 0) continue
       const from = y * piece.width * 4
       if (from + columns * 4 > piece.bitmap.length) break
-      piece.bitmap.copy(canvas, (targetY * width + atX) * 4, from, from + columns * 4)
+      for (let x = 0; x < columns; x++) {
+        const src = from + x * 4
+        const dst = (targetY * width + atX + x) * 4
+        // Bitmaps are premultiplied BGRA: a covered pixel is the source plus
+        // whatever of the background its alpha leaves uncovered.
+        const alpha = piece.bitmap[src + 3]! / 255
+        for (let channel = 0; channel < 3; channel++) {
+          canvas[dst + channel] = Math.round(piece.bitmap[src + channel]! + canvas[dst + channel]! * (1 - alpha))
+        }
+        canvas[dst + 3] = 255
+      }
     }
   }
 

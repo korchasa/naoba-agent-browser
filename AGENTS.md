@@ -58,6 +58,17 @@ state must go through the project's own session, never through
   capture will contain. A snapshot needs several captures with a pause between
   them, or it photographs the interface as it was a step ago — which reads as a
   bug in the interface, not in the camera.
+- **A transparent window is a hidden window to Chromium.** The panel's
+  renderer is throttled while the window is shown at opacity 0, so it stops
+  producing frames: a `requestAnimationFrame` never fires, a theme switch never
+  repaints, and every capture agrees with the last one — on a stale frame. The
+  panel runs with `backgroundThrottling: false` for that reason, and a snapshot
+  accepts a frame only when two captures in a row match byte for byte.
+- **The panel sits on the window's sidebar material.** The window is created
+  with `vibrancy: 'sidebar'` and the panel view has a transparent background,
+  so the stylesheet paints translucent fills over whatever is behind. A capture
+  of the panel alone therefore carries alpha; the snapshot blends it onto a
+  flat stand-in for the material or the picture comes out black.
 
 ## Style
 

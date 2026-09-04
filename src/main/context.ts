@@ -111,7 +111,11 @@ export class ProjectContext {
       show: false,
       title: `${this.identity.name} — Naoba`,
       titleBarStyle: 'hiddenInset',
-      backgroundColor: '#1c1c1e',
+      // The panel is drawn over the system's sidebar material, the way a native
+      // source list is: the desktop shows through it, and the appearance
+      // switch is the system's, not a stylesheet's.
+      vibrancy: 'sidebar',
+      backgroundColor: '#00000000',
     })
     this.#window = window
 
@@ -121,8 +125,14 @@ export class ProjectContext {
     // of the content — a panel on the right would leave the page painted
     // underneath them.
     const panel = new WebContentsView({
-      webPreferences: { preload: this.#paths.preload, contextIsolation: true, sandbox: true },
+      // The window spends most of its life shown but transparent, which
+      // Chromium treats as hidden: a throttled panel stops producing frames,
+      // so what a snapshot captures — and what the person sees on reveal — is
+      // the tree as it was a step ago.
+      webPreferences: { preload: this.#paths.preload, contextIsolation: true, sandbox: true, backgroundThrottling: false },
     })
+    // Transparent, or the page paints over the material and there is none.
+    panel.setBackgroundColor('#00000000')
     window.contentView.addChildView(panel)
     void panel.webContents.loadFile(this.#paths.chromeHtml, {
       query: { project: this.identity.id, name: this.identity.name },
