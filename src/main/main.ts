@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path'
 import { existsSync, renameSync } from 'node:fs'
 import { Hub } from './hub.ts'
 import { installTray } from './tray.ts'
+import { readSettings, writeSettings } from './settings.ts'
 import { DEFAULT_PORT } from './protocol.ts'
 import { normalizeUrl } from './tab.ts'
 
@@ -50,6 +51,7 @@ async function start(): Promise<void> {
     chromeHtml: join(__dirname, 'chrome.html'),
     idleUnloadMs: numberFlag('--idle-unload-ms', 10 * 60_000),
     orphanCloseMs: numberFlag('--orphan-close-ms', 5 * 60_000),
+    panelWidth: readSettings().panelWidth,
     contentionWaitMs: numberFlag('--contention-wait-ms', 30_000),
     defaultScriptTimeoutMs: numberFlag('--script-timeout-ms', 60_000),
     admitEverything: isTestRun,
@@ -222,6 +224,13 @@ function wireChrome(hub: Hub): void {
   })
 
   /** The person always wins a tab; the agent holding it is told, never left guessing. */
+  ipcMain.handle('ab:panel-width', (_event, projectId: string, width: number) => {
+    if (!contextOf(projectId) || !Number.isFinite(width)) return null
+    const kept = hub.setPanelWidth(width)
+    writeSettings({ panelWidth: kept })
+    return kept
+  })
+
   ipcMain.handle('ab:take-over', (_event, projectId: string, tabId: string) => {
     const context = contextOf(projectId)
     if (!context) return false

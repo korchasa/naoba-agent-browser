@@ -15,6 +15,8 @@ export interface HubOptions extends ContextPaths {
   idleUnloadMs: number
   /** How long a departed agent's tabs stay open, in case its session comes back. */
   orphanCloseMs: number
+  /** The panel width every window starts with; the person's last drag, when there was one. */
+  panelWidth?: number
   /** How long a call waits for a tab another agent is holding. */
   contentionWaitMs: number
   /** Ceiling on a single script's run time unless the caller asks for more. */
@@ -48,7 +50,7 @@ export class Hub {
   #idleTimer: NodeJS.Timeout | null = null
   #admissionInFlight: Promise<unknown> = Promise.resolve()
 
-  readonly #options: HubOptions
+  #options: HubOptions
 
   constructor(options: HubOptions) {
     this.#options = options
@@ -75,6 +77,14 @@ export class Hub {
   stop(): void {
     if (this.#idleTimer) clearInterval(this.#idleTimer)
     this.#server.close()
+  }
+
+  /** One width for every window: the person drags in one and the others follow. */
+  setPanelWidth(width: number): number {
+    let kept = width
+    for (const context of this.contexts.values()) kept = context.setPanelWidth(width)
+    this.#options = { ...this.#options, panelWidth: kept }
+    return kept
   }
 
   // -------------------------------------------------------------- admissions
@@ -158,6 +168,7 @@ export class Hub {
       chromeHtml: this.#options.chromeHtml,
       headless: this.#options.headless,
       orphanCloseMs: this.#options.orphanCloseMs,
+      panelWidth: this.#options.panelWidth,
     })
     this.contexts.set(identity.id, created)
     return created

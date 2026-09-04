@@ -36,10 +36,39 @@ svg {
 /* -------------------------------------------------------------------- panel */
 
 .panel {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
   border-right: 1px solid var(--color-divider);
+}
+
+/* The draggable edge. Invisible until the pointer is over it, then a hairline
+   in the accent — the way a split view shows where it gives. */
+.grip {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 3;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  -webkit-app-region: no-drag;
+}
+.grip::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 2px;
+  height: 100%;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+.grip:hover::after,
+.grip.dragging::after {
+  opacity: 1;
 }
 
 /* The window's own buttons are drawn over the left of this strip, so the

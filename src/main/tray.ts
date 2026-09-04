@@ -39,8 +39,12 @@ export function installTray(hub: Hub): Tray {
       ]),
     )
 
-    // A waiting agent is the one thing worth showing without being asked.
-    tray.setTitle(waiting.length > 0 ? '✋' : '')
+    // Next to the icon: how many agents are connected, and a hand when one of
+    // them is waiting for the person — the two things worth a glance at the
+    // menu bar. Nothing at all while nobody is connected.
+    const connected = contexts.reduce((sum, context) => sum + context.agents.size, 0)
+    const parts = [waiting.length > 0 ? '✋' : '', connected > 0 ? String(connected) : '']
+    tray.setTitle(parts.filter(Boolean).join(' '))
   }
 
   rebuild()

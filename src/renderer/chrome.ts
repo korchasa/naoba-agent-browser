@@ -5,6 +5,21 @@
  */
 import type { AgentCommand, TabDescriptor } from '../main/protocol.ts'
 import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  createElement,
+  Globe,
+  Hand,
+  type IconNode,
+  Lock,
+  Plus,
+  RotateCw,
+  SlidersHorizontal,
+  X,
+  Zap,
+} from 'lucide'
+import {
   type AgentRow,
   buildTree,
   expandNew,
@@ -25,6 +40,7 @@ declare const ab: {
   selectTab(projectId: string, tabId: string): Promise<boolean>
   closeTab(projectId: string, tabId: string): Promise<boolean>
   navigate(projectId: string, tabId: string, url: string): Promise<boolean>
+  panelWidth(projectId: string, width: number): Promise<number>
   takeOver(projectId: string, tabId: string): Promise<boolean>
   release(projectId: string, tabId: string): Promise<boolean>
   humanDone(projectId: string, tabId: string): Promise<boolean>
@@ -99,6 +115,7 @@ function renderPanel(groups: TreeGroup[]): HTMLElement {
   const strip = el('div', 'drag')
   strip.append(icon('bolt', 'bolt'), el('span', 'brand', 'naoba'), el('span', '', '·'), el('span', '', projectName))
   wrap.append(strip)
+  wrap.append(grip())
   wrap.append(renderBar())
 
   const current = activeTab()
@@ -156,6 +173,39 @@ function renderBar(): HTMLElement {
   if (!current?.openedBy) plus.disabled = true
   bar.append(plus)
   bar.append(sortControl())
+  return bar
+}
+
+/**
+ * The panel's right edge, which the person can drag. The panel is its own
+ * view, so the pointer leaves it the moment the drag starts; pointer capture
+ * keeps the moves coming until the button is released. Each move goes to the
+ * main process, which owns the layout and clamps the width.
+ */
+function grip(): HTMLElement {
+  const bar = el('div', 'grip')
+  bar.title = 'Drag to resize the panel'
+  bar.onpointerdown = (event) => {
+    if (event.button !== 0) return
+    bar.setPointerCapture(event.pointerId)
+    bar.classList.add('dragging')
+    let pending: number | null = null
+    bar.onpointermove = (move) => {
+      // One request per frame: the main process lays the window out on each,
+      // and the pointer reports far more often than that.
+      pending = move.clientX
+      requestAnimationFrame(() => {
+        if (pending === null) return
+        void ab.panelWidth(projectId, Math.round(pending))
+        pending = null
+      })
+    }
+    bar.onpointerup = bar.onpointercancel = () => {
+      bar.releasePointerCapture(event.pointerId)
+      bar.classList.remove('dragging')
+      bar.onpointermove = bar.onpointerup = bar.onpointercancel = null
+    }
+  }
   return bar
 }
 
@@ -332,37 +382,32 @@ function twist(open: boolean): HTMLElement {
   return node
 }
 
-/** Stroke icons on a 16-unit grid, drawn inline so they take the text colour. */
-const ICONS: Record<string, string> = {
-  back: '<path d="M10 3 5 8l5 5"/>',
-  reload: '<path d="M13 8a5 5 0 1 1-1.5-3.6"/><path d="M13 2.5V6h-3.5"/>',
-  plus: '<path d="M8 3v10M3 8h10"/>',
-  // Two vertical sliders, the way the system draws a settings control.
-  sliders: '<path d="M5.5 2v12M10.5 2v12"/><circle cx="5.5" cy="10" r="1.8" fill="var(--color-surface)"/><circle cx="10.5" cy="6" r="1.8" fill="var(--color-surface)"/>',
-  check: '<path d="M3.5 8.5 6.5 11.5 12.5 4.5"/>',
-  chevron: '<path d="M6 3l5 5-5 5"/>',
-  x: '<path d="M4 4l8 8M12 4l-8 8"/>',
-  lock: '<rect x="3.5" y="7" width="9" height="6.5" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/>',
-  hand:
-    '<path d="M5 8V3.5a1 1 0 0 1 2 0V7M7 6.5V2.5a1 1 0 0 1 2 0V7M9 6.5V3.5a1 1 0 0 1 2 0V7M11 7V5a1 1 0 0 1 2 0v4.5c0 2.5-2 4.5-4.5 4.5S4 12 4 9.5V7.5a1 1 0 0 1 1-1"/>',
-  bolt: '<path d="M9.5 1 3 9h4l-.5 6L13 7H9l.5-6z" fill="currentColor" stroke="none"/>',
-  globe: '<circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c2 2 2 10 0 12M8 2c-2 2-2 10 0 12"/>',
+/**
+ * Icons come from Lucide, bundled in: a consistent stroke set beats a dozen
+ * paths drawn by hand, and they keep the text colour like inline SVG does.
+ */
+const ICONS: Record<string, IconNode> = {
+  back: ChevronLeft,
+  reload: RotateCw,
+  plus: Plus,
+  chevron: ChevronRight,
+  x: X,
+  lock: Lock,
+  hand: Hand,
+  bolt: Zap,
+  globe: Globe,
+  sliders: SlidersHorizontal,
+  check: Check,
 }
-const ICON_SIZE: Record<string, number> = { back: 14, reload: 14, plus: 14, chevron: 10, x: 10, lock: 12, hand: 12, bolt: 14, globe: 14 }
+
+const ICON_SIZE: Record<string, number> = { chevron: 11, x: 11, lock: 12, hand: 12, check: 13 }
 
 function icon(name: string, className = ''): SVGElement {
-  const size = ICON_SIZE[name] ?? 14
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-  svg.setAttribute('viewBox', '0 0 16 16')
-  svg.setAttribute('width', String(size))
-  svg.setAttribute('height', String(size))
-  svg.setAttribute('fill', 'none')
-  svg.setAttribute('stroke', 'currentColor')
-  svg.setAttribute('stroke-width', '1.6')
-  svg.setAttribute('stroke-linecap', 'round')
-  svg.setAttribute('stroke-linejoin', 'round')
+  const node = ICONS[name]
+  if (!node) throw new Error(`no icon named ${name}`)
+  const size = ICON_SIZE[name] ?? 15
+  const svg = createElement(node, { width: size, height: size, 'stroke-width': 1.75 })
   if (className) svg.setAttribute('class', className)
-  svg.innerHTML = ICONS[name] ?? ''
   return svg
 }
 

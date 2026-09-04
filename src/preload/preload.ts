@@ -12,6 +12,7 @@ const api = {
   selectTab: (projectId: string, tabId: string) => ipcRenderer.invoke('ab:select-tab', projectId, tabId),
   closeTab: (projectId: string, tabId: string) => ipcRenderer.invoke('ab:close-tab', projectId, tabId),
   navigate: (projectId: string, tabId: string, url: string) => ipcRenderer.invoke('ab:navigate', projectId, tabId, url),
+  panelWidth: (projectId: string, width: number) => ipcRenderer.invoke('ab:panel-width', projectId, width),
   takeOver: (projectId: string, tabId: string) => ipcRenderer.invoke('ab:take-over', projectId, tabId),
   release: (projectId: string, tabId: string) => ipcRenderer.invoke('ab:release', projectId, tabId),
   humanDone: (projectId: string, tabId: string) => ipcRenderer.invoke('ab:human-done', projectId, tabId),

@@ -18,5 +18,8 @@
     "electron-builder": "^26.15.3",
     "esbuild": "^0.25.0",
     "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "lucide": "^1.41.0"
   }
 }

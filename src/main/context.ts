@@ -11,6 +11,8 @@ import type { AgentCommand, AgentDescriptor, AgentRow, AppEvent, ServerMessage, 
  * a three-level tree without either one being unreadable.
  */
 export const PANEL_WIDTH = 340
+/** Narrower than this and the address bar has no room for an address. */
+export const PANEL_MIN_WIDTH = 240
 
 export interface AgentHandle {
   readonly id: string
@@ -33,6 +35,8 @@ export interface ContextPaths {
   headless?: boolean
   /** How long a departed agent's tabs stay open before they are closed. */
   orphanCloseMs?: number
+  /** The panel's width as the person last left it. */
+  panelWidth?: number
 }
 
 /**
@@ -56,6 +60,7 @@ export class ProjectContext {
   #onScreen = false
   #tabs: Tab[] = []
   #activeTabId: string | null = null
+  #panelWidth: number
   /** Pending closes of tabs whose agent has gone, keyed by that agent. */
   readonly #orphanTimers = new Map<string, NodeJS.Timeout>()
   /**
@@ -72,6 +77,7 @@ export class ProjectContext {
 
   constructor(identity: ProjectIdentity, paths: ContextPaths) {
     this.headless = paths.headless ?? false
+    this.#panelWidth = paths.panelWidth ?? PANEL_WIDTH
     this.identity = identity
     this.#paths = paths
     this.session = electronSession.fromPartition(partitionFor(identity.id))
@@ -173,8 +179,16 @@ export class ProjectContext {
   }
 
   panelWidth(): number {
-    const width = this.#window?.getContentBounds().width ?? PANEL_WIDTH
-    return Math.min(PANEL_WIDTH, Math.floor(width / 2))
+    const width = this.#window?.getContentBounds().width ?? this.#panelWidth
+    return Math.max(PANEL_MIN_WIDTH, Math.min(this.#panelWidth, Math.floor(width / 2)))
+  }
+
+  /** Take a width the person dragged to, keep it within reason, and lay out; returns what was kept. */
+  setPanelWidth(width: number): number {
+    const window = this.#window?.getContentBounds().width ?? Number.MAX_SAFE_INTEGER
+    this.#panelWidth = Math.max(PANEL_MIN_WIDTH, Math.min(Math.round(width), Math.floor(window / 2)))
+    this.layout()
+    return this.#panelWidth
   }
 
   layout(): void {
