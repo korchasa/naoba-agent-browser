@@ -4,19 +4,21 @@ html {
 
 /* The panel is drawn on the system's sidebar material, so most of its colour
    comes from what is behind it: fills are translucent greys, and text takes the
-   system's label colours. The accent is the system blue. */
+   system's label colours. */
 /* Tokens of the "Modern MacOS/iOS" design system (Modernist Native): warm
-   neutrals, one red tint, SF through the system stack, continuous-corner
-   radii and hairline dividers. Kept verbatim so a retune there lands here. */
+   neutrals, one tint, SF through the system stack, continuous-corner radii
+   and hairline dividers. Kept verbatim except the tint: the system's red is
+   swapped for a pastel green that suits a browser, with a ramp of the same
+   shape (100 tint, 600 hover, 700 press, 800 text on the 100 tint). */
 :root {
   --color-bg: #f3f2f2;
   --color-surface: #ffffff;
   --color-text: #201e1d;
-  --color-accent: #ec3013;
-  --color-accent-600: #dd2b0f;
-  --color-accent-700: #ae1800;
-  --color-accent-100: #fff2ef;
-  --color-accent-800: #7c1405;
+  --color-accent: #6dbf94;
+  --color-accent-600: #5db386;
+  --color-accent-700: #3f8f66;
+  --color-accent-100: #e9f6ee;
+  --color-accent-800: #1f5a3d;
   --color-divider: color-mix(in srgb, #201e1d 16%, transparent);
   --material-bar: color-mix(in srgb, #f3f2f2 78%, transparent);
   --color-neutral-200: #eae7e7;
@@ -60,11 +62,11 @@ html {
     --color-bg: #1c1b1a;
     --color-surface: #272524;
     --color-text: #f1efee;
-    --color-accent: #ff563c;
-    --color-accent-600: #ff9783;
-    --color-accent-700: #ffc4b8;
-    --color-accent-100: #4d170e;
-    --color-accent-800: #ffe0d9;
+    --color-accent: #86d3a9;
+    --color-accent-600: #a8e1c3;
+    --color-accent-700: #c9edd9;
+    --color-accent-100: #173d2a;
+    --color-accent-800: #e0f5e9;
     --color-divider: color-mix(in srgb, #f1efee 16%, transparent);
     --material-bar: color-mix(in srgb, #1c1b1a 72%, transparent);
     --color-neutral-200: #444141;
@@ -172,7 +174,7 @@ button.icon {
 button.primary {
   width: 100%;
   background: var(--color-accent);
-  color: #fff;
+  color: #0f2e1f;
   border-color: transparent;
   box-shadow: none;
 }
