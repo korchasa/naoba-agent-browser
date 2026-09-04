@@ -1,10 +1,10 @@
 {
-  "name": "agent-browser-bridge",
+  "name": "naoba-bridge",
   "version": "0.1.0",
   "private": true,
-  "description": "Connects one AI agent to the Agent Browser application over stdio.",
+  "description": "Connects one AI agent to the Naoba application over stdio.",
   "type": "module",
-  "bin": { "agent-browser-bridge": "./index.mjs" },
+  "bin": { "naoba-bridge": "./index.mjs" },
   "main": "./index.mjs",
   "engines": { "node": ">=20" }
 }

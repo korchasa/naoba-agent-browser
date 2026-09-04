@@ -17,7 +17,7 @@ export async function startApp(
 ) {
   // A caller that passes a directory it already owns is restarting the app on
   // purpose — that is the only way to prove a login outlives the application.
-  const userData = userDataDir ?? (await mkdtemp(join(tmpdir(), 'agent-browser-test-')))
+  const userData = userDataDir ?? (await mkdtemp(join(tmpdir(), 'naoba-test-')))
   const child = spawn(
     join(root, 'node_modules/.bin/electron'),
     [

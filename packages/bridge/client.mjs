@@ -40,7 +40,7 @@ export class AppClient {
     // error about an argument, when the fact is that the browser is not up.
     if (port === null || port === undefined) {
       throw new Error(
-        'Agent Browser is not running: nothing is listening on its port range. Start the application and try again.',
+        'Naoba is not running: nothing is listening on its port range. Start the application and try again.',
       )
     }
     await new Promise((resolve, reject) => {

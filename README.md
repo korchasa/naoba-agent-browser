@@ -1,4 +1,4 @@
-# Agent Browser
+# Naoba — blazing-fast browser for agents
 
 A browser that several AI coding agents drive at once — and that keeps the
 projects they work on apart.
@@ -63,7 +63,7 @@ The bridge is an MCP server. Point your IDE at `packages/bridge/index.mjs`.
 Claude Code:
 
 ```sh
-claude mcp add agent-browser -- node /absolute/path/to/packages/bridge/index.mjs
+claude mcp add naoba -- node /absolute/path/to/packages/bridge/index.mjs
 ```
 
 Or in a project's `.mcp.json`:
@@ -71,7 +71,7 @@ Or in a project's `.mcp.json`:
 ```json
 {
   "mcpServers": {
-    "agent-browser": {
+    "naoba": {
       "command": "node",
       "args": ["/absolute/path/to/packages/bridge/index.mjs"]
     }
@@ -87,7 +87,7 @@ While developing the application itself there is no installed bundle to launch,
 so tell the bridge where the checkout is:
 
 ```sh
-export AGENT_BROWSER_DEV_ROOT=/absolute/path/to/this/checkout
+export NAOBA_DEV_ROOT=/absolute/path/to/this/checkout
 ```
 
 ## What an agent writes

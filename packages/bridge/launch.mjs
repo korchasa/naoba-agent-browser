@@ -2,8 +2,8 @@ import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
-export const BUNDLE_ID = 'dev.korchasa.AgentBrowser'
-export const APP_NAME = 'Agent Browser.app'
+export const BUNDLE_ID = 'dev.korchasa.Naoba'
+export const APP_NAME = 'Naoba.app'
 
 /**
  * Where the application might be, in the order worth trying.
@@ -13,8 +13,8 @@ export const APP_NAME = 'Agent Browser.app'
  * installed path fails in exactly the situation where it is needed most.
  */
 export function candidates() {
-  const explicit = process.env.AGENT_BROWSER_APP
-  const devRoot = process.env.AGENT_BROWSER_DEV_ROOT
+  const explicit = process.env.NAOBA_APP
+  const devRoot = process.env.NAOBA_DEV_ROOT
   return [
     explicit ? { kind: 'explicit', path: explicit } : null,
     { kind: 'bundle-id', path: BUNDLE_ID },
@@ -45,9 +45,9 @@ export async function launchApp() {
     return { started: true, how: candidate }
   }
   const error = new Error(
-    'Agent Browser is not running and could not be started. Looked in:\n  ' +
+    'Naoba is not running and could not be started. Looked in:\n  ' +
       tried.join('\n  ') +
-      '\nSet AGENT_BROWSER_APP to the application, or AGENT_BROWSER_DEV_ROOT to a checkout, and try again.',
+      '\nSet NAOBA_APP to the application, or NAOBA_DEV_ROOT to a checkout, and try again.',
   )
   error.code = 'app-not-found'
   throw error

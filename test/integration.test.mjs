@@ -24,8 +24,8 @@ after(async () => {
   fixture?.server.close()
 })
 
-const PROJECT_A = '/tmp/agent-browser-tests/project-a'
-const PROJECT_B = '/tmp/agent-browser-tests/project-b'
+const PROJECT_A = '/tmp/naoba-tests/project-a'
+const PROJECT_B = '/tmp/naoba-tests/project-b'
 
 test('input reaches the page as a real event, not a synthetic one', async () => {
   const agent = await app.agent(PROJECT_A, 'trust')
@@ -50,14 +50,14 @@ test('the browser does not announce itself as an automated client', async () => 
   // the user agent carried these two words, and the person could not sign in at
   // all. What is underneath is Chromium, and that is what it must say.
   assert.doesNotMatch(outcome.value, /Electron/)
-  assert.doesNotMatch(outcome.value, /agent-browser/)
+  assert.doesNotMatch(outcome.value, /naoba/)
   assert.match(outcome.value, /Chrome\/\d+/)
   agent.close()
 })
 
 test('a screenshot reaches the agent as a file, even with no window on screen', async () => {
   const agent = await app.agent(PROJECT_A, 'shot')
-  const target = join(await mkdtemp(join(tmpdir(), 'agent-browser-shot-')), 'page.png')
+  const target = join(await mkdtemp(join(tmpdir(), 'naoba-shot-')), 'page.png')
   const outcome = await agent.run(`
     await api.navigate(${JSON.stringify(origin + '/page.html')})
     return await api.screenshot(${JSON.stringify(target)})
@@ -133,7 +133,7 @@ test('a login survives the application being restarted, not just the tab being c
   // take it, and neither must quitting: the person signs in once. The cookie
   // carries an expiry on purpose — a cookie without one is a session cookie,
   // and every browser is meant to drop those when it quits.
-  const dir = await mkdtemp(join(tmpdir(), 'agent-browser-restart-'))
+  const dir = await mkdtemp(join(tmpdir(), 'naoba-restart-'))
   const port = nextPort()
   const first = await startApp({ port, userDataDir: dir, keepState: true })
   const before = await first.agent(PROJECT_A, 'restart-before')
@@ -238,7 +238,7 @@ test('connecting when the browser is not running says exactly that', async () =>
   // Passing a null port straight to node gives ERR_INVALID_ARG_TYPE about
   // `options.port`, which reads as a bug in the caller rather than as a browser
   // that is not up.
-  await assert.rejects(() => new AppClient().connect(null), /Agent Browser is not running/)
+  await assert.rejects(() => new AppClient().connect(null), /Naoba is not running/)
 })
 
 test('opening a tab without an address says what is missing', async () => {

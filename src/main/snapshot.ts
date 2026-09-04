@@ -17,7 +17,7 @@ import { pause, type Tab } from './tab.ts'
 export async function writeSnapshots(hub: Hub, directory: string, demoPage: string): Promise<void> {
   mkdirSync(directory, { recursive: true })
 
-  const identity = identify(join(app.getPath('temp'), 'agent-browser-demo', 'checkout'))
+  const identity = identify(join(app.getPath('temp'), 'naoba-demo', 'checkout'))
   const context = hub.contextFor({ ...identity, name: 'checkout' })
 
   // A window with one agent and an empty tree photographs as an empty product.

@@ -109,7 +109,7 @@ export class ProjectContext {
       width: Math.min(1520, Math.max(1000, room.width - 80)),
       height: Math.min(940, Math.max(700, room.height - 80)),
       show: false,
-      title: `${this.identity.name} — Agent Browser`,
+      title: `${this.identity.name} — Naoba`,
       titleBarStyle: 'hiddenInset',
       backgroundColor: '#1c1c1e',
     })

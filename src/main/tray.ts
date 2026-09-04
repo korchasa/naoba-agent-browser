@@ -9,7 +9,7 @@ import type { Hub } from './hub.ts'
  */
 export function installTray(hub: Hub): Tray {
   const tray = new Tray(trayIcon())
-  tray.setToolTip('Agent Browser')
+  tray.setToolTip('Naoba')
 
   const rebuild = () => {
     const contexts = [...hub.contexts.values()]
@@ -28,14 +28,14 @@ export function installTray(hub: Hub): Tray {
 
     tray.setContextMenu(
       Menu.buildFromTemplate([
-        { label: waiting.length > 0 ? `${waiting.length} agent needs you` : 'Agent Browser', enabled: false },
+        { label: waiting.length > 0 ? `${waiting.length} agent needs you` : 'Naoba', enabled: false },
         { type: 'separator' },
         ...(projectItems.length > 0
           ? projectItems
           : [{ label: 'No project has connected yet', enabled: false as const }]),
         { type: 'separator' },
         { label: `Listening on 127.0.0.1:${hub.port}`, enabled: false },
-        { label: 'Quit Agent Browser', click: () => app.quit() },
+        { label: 'Quit Naoba', click: () => app.quit() },
       ]),
     )
 

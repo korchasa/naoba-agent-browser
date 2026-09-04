@@ -18,11 +18,11 @@ try {
 }
 
 await new Promise((r) => setTimeout(r, 800))
-const log = openSync('/tmp/agent-browser.log', 'a')
+const log = openSync('/tmp/naoba.log', 'a')
 const child = spawn(join(root, 'node_modules/.bin/electron'), [join(root, 'dist/main.js'), ...process.argv.slice(2)], {
   cwd: root,
   detached: true,
   stdio: ['ignore', log, log],
 })
 child.unref()
-console.log(`started pid ${child.pid}; log at /tmp/agent-browser.log`)
+console.log(`started pid ${child.pid}; log at /tmp/naoba.log`)

@@ -1,5 +1,6 @@
 import { app, dialog, ipcMain, Menu } from 'electron'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { existsSync, renameSync } from 'node:fs'
 import { Hub } from './hub.ts'
 import { installTray } from './tray.ts'
 import { DEFAULT_PORT } from './protocol.ts'
@@ -14,7 +15,7 @@ process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true'
 // refuses its own verification widget before a person can even use it. What is
 // underneath is Chromium, so that is what the browser says it is.
 app.userAgentFallback = app.userAgentFallback
-  .replace(/ agent-browser\/[\d.]+/, '')
+  .replace(/ naoba\/[\d.]+/, '')
   .replace(/ Electron\/[\d.]+/, '')
 
 // Held for the lifetime of the app; a tray dropped by the collector disappears
@@ -29,6 +30,7 @@ const isTestRun = flags.has('--admit-everything')
 // copy the owner is actually using for a lock neither of them wants to share.
 const userDataDir = stringFlag('--user-data-dir')
 if (userDataDir) app.setPath('userData', userDataDir)
+else adoptOldStateDirectory()
 
 /**
  * One application, one server, many agents. A second launch must never start a
@@ -67,9 +69,9 @@ async function start(): Promise<void> {
   try {
     const port = await hub.start(numberFlag('--port', DEFAULT_PORT))
     // The bridge reads this line when it starts the app itself.
-    process.stdout.write(`agent-browser listening on 127.0.0.1:${port}\n`)
+    process.stdout.write(`naoba listening on 127.0.0.1:${port}\n`)
   } catch (error) {
-    dialog.showErrorBox('Agent Browser cannot start', String(error))
+    dialog.showErrorBox('Naoba cannot start', String(error))
     app.quit()
     return
   }
@@ -113,6 +115,20 @@ async function start(): Promise<void> {
   // A supervisor (or a test) ends the app with a signal; without this the
   // sessions never get their chance to be written.
   for (const signal of ['SIGTERM', 'SIGINT'] as const) process.on(signal, () => app.quit())
+}
+
+/**
+ * The application used to be called Agent Browser, and Electron keeps the state
+ * under the application's name — so the rename alone would have started every
+ * project signed out and asked again about every folder. The old directory is
+ * moved once, whole, and only when nothing has been written under the new name
+ * yet; after that this is a no-op forever.
+ */
+function adoptOldStateDirectory(): void {
+  const current = app.getPath('userData')
+  const previous = join(dirname(current), 'agent-browser')
+  if (existsSync(current) || !existsSync(previous)) return
+  renameSync(previous, current)
 }
 
 function stringFlag(name: string): string | null {

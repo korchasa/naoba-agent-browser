@@ -13,12 +13,12 @@ import { TOOLS } from './tools.mjs'
  * what each of them may see.
  */
 const PROTOCOL = '2025-06-18'
-const NAME = 'agent-browser'
+const NAME = 'naoba'
 const VERSION = '0.1.0'
 
-const projectDir = process.env.AGENT_BROWSER_PROJECT_DIR || process.cwd()
+const projectDir = process.env.NAOBA_PROJECT_DIR || process.cwd()
 const agent = {
-  label: process.env.AGENT_BROWSER_LABEL || `${ideName()} · ${basename(projectDir)}`,
+  label: process.env.NAOBA_LABEL || `${ideName()} · ${basename(projectDir)}`,
   ide: ideName(),
   pid: process.pid,
 }
@@ -36,7 +36,7 @@ async function ensureConnected() {
       port = await waitForPort(20_000)
       if (port === null) {
         throw new Error(
-          `Agent Browser was started but nothing is listening on ${DEFAULT_PORT}–${
+          `Naoba was started but nothing is listening on ${DEFAULT_PORT}–${
             DEFAULT_PORT + PORT_RANGE - 1
           } yet. ` +
             'Give it a moment and call again.',
