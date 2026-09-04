@@ -54,33 +54,49 @@ function renderPanel(groups: TreeGroup[]): HTMLElement {
 
   // The window buttons sit over the top-left of the content, so the panel keeps
   // that strip empty and hands it to the window as a drag region.
-  wrap.append(el('div', 'drag'))
+  const strip = el('div', 'drag')
+  strip.append(icon('bolt', 'bolt'), el('span', 'brand', 'naoba'), el('span', '', '·'), el('span', '', projectName))
+  wrap.append(strip)
   wrap.append(renderBar())
 
   const current = activeTab()
   if (current?.waitingForHuman) {
     const callout = el('div', 'callout')
-    callout.append(el('h3', '', 'An agent needs you'))
+    const heading = el('h3')
+    heading.append(icon('hand'), el('span', '', `${current.askedBy ?? 'An agent'} needs you`))
+    callout.append(heading)
     callout.append(el('p', '', current.waitingForHuman))
-    callout.append(primary('I have done it', () => void ab.humanDone(projectId, current.id)))
+    const actions = el('div', 'actions')
+    actions.append(primary('I have done it', () => void ab.humanDone(projectId, current.id)))
+    callout.append(actions)
     wrap.append(callout)
   } else if (current?.heldBy) {
     const held = el('div', 'held-row')
-    held.append(el('span', 'state', `held by ${current.heldBy}`))
+    const state = el('span', 'state held')
+    state.append(icon('lock'), el('span', '', `held by ${current.heldBy}`))
+    held.append(state)
     held.append(button('Take over', () => void ab.takeOver(projectId, current.id)))
     wrap.append(held)
   }
 
   wrap.append(renderTree(groups))
+  wrap.append(renderFoot())
   return wrap
+}
+
+function renderFoot(): HTMLElement {
+  const foot = el('div', 'foot')
+  foot.append(el('span', agents.length > 0 ? 'dot live' : 'dot'))
+  foot.append(el('span', '', `${plural(agents.length, 'agent')} · ${plural(tabs.length, 'tab')}`))
+  return foot
 }
 
 function renderBar(): HTMLElement {
   const bar = el('div', 'bar')
   const current = activeTab()
 
-  bar.append(button('‹', () => history.back(), 'Back'))
-  bar.append(button('⟳', () => current && void ab.navigate(projectId, current.id, current.url), 'Reload'))
+  bar.append(iconButton('back', () => history.back(), 'Back'))
+  bar.append(iconButton('reload', () => current && void ab.navigate(projectId, current.id, current.url), 'Reload'))
 
   const url = document.createElement('input')
   url.className = 'url'
@@ -94,7 +110,7 @@ function renderBar(): HTMLElement {
     else void ab.newTab(projectId, value)
   }
   bar.append(url)
-  bar.append(button('+', () => void ab.newTab(projectId), 'New tab'))
+  bar.append(iconButton('plus', () => void ab.newTab(projectId), 'New tab'))
   return bar
 }
 
@@ -106,13 +122,20 @@ function renderTree(groups: TreeGroup[]): HTMLElement {
   // launch the window already has a tab of its own, and without this the panel
   // would explain nothing to the person who has just opened the application.
   if (agents.length === 0) {
-    tree.append(el('div', 'empty', `No agent is connected. Point one at ${projectName} and it will show up here.`))
+    const empty = el('div', 'empty')
+    empty.append(icon('bolt', 'bolt'))
+    empty.append(el('h3', '', 'No agent is here yet'))
+    const hint = el('p')
+    hint.append('Point one at ', el('b', '', projectName), ' and it will show up here, with every tab it opens and every call it makes.')
+    empty.append(hint)
+    empty.append(el('code', '', 'claude mcp add naoba -- node <checkout>/packages/bridge/index.mjs'))
+    tree.append(empty)
   }
 
-  for (const group of groups) {
+  for (const [at, group] of groups.entries()) {
     const key = groupKey(group)
     const open = expanded.has(key)
-    tree.append(groupRow(group, open, key))
+    tree.append(groupRow(group, open, key, at))
     if (!open) continue
 
     if (group.tabs.length === 0) {
@@ -134,11 +157,16 @@ function renderTree(groups: TreeGroup[]): HTMLElement {
   return tree
 }
 
-function groupRow(group: TreeGroup, open: boolean, key: string): HTMLElement {
-  const row = depth(el('div', 'row group'), 0)
+function groupRow(group: TreeGroup, open: boolean, key: string, at: number): HTMLElement {
+  const row = depth(el('div', group.id === null ? 'row group you' : 'row group'), 0)
   row.append(twist(open))
-  if (group.id !== null) row.append(el('span', 'dot'))
-  row.append(el('span', 'name', group.label))
+  if (group.id !== null) {
+    // Each agent keeps its colour for as long as it is connected: the dot is
+    // how a person tells three agents apart across the whole tree.
+    row.style.setProperty('--agent', `var(--agent-${at % 5})`)
+    row.append(el('span', 'dot'))
+  }
+  row.append(el('span', 'name', group.id === null ? 'Yours' : group.label))
   if (group.ide) row.append(el('span', 'ide', group.ide))
   row.onclick = () => toggle(key)
   return row
@@ -157,15 +185,25 @@ function tabRow(tab: TabDescriptor, count: number, open: boolean, key: string): 
   }
   row.append(arrow)
 
-  if (tab.waitingForHuman) row.append(el('span', 'mark', '✋'))
-  else if (tab.heldBy) row.append(el('span', 'mark', '●'))
-
+  row.append(el('span', 'icon'))
   const title = el('span', 'name', tab.title || hostOf(tab.url) || 'New tab')
   title.title = tab.heldBy ? `${tab.title}\nheld by ${tab.heldBy}` : tab.title
   row.append(title)
+
+  if (tab.waitingForHuman) {
+    const mark = el('span', 'mark')
+    mark.append(icon('hand'), el('span', '', 'needs you'))
+    row.append(mark)
+  } else if (tab.heldBy) {
+    const mark = el('span', 'mark')
+    mark.title = `held by ${tab.heldBy}`
+    mark.append(icon('lock'))
+    row.append(mark)
+  }
   if (count > 0) row.append(el('span', 'count', String(count)))
 
-  const close = el('span', 'close', '✕')
+  const close = el('span', 'close')
+  close.append(icon('x'))
   close.onclick = (event) => {
     event.stopPropagation()
     void ab.closeTab(projectId, tab.id)
@@ -181,7 +219,14 @@ function tabRow(tab: TabDescriptor, count: number, open: boolean, key: string): 
 function commandRow(command: AgentCommand): HTMLElement {
   const row = depth(el('div', 'row cmd'), 2)
   row.append(el('span', 'when', clock(command.at)))
-  row.append(el('span', 'what', command.text))
+  // A call reads as name(arguments); the name is what the eye scans for, so
+  // only it is drawn in full colour.
+  const what = el('span', 'what')
+  const open = command.text.indexOf('(')
+  if (open > 0) {
+    what.append(el('span', 'fn', command.text.slice(0, open)), el('span', 'args', command.text.slice(open)))
+  } else what.textContent = command.text
+  row.append(what)
   return row
 }
 
@@ -207,7 +252,52 @@ function depth(node: HTMLElement, level: number): HTMLElement {
 }
 
 function twist(open: boolean): HTMLElement {
-  return el('span', open ? 'twist open' : 'twist', '▸')
+  const node = el('span', open ? 'twist open' : 'twist')
+  node.append(icon('chevron'))
+  return node
+}
+
+/** Stroke icons on a 16-unit grid, drawn inline so they take the text colour. */
+const ICONS: Record<string, string> = {
+  back: '<path d="M10 3 5 8l5 5"/>',
+  reload: '<path d="M13 8a5 5 0 1 1-1.5-3.6"/><path d="M13 2.5V6h-3.5"/>',
+  plus: '<path d="M8 3v10M3 8h10"/>',
+  chevron: '<path d="M6 3l5 5-5 5"/>',
+  x: '<path d="M4 4l8 8M12 4l-8 8"/>',
+  lock: '<rect x="3.5" y="7" width="9" height="6.5" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/>',
+  hand:
+    '<path d="M5 8V3.5a1 1 0 0 1 2 0V7M7 6.5V2.5a1 1 0 0 1 2 0V7M9 6.5V3.5a1 1 0 0 1 2 0V7M11 7V5a1 1 0 0 1 2 0v4.5c0 2.5-2 4.5-4.5 4.5S4 12 4 9.5V7.5a1 1 0 0 1 1-1"/>',
+  bolt: '<path d="M9.5 1 3 9h4l-.5 6L13 7H9l.5-6z" fill="currentColor" stroke="none"/>',
+}
+const ICON_SIZE: Record<string, number> = { back: 14, reload: 14, plus: 14, chevron: 10, x: 10, lock: 12, hand: 12, bolt: 14 }
+
+function icon(name: string, className = ''): SVGElement {
+  const size = ICON_SIZE[name] ?? 14
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  svg.setAttribute('viewBox', '0 0 16 16')
+  svg.setAttribute('width', String(size))
+  svg.setAttribute('height', String(size))
+  svg.setAttribute('fill', 'none')
+  svg.setAttribute('stroke', 'currentColor')
+  svg.setAttribute('stroke-width', '1.6')
+  svg.setAttribute('stroke-linecap', 'round')
+  svg.setAttribute('stroke-linejoin', 'round')
+  if (className) svg.setAttribute('class', className)
+  svg.innerHTML = ICONS[name] ?? ''
+  return svg
+}
+
+function iconButton(name: string, onClick: () => void, title: string): HTMLElement {
+  const node = document.createElement('button')
+  node.className = 'icon'
+  node.title = title
+  node.onclick = onClick
+  node.append(icon(name))
+  return node
+}
+
+function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`
 }
 
 function button(label: string, onClick: () => void, title = ''): HTMLElement {

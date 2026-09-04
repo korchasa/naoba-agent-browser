@@ -37,7 +37,8 @@ agent working in this project, under each agent the tabs it has been in, and
 under each tab the calls it made there. A tab two agents share appears under
 both of them, each seeing its own calls; the tabs you opened yourself, and any
 left behind by an agent that has gone, sit in a group of your own at the
-bottom. The address bar for whichever tab is in front is above the tree.
+bottom. The address bar for whichever tab is in front is above the tree, and
+a strip along the bottom says how many agents and tabs the project has.
 
 ## Requirements
 

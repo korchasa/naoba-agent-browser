@@ -345,6 +345,7 @@ export class ProjectContext {
       loading: tab.loading,
       heldBy: holder ? holderLabel(holder) : null,
       waitingForHuman: waiting ? waiting.reason : null,
+      askedBy: waiting ? this.agents.get(waiting.agentId)?.label ?? null : null,
       openedBy: tab.openedBy,
     }
   }

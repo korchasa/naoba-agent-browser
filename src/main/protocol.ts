@@ -37,6 +37,8 @@ export interface TabDescriptor {
   heldBy: string | null
   /** Set while the tab is waiting for the person to finish something. */
   waitingForHuman: string | null
+  /** The label of the agent doing the waiting, so the panel can say who asks. */
+  askedBy: string | null
   /** The agent that opened the tab, or `null` when the person did. */
   openedBy: string | null
 }
