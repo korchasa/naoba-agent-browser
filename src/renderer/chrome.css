@@ -5,52 +5,73 @@ html {
 /* The panel is drawn on the system's sidebar material, so most of its colour
    comes from what is behind it: fills are translucent greys, and text takes the
    system's label colours. The accent is the system blue. */
+/* Tokens of the "Modern MacOS/iOS" design system (Modernist Native): warm
+   neutrals, one red tint, SF through the system stack, continuous-corner
+   radii and hairline dividers. Kept verbatim so a retune there lands here. */
 :root {
-  --text: #1d1d1f;
-  --text-dim: rgba(60, 60, 67, 0.6);
-  --text-faint: rgba(60, 60, 67, 0.3);
-  --sep: rgba(60, 60, 67, 0.18);
-  --fill: rgba(120, 120, 128, 0.12);
-  --fill-strong: rgba(120, 120, 128, 0.2);
-  --select: rgba(0, 0, 0, 0.07);
-  --glass: rgba(255, 255, 255, 0.72);
-  --accent: #007aff;
-  --warn: #ff9500;
-  --warn-bg: rgba(255, 149, 0, 0.14);
-  --held: #af52de;
-  --ok: #34c759;
-  /* One colour per agent: the system palette, so they read as native. */
-  --agent-0: #007aff;
-  --agent-1: #34c759;
-  --agent-2: #ff3b30;
-  --agent-3: #af52de;
-  --agent-4: #ff9500;
-  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro", system-ui, sans-serif;
-  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --color-bg: #f3f2f2;
+  --color-surface: #ffffff;
+  --color-text: #201e1d;
+  --color-accent: #ec3013;
+  --color-accent-600: #dd2b0f;
+  --color-accent-700: #ae1800;
+  --color-accent-100: #fff2ef;
+  --color-accent-800: #7c1405;
+  --color-divider: color-mix(in srgb, #201e1d 16%, transparent);
+  --material-bar: color-mix(in srgb, #f3f2f2 78%, transparent);
+  --color-neutral-200: #eae7e7;
+  --color-neutral-800: #444141;
+  --font-body: -apple-system, BlinkMacSystemFont, "Helvetica Neue", system-ui, sans-serif;
+  --font-mono: ui-monospace, Menlo, monospace;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-full: 999px;
+  --shadow-sm: 0 1px 2px color-mix(in srgb, #2d2b2b 12%, transparent);
+  --shadow-md: 0 3px 12px color-mix(in srgb, #2d2b2b 15%, transparent);
+
+  /* Derived roles the system leaves to the page. */
+  --text: var(--color-text);
+  --text-dim: color-mix(in srgb, var(--color-text) 55%, transparent);
+  --text-faint: color-mix(in srgb, var(--color-text) 30%, transparent);
+  --fill: color-mix(in srgb, var(--color-text) 6%, transparent);
+  --fill-strong: color-mix(in srgb, var(--color-text) 12%, transparent);
+  --select: color-mix(in srgb, var(--color-text) 8%, transparent);
+  --accent: var(--color-accent);
+  --held: var(--color-accent-700);
+  --ok: #2f8f5b;
+  /* One colour per agent: the tint first, then ink steps, so a fourth agent
+     is still told apart without a second hue entering the system. */
+  --agent-0: var(--color-accent);
+  --agent-1: var(--color-text);
+  --agent-2: var(--color-accent-700);
+  --agent-3: var(--color-neutral-800);
+  --agent-4: var(--color-accent-600);
   /* One step of the tree. Rows carry their level in --depth and multiply. */
   --indent: 16px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --text: #f5f5f7;
-    --text-dim: rgba(235, 235, 245, 0.6);
-    --text-faint: rgba(235, 235, 245, 0.3);
-    --sep: rgba(84, 84, 88, 0.65);
-    --fill: rgba(120, 120, 128, 0.24);
-    --fill-strong: rgba(120, 120, 128, 0.36);
-    --select: rgba(255, 255, 255, 0.1);
-    --glass: rgba(44, 44, 46, 0.7);
-    --accent: #0a84ff;
-    --warn: #ff9f0a;
-    --warn-bg: rgba(255, 159, 10, 0.18);
-    --held: #bf5af2;
-    --ok: #30d158;
-    --agent-0: #0a84ff;
-    --agent-1: #30d158;
-    --agent-2: #ff453a;
-    --agent-3: #bf5af2;
-    --agent-4: #ff9f0a;
+    --color-bg: #1c1b1a;
+    --color-surface: #272524;
+    --color-text: #f1efee;
+    --color-accent: #ff563c;
+    --color-accent-600: #ff9783;
+    --color-accent-700: #ffc4b8;
+    --color-accent-100: #4d170e;
+    --color-accent-800: #ffe0d9;
+    --color-divider: color-mix(in srgb, #f1efee 16%, transparent);
+    --material-bar: color-mix(in srgb, #1c1b1a 72%, transparent);
+    --color-neutral-200: #444141;
+    --color-neutral-800: #eae7e7;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+    --shadow-md: 0 3px 12px rgba(0, 0, 0, 0.55);
+    --ok: #5ccf8a;
   }
 }
 
@@ -67,12 +88,12 @@ body,
 
 body {
   margin: 0;
-  font-family: var(--font);
+  font-family: var(--font-body);
   font-size: 1rem;
   line-height: 1.35;
   color: var(--text);
-  /* Transparent on purpose: the window's sidebar material is the background. */
-  background: transparent;
+  /* The system's bar material, over the window's own sidebar vibrancy. */
+  background: var(--material-bar);
   -webkit-font-smoothing: antialiased;
   user-select: none;
   overflow: hidden;
@@ -88,7 +109,7 @@ svg {
   display: flex;
   flex-direction: column;
   height: 100%;
-  box-shadow: inset -0.5px 0 0 var(--sep);
+  border-right: 1px solid var(--color-divider);
 }
 
 /* The window's own buttons are drawn over the left of this strip, so the
@@ -123,64 +144,69 @@ svg {
 
 button {
   -webkit-app-region: no-drag;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font: inherit;
+  font-weight: 600;
   color: var(--text);
-  background: var(--fill);
-  border: 0;
-  border-radius: 99px;
-  padding: 4px 11px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+  min-height: 2.3rem;
+  padding: 4px 12px;
   cursor: default;
   flex: none;
 }
 button:hover {
-  background: var(--fill-strong);
+  background: color-mix(in srgb, var(--color-text) 6%, var(--color-surface));
 }
 button:active {
-  filter: brightness(0.9);
+  background: color-mix(in srgb, var(--color-text) 12%, var(--color-surface));
 }
 button.icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.15rem;
-  height: 2.15rem;
+  width: 2.3rem;
   padding: 0;
 }
 button.primary {
-  display: block;
   width: 100%;
-  background: var(--accent);
+  background: var(--color-accent);
   color: #fff;
-  font-weight: 600;
-  padding: 7px 14px;
+  border-color: transparent;
+  box-shadow: none;
 }
 button.primary:hover {
-  background: var(--accent);
-  filter: brightness(1.08);
+  background: var(--color-accent-600);
+}
+button.primary:active {
+  background: var(--color-accent-700);
 }
 
 input.url {
   -webkit-app-region: no-drag;
   flex: 1;
   min-width: 0;
-  height: 2.3rem;
+  min-height: 2.3rem;
   font: inherit;
-  font-size: 0.96rem;
-  text-align: center;
   color: var(--text);
-  background: var(--fill);
-  border: 0;
-  border-radius: 99px;
-  padding: 0 12px;
+  caret-color: var(--color-accent);
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-sm);
+  padding: 0 10px;
   user-select: text;
 }
 input.url::placeholder {
   color: var(--text-dim);
 }
+input.url:hover {
+  border-color: color-mix(in srgb, var(--color-text) 30%, transparent);
+}
 input.url:focus {
-  text-align: left;
-  outline: 2px solid var(--accent);
-  outline-offset: -1px;
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 25%, transparent);
 }
 
 .held-row {
@@ -235,7 +261,7 @@ input.url:focus {
   margin: 1px 10px;
   padding-right: 8px;
   padding-left: calc(6px + var(--depth, 0) * var(--indent));
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   white-space: nowrap;
 }
 
@@ -270,14 +296,15 @@ input.url:focus {
   height: 8px;
   border-radius: 50%;
   background: var(--agent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--agent) 22%, transparent);
 }
 .row.group .ide {
   flex: none;
   font-size: 0.85rem;
-  color: var(--text-dim);
-  background: var(--fill);
-  border-radius: 99px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--color-neutral-800);
+  background: var(--color-neutral-200);
+  border-radius: var(--radius-full);
   padding: 2px 8px;
 }
 /* The person's tabs are a section, not an actor: no dot, no badge, quieter. */
@@ -291,9 +318,9 @@ input.url:focus {
 }
 .row.group.you .name {
   font-size: 0.85rem;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--text-dim);
+  color: color-mix(in srgb, var(--color-text) 60%, transparent);
 }
 
 .row.tab .icon {
@@ -314,9 +341,10 @@ input.url:focus {
 .row.tab.waiting .mark {
   font-size: 0.85rem;
   font-weight: 600;
-  color: var(--warn);
-  background: var(--warn-bg);
-  border-radius: 99px;
+  letter-spacing: 0.02em;
+  color: var(--color-accent-800);
+  background: var(--color-accent-100);
+  border-radius: var(--radius-full);
   padding: 2px 8px 2px 6px;
 }
 .row.tab .count {
@@ -358,7 +386,7 @@ input.url:focus {
   font-variant-numeric: tabular-nums;
 }
 .row.cmd .what {
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   font-size: 0.88rem;
   overflow-wrap: anywhere;
 }
@@ -384,8 +412,8 @@ input.url:focus {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: var(--fill);
-  color: var(--accent);
+  background: var(--color-accent-100);
+  color: var(--color-accent);
   margin-bottom: 8px;
 }
 .empty .bolt svg {
@@ -407,11 +435,12 @@ input.url:focus {
 }
 .empty code {
   margin-top: 8px;
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   font-size: 0.85rem;
   color: var(--text);
-  background: var(--fill);
-  border-radius: 10px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
   padding: 9px 12px;
   user-select: all;
 }
@@ -427,10 +456,11 @@ input.url:focus {
 .callout {
   flex: none;
   margin: 0 10px 10px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: var(--glass);
-  box-shadow: 0 0 0 0.5px var(--sep), 0 4px 14px rgba(0, 0, 0, 0.08);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  border: 1px solid color-mix(in srgb, var(--color-text) 7%, transparent);
+  box-shadow: var(--shadow-md);
   line-height: 1.45;
 }
 .callout h3 {
@@ -438,8 +468,11 @@ input.url:focus {
   align-items: center;
   gap: 6px;
   margin: 0;
-  font-size: 0.92rem;
-  color: var(--warn);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-accent);
 }
 .callout p {
   margin: 6px 0 10px;
@@ -452,6 +485,7 @@ input.url:focus {
   align-items: center;
   gap: 6px;
   padding: 10px 18px;
+  border-top: 1px solid var(--color-divider);
   font-size: 0.85rem;
   color: var(--text-dim);
 }
