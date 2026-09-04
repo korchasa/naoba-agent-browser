@@ -49,6 +49,7 @@ async function start(): Promise<void> {
     preload: join(__dirname, 'preload.js'),
     chromeHtml: join(__dirname, 'chrome.html'),
     idleUnloadMs: numberFlag('--idle-unload-ms', 10 * 60_000),
+    orphanCloseMs: numberFlag('--orphan-close-ms', 5 * 60_000),
     contentionWaitMs: numberFlag('--contention-wait-ms', 30_000),
     defaultScriptTimeoutMs: numberFlag('--script-timeout-ms', 60_000),
     admitEverything: isTestRun,

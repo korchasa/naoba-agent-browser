@@ -13,6 +13,8 @@ import { pause } from './tab.ts'
 export interface HubOptions extends ContextPaths {
   /** How long a project may sit with no agent and no interaction before its renderers are freed. */
   idleUnloadMs: number
+  /** How long a departed agent's tabs stay open, in case its session comes back. */
+  orphanCloseMs: number
   /** How long a call waits for a tab another agent is holding. */
   contentionWaitMs: number
   /** Ceiling on a single script's run time unless the caller asks for more. */
@@ -155,6 +157,7 @@ export class Hub {
       preload: this.#options.preload,
       chromeHtml: this.#options.chromeHtml,
       headless: this.#options.headless,
+      orphanCloseMs: this.#options.orphanCloseMs,
     })
     this.contexts.set(identity.id, created)
     return created

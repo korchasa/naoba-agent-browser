@@ -237,21 +237,6 @@ input.url:focus {
   border-radius: var(--radius-full);
   padding: 2px 8px;
 }
-/* The person's tabs are a section, not an actor: no dot, no badge, quieter. */
-.row.group.you {
-  height: auto;
-  margin: 14px 18px 2px;
-  padding: 0;
-}
-.row.group.you .twist {
-  display: none;
-}
-.row.group.you .name {
-  font-size: 0.85rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: color-mix(in srgb, var(--color-text) 60%, transparent);
-}
 
 .row.tab .icon {
   flex: none;
@@ -314,6 +299,16 @@ input.url:focus {
   color: var(--text-dim);
   font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
+}
+.row.cmd .who {
+  flex: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--color-accent-800);
+  background: var(--color-accent-100);
+  border-radius: var(--radius-full);
+  padding: 1px 7px;
 }
 .row.cmd .what {
   font-family: var(--font-mono);

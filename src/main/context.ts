@@ -31,6 +31,8 @@ export interface ContextPaths {
   preload: string
   chromeHtml: string
   headless?: boolean
+  /** How long a departed agent's tabs stay open before they are closed. */
+  orphanCloseMs?: number
 }
 
 /**
@@ -54,6 +56,8 @@ export class ProjectContext {
   #onScreen = false
   #tabs: Tab[] = []
   #activeTabId: string | null = null
+  /** Pending closes of tabs whose agent has gone, keyed by that agent. */
+  readonly #orphanTimers = new Map<string, NodeJS.Timeout>()
   #lastTouched = Date.now()
 
   readonly #paths: ContextPaths
@@ -148,6 +152,8 @@ export class ProjectContext {
       // disk so a login made by hand outlives the window.
       for (const tab of this.#tabs) tab.destroy()
       this.#tabs = []
+      for (const timer of this.#orphanTimers.values()) clearTimeout(timer)
+      this.#orphanTimers.clear()
       this.#activeTabId = null
     })
 
@@ -385,14 +391,35 @@ export class ProjectContext {
         pending.resolve('cancelled')
       }
     }
-    // Everything this agent opened goes with it. Sessions come and go all day;
-    // without this the window fills with pages nobody is reading — twelve blank
-    // tabs out of twenty-seven after ten minutes of four agents working.
-    for (const tabId of this.#tabs.filter((tab) => tab.openedBy === agentId).map((tab) => tab.id)) {
-      this.closeTab(tabId)
-    }
+    // Everything this agent opened goes with it, but not at once. Sessions
+    // come and go all day, and without any closing the window fills with pages
+    // nobody is reading — twelve blank tabs out of twenty-seven after ten
+    // minutes of four agents working. Closing on the spot is the other
+    // mistake: a session that restarts comes back as a new agent, and the
+    // page it was on — a form half filled, a login just made — is gone with
+    // the old one. So the tabs wait a while, and go only if nobody has picked
+    // them up.
+    const grace = this.#paths.orphanCloseMs ?? 0
+    const timer = setTimeout(() => {
+      this.#orphanTimers.delete(agentId)
+      this.closeOrphans(agentId)
+    }, grace)
+    this.#orphanTimers.set(agentId, timer)
     this.broadcast({ type: 'agent-left', agentId })
     this.notifyAgents()
+  }
+
+  /**
+   * Close what a departed agent left behind, except a tab somebody is using:
+   * one an agent has moved into, or one the person is holding.
+   */
+  closeOrphans(agentId: string): void {
+    const inUse = new Set<string>()
+    for (const agent of this.agents.values()) if (agent.currentTabId) inUse.add(agent.currentTabId)
+    for (const tab of this.#tabs) if (this.leases.holderOf(tab.id)) inUse.add(tab.id)
+    for (const tab of this.#tabs.filter((tab) => tab.openedBy === agentId && !inUse.has(tab.id))) {
+      this.closeTab(tab.id)
+    }
   }
 
   // ------------------------------------------------------------------- events

@@ -4,7 +4,7 @@
  * in, and what each did there.
  */
 import type { AgentCommand, TabDescriptor } from '../main/protocol.ts'
-import { type AgentRow, buildTree, expandNew, groupKey, tabKey, type TreeGroup } from './tree.ts'
+import { type AgentRow, buildTree, expandNew, groupKey, tabKey, type Tree, type TreeGroup, type TreeTab } from './tree.ts'
 
 declare const ab: {
   state(projectId: string): Promise<
@@ -43,13 +43,13 @@ function activeTab(): TabDescriptor | null {
 }
 
 function render(): void {
-  const groups = buildTree(tabs, agents, commands)
-  expandNew(groups, seen, expanded)
+  const tree = buildTree(tabs, agents, commands)
+  expandNew(tree, seen, expanded)
   root.innerHTML = ''
-  root.append(renderPanel(groups))
+  root.append(renderPanel(tree))
 }
 
-function renderPanel(groups: TreeGroup[]): HTMLElement {
+function renderPanel(tree: Tree): HTMLElement {
   const wrap = el('div', 'panel')
 
   // The window buttons sit over the top-left of the content, so the panel keeps
@@ -77,7 +77,7 @@ function renderPanel(groups: TreeGroup[]): HTMLElement {
     wrap.append(held)
   }
 
-  wrap.append(renderTree(groups))
+  wrap.append(renderTree(tree))
   wrap.append(renderFoot())
   return wrap
 }
@@ -114,8 +114,8 @@ function renderBar(): HTMLElement {
 
 // ------------------------------------------------------------------- the tree
 
-function renderTree(groups: TreeGroup[]): HTMLElement {
-  const tree = el('div', 'tree')
+function renderTree(tree: Tree): HTMLElement {
+  const root = el('div', 'tree')
   // Said whenever no agent is here, not only when the tree is empty: on a first
   // launch the window already has a tab of its own, and without this the panel
   // would explain nothing to the person who has just opened the application.
@@ -127,51 +127,53 @@ function renderTree(groups: TreeGroup[]): HTMLElement {
     hint.append('Point one at ', el('b', '', projectName), ' and it will show up here, with every tab it opens and every call it makes.')
     empty.append(hint)
     empty.append(el('code', '', 'claude mcp add naoba -- node <checkout>/packages/bridge/index.mjs'))
-    tree.append(empty)
+    root.append(empty)
   }
 
-  for (const [at, group] of groups.entries()) {
+  for (const [at, group] of tree.groups.entries()) {
     const key = groupKey(group)
     const open = expanded.has(key)
-    tree.append(groupRow(group, open, key, at))
+    root.append(groupRow(group, open, key, at))
     if (!open) continue
 
     if (group.tabs.length === 0) {
-      tree.append(depth(el('div', 'empty note', 'no tab yet'), 1))
+      root.append(depth(el('div', 'empty note', 'no tab yet'), 1))
       continue
     }
-    for (const entry of group.tabs) {
-      const tabId = tabKey(group, entry.tab)
-      const tabOpen = expanded.has(tabId)
-      tree.append(tabRow(entry.tab, entry.commands.length, tabOpen, tabId))
-      if (!tabOpen) continue
-      if (entry.commands.length === 0) {
-        tree.append(depth(el('div', 'empty note', 'nothing done here yet'), 2))
-        continue
-      }
-      for (const command of entry.commands) tree.append(commandRow(command))
-    }
+    for (const entry of group.tabs) renderTab(root, group, entry, 1)
   }
-  return tree
+  // Tabs with no agent stand on their own, after the agents and at their level.
+  for (const entry of tree.loose) renderTab(root, null, entry, 0)
+  return root
+}
+
+function renderTab(into: HTMLElement, group: TreeGroup | null, entry: TreeTab, level: number): void {
+  const key = tabKey(group, entry.tab)
+  const open = expanded.has(key)
+  into.append(tabRow(entry.tab, entry.commands.length, open, key, level))
+  if (!open) return
+  if (entry.commands.length === 0) {
+    into.append(depth(el('div', 'empty note', 'nothing done here yet'), level + 1))
+    return
+  }
+  for (const command of entry.commands) into.append(commandRow(command, group?.id ?? null, level + 1))
 }
 
 function groupRow(group: TreeGroup, open: boolean, key: string, at: number): HTMLElement {
-  const row = depth(el('div', group.id === null ? 'row group you' : 'row group'), 0)
+  const row = depth(el('div', 'row group'), 0)
   row.append(twist(open))
-  if (group.id !== null) {
-    // Each agent keeps its colour for as long as it is connected: the dot is
-    // how a person tells three agents apart across the whole tree.
-    row.style.setProperty('--agent', `var(--agent-${at % 5})`)
-    row.append(el('span', 'dot'))
-  }
-  row.append(el('span', 'name', group.id === null ? 'Yours' : group.label))
+  // Each agent keeps its colour for as long as it is connected: the dot is
+  // how a person tells three agents apart across the whole tree.
+  row.style.setProperty('--agent', `var(--agent-${at % 5})`)
+  row.append(el('span', 'dot'))
+  row.append(el('span', 'name', group.label))
   if (group.ide) row.append(el('span', 'ide', group.ide))
   row.onclick = () => toggle(key)
   return row
 }
 
-function tabRow(tab: TabDescriptor, count: number, open: boolean, key: string): HTMLElement {
-  const row = depth(el('div', 'row tab'), 1)
+function tabRow(tab: TabDescriptor, count: number, open: boolean, key: string, level: number): HTMLElement {
+  const row = depth(el('div', 'row tab'), level)
   if (tab.active) row.classList.add('active')
   if (tab.heldBy) row.classList.add('held')
   if (tab.waitingForHuman) row.classList.add('waiting')
@@ -216,9 +218,12 @@ function tabRow(tab: TabDescriptor, count: number, open: boolean, key: string): 
   return row
 }
 
-function commandRow(command: AgentCommand): HTMLElement {
-  const row = depth(el('div', 'row cmd'), 2)
+function commandRow(command: AgentCommand, owner: string | null, level: number): HTMLElement {
+  const row = depth(el('div', 'row cmd'), level)
   row.append(el('span', 'when', clock(command.at)))
+  // A call by the tab's own agent needs no name; one by anybody else — another
+  // agent, or the person — carries theirs, or the history reads as one voice.
+  if (command.agentId !== owner) row.append(el('span', 'who', command.agentLabel))
   // A call reads as name(arguments); the name is what the eye scans for, so
   // only it is drawn in full colour.
   const what = el('span', 'what')

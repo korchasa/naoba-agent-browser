@@ -224,12 +224,20 @@ test('a tab an agent opened leaves with the agent', async () => {
   leaver.close()
   await new Promise((resolve) => setTimeout(resolve, 500))
 
-  // Sessions come and go all day. Without this the window fills with pages
-  // nobody is reading: twelve blank tabs out of twenty-seven after ten minutes
-  // of four agents working.
-  const after = await watcher.run(`return (await api.getTabs()).map((tab) => tab.id)`)
-  assert.ok(!after.value.includes(opened.value), 'the tab should have gone with its agent')
-  assert.equal(after.value.length, baseline.value, 'nothing of the leaver should be left')
+  // Not at once: a session that restarts comes back as a new agent and wants
+  // the page it was on, so the tab outlives the disconnect for a while.
+  const soon = await watcher.run(`return (await api.getTabs()).map((tab) => tab.id)`)
+  assert.ok(soon.value.includes(opened.value), 'the tab is still there right after the disconnect')
+
+  // But it does go. Sessions come and go all day, and without this the window
+  // fills with pages nobody is reading: twelve blank tabs out of twenty-seven
+  // after ten minutes of four agents working.
+  await new Promise((resolve) => setTimeout(resolve, 2000))
+  // Earlier tests' agents left tabs of their own that go in this same window,
+  // so the watcher's tab is the anchor here, not the count.
+  const after = await watcher.run(`return { tabs: (await api.getTabs()).map((tab) => tab.id), own: (await api.currentTab()).id }`)
+  assert.ok(!after.value.tabs.includes(opened.value), 'the tab should have gone with its agent')
+  assert.ok(after.value.tabs.includes(after.value.own), 'the tab of the agent that stayed is untouched')
   watcher.close()
 })
 

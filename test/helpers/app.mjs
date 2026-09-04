@@ -34,6 +34,11 @@ export async function startApp(
       userData,
       '--idle-unload-ms',
       '2000',
+      // Short enough for the test that watches a departed agent's tab go, long
+      // enough that a disconnect in any other test does not pull the tab from
+      // under the agent that stayed.
+      '--orphan-close-ms',
+      '1500',
       '--contention-wait-ms',
       // Long enough that a slow machine does not read a queued command as a
       // deadlock, short enough that the contention test still finishes.
