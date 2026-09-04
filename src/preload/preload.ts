@@ -15,10 +15,9 @@ const api = {
   takeOver: (projectId: string, tabId: string) => ipcRenderer.invoke('ab:take-over', projectId, tabId),
   release: (projectId: string, tabId: string) => ipcRenderer.invoke('ab:release', projectId, tabId),
   humanDone: (projectId: string, tabId: string) => ipcRenderer.invoke('ab:human-done', projectId, tabId),
-  chromeHeight: (projectId: string, height: number) => ipcRenderer.send('ab:chrome-height', projectId, height),
   projects: () => ipcRenderer.invoke('ab:projects'),
   forgetProject: (root: string) => ipcRenderer.invoke('ab:forget-project', root),
-  on: (channel: 'tabs' | 'agents' | 'activity', handler: (payload: unknown) => void) => {
+  on: (channel: 'tabs' | 'agents' | 'commands', handler: (payload: unknown) => void) => {
     const listener = (_event: unknown, payload: unknown) => handler(payload)
     ipcRenderer.on(channel, listener)
     return () => ipcRenderer.off(channel, listener)

@@ -30,6 +30,15 @@ The rest follows from being an application rather than a browser extension:
 - **Somewhere to ask for help.** When an agent meets a login or a payment, it
   hands the tab over and waits for you.
 
+## The window
+
+There is no row of tabs across the top. Down the left side is a tree: every
+agent working in this project, under each agent the tabs it has been in, and
+under each tab the calls it made there. A tab two agents share appears under
+both of them, each seeing its own calls; the tabs you opened yourself, and any
+left behind by an agent that has gone, sit in a group of your own at the
+bottom. The address bar for whichever tab is in front is above the tree.
+
 ## Requirements
 
 macOS, and Node 20 or newer for the bridge.

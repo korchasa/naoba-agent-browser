@@ -4,10 +4,13 @@ import { type Holder, holderLabel, LeaseTable } from './lease.ts'
 import { KeyedQueue } from './queue.ts'
 import { partitionFor, type ProjectIdentity } from './project.ts'
 import { Tab } from './tab.ts'
-import type { AgentDescriptor, AppEvent, ServerMessage, TabDescriptor } from './protocol.ts'
+import type { AgentCommand, AgentDescriptor, AppEvent, ServerMessage, TabDescriptor } from './protocol.ts'
 
-export const CHROME_HEIGHT = 68
-export const PANEL_WIDTH = 300
+/**
+ * The panel is the window's whole chrome, so it has to hold an address bar and
+ * a three-level tree without either one being unreadable.
+ */
+export const PANEL_WIDTH = 340
 
 export interface AgentHandle {
   readonly id: string
@@ -44,13 +47,9 @@ export class ProjectContext {
   readonly queue = new KeyedQueue()
   readonly agents = new Map<string, AgentHandle>()
   readonly pendingHuman = new Map<string, PendingHuman>()
-  readonly activity: { at: number; agent: string; text: string; tabId: string | null }[] = []
 
   #window: BaseWindow | null = null
-  #chrome: WebContentsView | null = null
   #panel: WebContentsView | null = null
-  #panelOpen = true
-  #chromeHeight = CHROME_HEIGHT
   /** Whether the person has actually been shown this window. */
   #onScreen = false
   #tabs: Tab[] = []
@@ -99,7 +98,7 @@ export class ProjectContext {
   window(): BaseWindow {
     if (this.#window && !this.#window.isDestroyed()) return this.#window
 
-    // Wide on purpose. The panel takes 300 of it, and what is left is what the
+    // Wide on purpose. The panel takes 340 of it, and what is left is what the
     // site sees: below about 1000 CSS pixels many sites (Wikipedia among them)
     // serve their compact layout, where the search field is folded behind a
     // button and an agent looking for it finds nothing. It must still fit on
@@ -116,25 +115,23 @@ export class ProjectContext {
     })
     this.#window = window
 
-    const makeView = (part: 'top' | 'side') => {
-      const view = new WebContentsView({
-        webPreferences: { preload: this.#paths.preload, contextIsolation: true, sandbox: true },
-      })
-      window.contentView.addChildView(view)
-      void view.webContents.loadFile(this.#paths.chromeHtml, {
-        query: { project: this.identity.id, name: this.identity.name, part },
-      })
-      return view
-    }
-    // Two views of one page: the tab strip on top, the agent panel at the side.
-    // A view is a rectangle, and the chrome is an L.
-    this.#chrome = makeView('top')
-    this.#panel = makeView('side')
+    // One view, down the left edge: the address bar and the tree of agents,
+    // their tabs and what they did there. It is on the left because
+    // `titleBarStyle: 'hiddenInset'` puts the window buttons over the top-left
+    // of the content — a panel on the right would leave the page painted
+    // underneath them.
+    const panel = new WebContentsView({
+      webPreferences: { preload: this.#paths.preload, contextIsolation: true, sandbox: true },
+    })
+    window.contentView.addChildView(panel)
+    void panel.webContents.loadFile(this.#paths.chromeHtml, {
+      query: { project: this.identity.id, name: this.identity.name },
+    })
+    this.#panel = panel
 
     window.on('resize', () => this.layout())
     window.on('closed', () => {
       this.#window = null
-      this.#chrome = null
       this.#panel = null
       this.#onScreen = false
       // Tabs belong to the window; drop them with it, but keep the session on
@@ -148,62 +145,29 @@ export class ProjectContext {
     return window
   }
 
-  chrome(): WebContentsView | null {
-    return this.#chrome
-  }
-
   panel(): WebContentsView | null {
     return this.#panel
   }
 
-  /**
-   * The strip measures itself and says how much room its text needs; at a
-   * larger text size that is more than the default. Anything outside the range
-   * is a renderer that has just been resized mid-render, so it is ignored.
-   */
-  setChromeHeight(height: number): void {
-    const wanted = Math.round(height)
-    if (!Number.isFinite(wanted) || wanted < CHROME_HEIGHT || wanted > 240) return
-    if (wanted === this.#chromeHeight) return
-    this.#chromeHeight = wanted
-    this.layout()
+  panelWidth(): number {
+    const width = this.#window?.getContentBounds().width ?? PANEL_WIDTH
+    return Math.min(PANEL_WIDTH, Math.floor(width / 2))
   }
 
   layout(): void {
     const window = this.#window
     if (!window || window.isDestroyed()) return
     const { width, height } = window.getContentBounds()
-    const panelWidth = this.#panelOpen ? Math.min(PANEL_WIDTH, Math.floor(width / 3)) : 0
-    const chromeHeight = this.#chromeHeight
+    const panelWidth = this.panelWidth()
 
-    this.#chrome?.setBounds({ x: 0, y: 0, width, height: chromeHeight })
-    this.#panel?.setVisible(this.#panelOpen)
-    if (this.#panelOpen) {
-      this.#panel?.setBounds({
-        x: width - panelWidth,
-        y: chromeHeight,
-        width: panelWidth,
-        height: Math.max(0, height - chromeHeight),
-      })
-    }
+    this.#panel?.setBounds({ x: 0, y: 0, width: panelWidth, height })
     for (const tab of this.#tabs) {
       const visible = tab.id === this.#activeTabId
       tab.view.setVisible(visible)
       if (visible) {
-        tab.view.setBounds({
-          x: 0,
-          y: chromeHeight,
-          width: Math.max(0, width - panelWidth),
-          height: Math.max(0, height - chromeHeight),
-        })
+        tab.view.setBounds({ x: panelWidth, y: 0, width: Math.max(0, width - panelWidth), height })
       }
     }
-  }
-
-  togglePanel(open?: boolean): boolean {
-    this.#panelOpen = open ?? !this.#panelOpen
-    this.layout()
-    return this.#panelOpen
   }
 
   /**
@@ -269,7 +233,6 @@ export class ProjectContext {
     this.#activeTabId = null
     if (!this.#window.isDestroyed()) this.#window.destroy()
     this.#window = null
-    this.#chrome = null
     this.#panel = null
   }
 
@@ -382,6 +345,7 @@ export class ProjectContext {
       loading: tab.loading,
       heldBy: holder ? holderLabel(holder) : null,
       waitingForHuman: waiting ? waiting.reason : null,
+      openedBy: tab.openedBy,
     }
   }
 
@@ -430,10 +394,28 @@ export class ProjectContext {
     this.notifyTabs()
   }
 
-  log(agentLabel: string, text: string, tabId: string | null): void {
-    this.activity.unshift({ at: Date.now(), agent: agentLabel, text, tabId })
-    if (this.activity.length > 300) this.activity.length = 300
-    this.toChrome('activity', this.activity.slice(0, 60))
+  /**
+   * Record what an actor just did, against the tab it did it in.
+   *
+   * The history lives on the tab rather than in one list per project, because
+   * that is the shape the panel reads it in: an agent, the tabs it has been in,
+   * and what it did in each. A call whose tab has already gone — `closeTab`
+   * names the tab it destroyed — is dropped, since there is no longer a place
+   * in the tree to show it.
+   */
+  log(actor: { id: string | null; label: string }, text: string, tabId: string | null): void {
+    const tab = tabId ? this.tab(tabId) : null
+    if (!tab) return
+    const command: AgentCommand = { at: Date.now(), agentId: actor.id, agentLabel: actor.label, text }
+    tab.commands.add(command)
+    this.toChrome('commands', { tabId: tab.id, commands: [...tab.commands.entries] })
+  }
+
+  /** Every tab's history, the way the panel wants it when it starts. */
+  commandsByTab(): Record<string, AgentCommand[]> {
+    const all: Record<string, AgentCommand[]> = {}
+    for (const tab of this.#tabs) all[tab.id] = [...tab.commands.entries]
+    return all
   }
 
   notifyTabs(): void {
@@ -453,9 +435,8 @@ export class ProjectContext {
   }
 
   toChrome(channel: string, payload: unknown): void {
-    for (const view of [this.#chrome, this.#panel]) {
-      if (!view || view.webContents.isDestroyed()) continue
-      view.webContents.send(channel, payload)
-    }
+    const view = this.#panel
+    if (!view || view.webContents.isDestroyed()) return
+    view.webContents.send(channel, payload)
   }
 }

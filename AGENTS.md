@@ -27,7 +27,10 @@ state must go through the project's own session, never through
 - `src/main/hub.ts` — admission and routing
 - `src/main/server.ts`, `protocol.ts` — the wire
 - `packages/bridge/` — the MCP server an IDE launches, one per agent
-- `src/renderer/` — the window's chrome
+- `src/renderer/chrome.ts` — the window's chrome: the address bar and the tree
+  of agents, their tabs and the calls made in them
+- `src/renderer/tree.ts` — how that tree is built, and the only part of the
+  chrome a test can reach
 
 ## Things learned the hard way
 
@@ -45,6 +48,16 @@ state must go through the project's own session, never through
   tab navigates, and not one moment longer.
 - **Page-side helpers are defined per call.** A single-page application replaces
   the document without reloading, so anything installed once quietly disappears.
+- **The window buttons are drawn over the top-left of the content.** With
+  `titleBarStyle: 'hiddenInset'` whatever is in that corner sits under them, so
+  the chrome has to be the view that owns it — which is why the panel is on the
+  left and starts with an empty drag strip.
+- **`capturePage` hands back the last committed frame.** The window is shown
+  transparent and unfocused while agents work, so its compositor commits
+  lazily: two animation frames in the renderer prove nothing about what a
+  capture will contain. A snapshot needs several captures with a pause between
+  them, or it photographs the interface as it was a step ago — which reads as a
+  bug in the interface, not in the camera.
 
 ## Style
 

@@ -2,6 +2,7 @@ import { WebContentsView } from 'electron'
 import type { Session, WebContents, WebFrameMain } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { toTransferable } from './serialize.ts'
+import { CommandLog } from './commands.ts'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
@@ -46,6 +47,8 @@ export class Tab {
   readonly view: WebContentsView
   readonly console: ConsoleEntry[] = []
   readonly network = new Map<string, NetworkEntry>()
+  /** What has been done in this tab, newest first. */
+  readonly commands = new CommandLog()
 
   /**
    * The agent that opened this tab, or null when the person did. An agent's

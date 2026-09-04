@@ -13,6 +13,8 @@ html {
   --held: #7a4dd6;
   --radius: 7px;
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  /* One step of the tree. Rows carry their level in --depth and multiply. */
+  --indent: 14px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -33,8 +35,8 @@ html {
 }
 
 /* The panel is a view of its own, so its page has to fill that view: without a
-   full-height html and body the background stops where the last log line ends
-   and the rest of the strip is painted white — in dark appearance too. */
+   full-height html and body the background stops where the last row ends and
+   the rest of the panel is painted white — in dark appearance too. */
 html,
 body,
 #root {
@@ -46,86 +48,33 @@ body {
   font-family: var(--font);
   font-size: 1rem;
   color: var(--text);
-  background: var(--bg);
+  background: var(--bg-raised);
   user-select: none;
   overflow: hidden;
 }
 
-/* ---------------------------------------------------------------- top strip */
+/* -------------------------------------------------------------------- panel */
 
-.top {
+.panel {
   display: flex;
   flex-direction: column;
+  height: 100%;
+  border-right: 1px solid var(--line);
 }
 
-.tabs {
-  display: flex;
-  justify-content: flex-start;
-  align-items: stretch;
-  gap: 4px;
-  min-height: 2.6rem;
-  padding: 4px 8px 0 88px; /* room for the traffic lights */
+/* The window's own buttons are drawn over this strip, so nothing else may be. */
+.drag {
+  flex: none;
+  height: 2.2rem;
   -webkit-app-region: drag;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.tabs::-webkit-scrollbar {
-  display: none;
-}
-
-.tab {
-  -webkit-app-region: no-drag;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  /* Without an explicit basis a flex child grows to fill the strip, and three
-     tabs each take a third of the window. */
-  flex: 0 1 200px;
-  min-width: 0;
-  max-width: 220px;
-  padding: 0 8px;
-  border-radius: var(--radius) var(--radius) 0 0;
-  background: transparent;
-  color: var(--text-dim);
-  cursor: default;
-  white-space: nowrap;
-}
-.tab.active {
-  background: var(--bg-raised);
-  color: var(--text);
-}
-.tab .title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.tab .mark {
-  font-size: 0.85rem;
-}
-.tab.held .mark {
-  color: var(--held);
-}
-.tab.waiting {
-  box-shadow: inset 0 -2px 0 var(--warn);
-}
-.tab.waiting .mark {
-  color: var(--warn);
-}
-.tab .close {
-  opacity: 0;
-  padding: 0 2px;
-}
-.tab:hover .close {
-  opacity: 0.6;
 }
 
 .bar {
+  flex: none;
   display: flex;
   align-items: center;
-  gap: 6px;
-  min-height: 2.6rem;
-  padding: 0 8px;
-  background: var(--bg-raised);
-  border-bottom: 1px solid var(--line);
+  gap: 4px;
+  padding: 0 8px 8px;
 }
 
 button {
@@ -135,8 +84,9 @@ button {
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius);
-  padding: 3px 8px;
+  padding: 3px 7px;
   cursor: default;
+  flex: none;
 }
 button:hover {
   background: var(--bg);
@@ -154,12 +104,13 @@ button.primary:hover {
 input.url {
   -webkit-app-region: no-drag;
   flex: 1;
+  min-width: 0;
   font: inherit;
   color: var(--text);
   background: var(--bg);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 4px 9px;
+  padding: 4px 8px;
   user-select: text;
 }
 input.url:focus {
@@ -167,92 +118,144 @@ input.url:focus {
   outline-offset: -1px;
 }
 
+.held-row {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 8px;
+}
+
 .state {
   color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 .state.warn {
   color: var(--warn);
 }
 
-/* --------------------------------------------------------------- side panel */
+/* --------------------------------------------------------------------- tree */
 
-.side {
+.tree {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0 12px;
+  border-top: 1px solid var(--line);
+}
+
+.row {
   display: flex;
-  flex-direction: column;
-  height: 100%;
-  border-left: 1px solid var(--line);
-  background: var(--bg-raised);
+  align-items: center;
+  gap: 4px;
+  min-height: 1.7rem;
+  padding-right: 8px;
+  padding-left: calc(6px + var(--depth, 0) * var(--indent));
+  white-space: nowrap;
 }
 
-.section {
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--line);
+.row .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
 }
-.section h2 {
-  margin: 0 0 8px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+
+.twist {
+  flex: none;
+  width: 1rem;
+  text-align: center;
   color: var(--text-dim);
+  font-size: 0.8rem;
+  transition: transform 90ms ease-out;
+}
+.twist.open {
+  transform: rotate(90deg);
 }
 
-.agent {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  padding: 3px 0;
+.row.group {
+  font-weight: 600;
 }
-.agent .dot {
+.row.group .dot {
+  flex: none;
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: var(--accent);
-  flex: none;
 }
-.agent .ide {
+.row.group .ide {
+  flex: none;
+  font-weight: 400;
   color: var(--text-dim);
   font-size: 0.85rem;
+}
+
+.row.tab.active {
+  background: var(--bg);
+}
+.row.tab .mark {
+  flex: none;
+  font-size: 0.85rem;
+}
+.row.tab.held .mark {
+  color: var(--held);
+}
+.row.tab.waiting {
+  box-shadow: inset 2px 0 0 var(--warn);
+}
+.row.tab.waiting .mark {
+  color: var(--warn);
+}
+.row.tab .count {
+  flex: none;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+.row.tab .close {
+  flex: none;
+  opacity: 0;
+  padding: 0 2px;
+}
+.row.tab:hover .close {
+  opacity: 0.6;
+}
+
+/* A call is read, not scanned: the whole text stays on screen even when it is
+   a selector longer than the panel is wide. */
+.row.cmd {
+  align-items: baseline;
+  gap: 6px;
+  white-space: normal;
+  line-height: 1.4;
+  padding-top: 2px;
+  padding-bottom: 2px;
+  min-height: 0;
+}
+.row.cmd .when {
+  flex: none;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+.row.cmd .what {
+  overflow-wrap: anywhere;
 }
 
 .empty {
   color: var(--text-dim);
   line-height: 1.45;
+  padding: 6px 12px;
 }
-
-.log {
-  flex: 1;
-  overflow-y: auto;
-  padding: 10px 12px;
-}
-/* Two rows, not three columns: who and when share the first line and the action
-   gets the full width below it. Laid out in a row, a long action name is
-   squeezed into a one-letter column as soon as the text grows. */
-.entry {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 1px 8px;
-  padding: 4px 0;
-  line-height: 1.4;
-}
-.entry .who {
-  color: var(--accent);
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.entry .when {
-  color: var(--text-dim);
-  font-variant-numeric: tabular-nums;
-}
-.entry .what {
-  grid-column: 1 / -1;
-  color: var(--text);
-  overflow-wrap: anywhere;
+.empty.note {
+  padding: 2px 8px 2px calc(6px + var(--depth, 0) * var(--indent));
+  font-size: 0.9rem;
 }
 
 .callout {
-  margin: 10px 12px;
+  flex: none;
+  margin: 0 8px 8px;
   padding: 10px 12px;
   border-radius: var(--radius);
   background: color-mix(in srgb, var(--warn) 16%, transparent);

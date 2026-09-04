@@ -8,6 +8,8 @@ import { KeyedQueue, QueueTimeout } from '../src/main/queue.ts'
 import { LeaseTable } from '../src/main/lease.ts'
 import { toTransferable } from '../src/main/serialize.ts'
 import { decodeLines } from '../src/main/protocol.ts'
+import { CommandLog } from '../src/main/commands.ts'
+import { buildTree, expandNew, groupKey, tabKey } from '../src/renderer/tree.ts'
 
 test('a project is the repository the agent is working in, not its subdirectory', () => {
   const base = mkdtempSync(join(tmpdir(), 'ab-project-'))
@@ -152,4 +154,114 @@ test('the wire splits on lines and keeps the unfinished tail', () => {
   assert.equal(first.rest, '{"ty')
   const second = decodeLines(first.rest + 'pe":"c"}\n')
   assert.deepEqual(second.messages, [{ type: 'c' }])
+})
+
+// ------------------------------------------------------- the panel's own tree
+
+const tabAt = (index, id, openedBy, extra = {}) => ({
+  id,
+  index,
+  title: id,
+  url: `https://example.com/${id}`,
+  active: false,
+  loading: false,
+  heldBy: null,
+  waitingForHuman: null,
+  openedBy,
+  ...extra,
+})
+
+const said = (agentId, agentLabel, text) => ({ at: 1, agentId, agentLabel, text })
+
+test('a tab hangs under the agent that opened it', () => {
+  const groups = buildTree(
+    [tabAt(0, 'tab-a', 'agent-1')],
+    [{ id: 'agent-1', label: 'claude', ide: 'claude', tabId: 'tab-a' }],
+    new Map(),
+  )
+  assert.equal(groups.length, 1)
+  assert.equal(groups[0].id, 'agent-1')
+  assert.deepEqual(groups[0].tabs.map((entry) => entry.tab.id), ['tab-a'])
+})
+
+test('a borrowed tab hangs under both agents, and each sees only its own calls', () => {
+  // The point of sharing a window is that an agent can pick up another's tab.
+  // The tree has to answer "whose tab is this" with both names, not one.
+  const commands = new Map([[
+    'tab-a',
+    [said('agent-2', 'codex', 'click(button.pay)'), said('agent-1', 'claude', 'fill(#coupon)')],
+  ]])
+  const groups = buildTree(
+    [tabAt(0, 'tab-a', 'agent-1')],
+    [
+      { id: 'agent-1', label: 'claude', ide: 'claude', tabId: 'tab-a' },
+      { id: 'agent-2', label: 'codex', ide: 'codex', tabId: 'tab-a' },
+    ],
+    commands,
+  )
+  assert.deepEqual(groups.map((group) => group.id), ['agent-1', 'agent-2'])
+  assert.deepEqual(groups[0].tabs[0].commands.map((entry) => entry.text), ['fill(#coupon)'])
+  assert.deepEqual(groups[1].tabs[0].commands.map((entry) => entry.text), ['click(button.pay)'])
+})
+
+test('the tabs a person opened are a group of their own, and it comes last', () => {
+  const groups = buildTree(
+    [tabAt(0, 'mine', null), tabAt(1, 'theirs', 'agent-1')],
+    [{ id: 'agent-1', label: 'claude', ide: 'claude', tabId: 'theirs' }],
+    new Map(),
+  )
+  assert.deepEqual(groups.map((group) => group.id), ['agent-1', null])
+  assert.deepEqual(groups.at(-1).tabs.map((entry) => entry.tab.id), ['mine'])
+})
+
+test('a tab whose agent has gone falls to the person, never out of the tree', () => {
+  // Otherwise it is in the window and in no branch: nobody can select it and
+  // nobody can close it.
+  const groups = buildTree([tabAt(0, 'orphan', 'agent-gone')], [], new Map())
+  assert.deepEqual(groups.map((group) => group.id), [null])
+  assert.deepEqual(groups[0].tabs.map((entry) => entry.tab.id), ['orphan'])
+})
+
+test('an agent with no tab still has a place in the tree', () => {
+  const groups = buildTree([], [{ id: 'agent-1', label: 'claude', ide: 'claude', tabId: null }], new Map())
+  assert.deepEqual(groups.map((group) => group.id), ['agent-1'])
+  assert.deepEqual(groups[0].tabs, [])
+})
+
+test('the tree opens on every agent and on the tab in front', () => {
+  const groups = buildTree(
+    [tabAt(0, 'tab-a', 'agent-1', { active: true }), tabAt(1, 'tab-b', 'agent-1')],
+    [{ id: 'agent-1', label: 'claude', ide: 'claude', tabId: 'tab-a' }],
+    new Map(),
+  )
+  const open = new Set()
+  expandNew(groups, new Set(), open)
+  assert.ok(open.has(groupKey(groups[0])))
+  assert.ok(open.has(tabKey(groups[0], groups[0].tabs[0].tab)))
+  assert.ok(!open.has(tabKey(groups[0], groups[0].tabs[1].tab)))
+})
+
+test('an agent that connects later opens too, and a branch folded by hand stays folded', () => {
+  // Agents come and go all day. A group seeded once and never again means every
+  // agent but the first is a collapsed row hiding its own work.
+  const seen = new Set()
+  const open = new Set()
+  const first = buildTree([], [{ id: 'agent-1', label: 'claude', ide: 'claude', tabId: null }], new Map())
+  expandNew(first, seen, open)
+  open.delete(groupKey(first[0]))
+
+  const later = buildTree([], [
+    { id: 'agent-1', label: 'claude', ide: 'claude', tabId: null },
+    { id: 'agent-2', label: 'codex', ide: 'codex', tabId: null },
+  ], new Map())
+  expandNew(later, seen, open)
+
+  assert.ok(!open.has(groupKey(later[0])), 'the folded branch stays folded')
+  assert.ok(open.has(groupKey(later[1])), 'the new agent opens')
+})
+
+test('a tab keeps its newest calls and drops the oldest', () => {
+  const log = new CommandLog(3)
+  for (const text of ['one', 'two', 'three', 'four']) log.add(said('agent-1', 'claude', text))
+  assert.deepEqual(log.entries.map((entry) => entry.text), ['four', 'three', 'two'])
 })

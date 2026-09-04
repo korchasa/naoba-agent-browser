@@ -342,10 +342,17 @@ export class Hub {
 
   async #runEval(context: ProjectContext, agent: AgentHandle, code: string, timeoutMs: number): Promise<unknown> {
     const target = context.tabFor(agent)
+    // The tab a call belongs to is not always the one the agent is holding:
+    // `setCookie`, `deleteCookie` and `clearStorage` never touch a tab, and
+    // `closeTab` names the one it has just destroyed.
+    const place = (): string | null => {
+      const held = agent.currentTabId ? context.tab(agent.currentTabId) : null
+      return held?.id ?? context.activeTab()?.id ?? null
+    }
     // The lease is checked per action, not once for the whole script: a script
     // that only lists tabs, or works on a different tab, has no business
     // waiting for somebody else's page.
-    const api = buildApi(context, agent, (text) => context.log(agent.label, text, agent.currentTabId), {
+    const api = buildApi(context, agent, (text) => context.log({ id: agent.id, label: agent.label }, text, place()), {
       waitForTab: (tabId) => this.#waitForTab(context, agent, tabId),
     })
     const outcome = await context.queue.run(

@@ -1,35 +1,15 @@
 /**
- * The window's own interface. Two roles from one bundle: the tab strip across
- * the top, and the agent panel down the side — a view is a rectangle and the
- * chrome is an L, so it takes two.
+ * The window's own interface: one panel down the left edge holding the address
+ * bar and a tree of the agents in this project, the tabs each of them has been
+ * in, and what each did there.
  */
-interface TabDescriptor {
-  id: string
-  index: number
-  title: string
-  url: string
-  active: boolean
-  loading: boolean
-  heldBy: string | null
-  waitingForHuman: string | null
-}
-
-interface AgentRow {
-  id: string
-  label: string
-  ide: string
-  tabId: string | null
-}
-
-interface ActivityRow {
-  at: number
-  agent: string
-  text: string
-  tabId: string | null
-}
+import type { AgentCommand, TabDescriptor } from '../main/protocol.ts'
+import { type AgentRow, buildTree, expandNew, groupKey, tabKey, type TreeGroup } from './tree.ts'
 
 declare const ab: {
-  state(projectId: string): Promise<{ tabs: TabDescriptor[]; agents: AgentRow[]; activity: ActivityRow[] } | null>
+  state(projectId: string): Promise<
+    { tabs: TabDescriptor[]; agents: AgentRow[]; commands: Record<string, AgentCommand[]> } | null
+  >
   newTab(projectId: string, url?: string): Promise<unknown>
   selectTab(projectId: string, tabId: string): Promise<boolean>
   closeTab(projectId: string, tabId: string): Promise<boolean>
@@ -37,97 +17,65 @@ declare const ab: {
   takeOver(projectId: string, tabId: string): Promise<boolean>
   release(projectId: string, tabId: string): Promise<boolean>
   humanDone(projectId: string, tabId: string): Promise<boolean>
-  on(channel: 'tabs' | 'agents' | 'activity', handler: (payload: unknown) => void): () => void
-  chromeHeight(projectId: string, height: number): void
+  on(channel: 'tabs' | 'agents' | 'commands', handler: (payload: unknown) => void): () => void
 }
 
 const params = new URLSearchParams(location.search)
 const projectId = params.get('project') ?? ''
 const projectName = params.get('name') ?? 'project'
-const part = params.get('part') === 'side' ? 'side' : 'top'
 const root = document.getElementById('root')!
 
 let tabs: TabDescriptor[] = []
 let agents: AgentRow[] = []
-let activity: ActivityRow[] = []
+const commands = new Map<string, AgentCommand[]>()
+
+/**
+ * Which branches are open. It lives outside `render` on purpose: the panel is
+ * redrawn on every state push from the main process, and a tree that folded
+ * itself shut each time an agent clicked something would be unusable.
+ */
+const expanded = new Set<string>()
+/** Every branch key already decided on, so a fold by hand is not undone. */
+const seen = new Set<string>()
 
 function activeTab(): TabDescriptor | null {
   return tabs.find((tab) => tab.active) ?? null
 }
 
 function render(): void {
+  const groups = buildTree(tabs, agents, commands)
+  expandNew(groups, seen, expanded)
   root.innerHTML = ''
-  root.append(part === 'top' ? renderTop() : renderSide())
-  if (part === 'top') {
-    watchStrip()
-    reportHeight()
-  }
+  root.append(renderPanel(groups))
 }
 
-/**
- * The strip is a view of its own, and a view is a fixed rectangle: whatever the
- * page needs, the main process is the only one that can give it. So the strip
- * measures itself after every render and says how tall it wants to be — at a
- * larger text size it needs more, and without this the address line is cut in
- * half by the page below it.
- */
-let lastReported = 0
-function reportHeight(): void {
-  requestAnimationFrame(() => {
-    const strip = root.firstElementChild as HTMLElement | null
-    const height = Math.ceil(strip?.scrollHeight ?? 0)
-    if (height <= 0 || height === lastReported) return
-    lastReported = height
-    ab.chromeHeight(projectId, height)
-  })
-}
+function renderPanel(groups: TreeGroup[]): HTMLElement {
+  const wrap = el('div', 'panel')
 
-// A re-render is not the only thing that changes the strip's height: a larger
-// text size does too, and nothing re-renders then. `#root` fills the view, so
-// watching it says nothing — the strip inside it is what grows.
-const stripWatcher = part === 'top' ? new ResizeObserver(() => reportHeight()) : null
-function watchStrip(): void {
-  const strip = root.firstElementChild
-  if (!stripWatcher || !strip) return
-  stripWatcher.disconnect()
-  stripWatcher.observe(strip)
-}
+  // The window buttons sit over the top-left of the content, so the panel keeps
+  // that strip empty and hands it to the window as a drag region.
+  wrap.append(el('div', 'drag'))
+  wrap.append(renderBar())
 
-// ------------------------------------------------------------------ top strip
-
-function renderTop(): HTMLElement {
-  const wrap = el('div', 'top')
-  const strip = el('div', 'tabs')
-
-  for (const tab of tabs) {
-    const item = el('div', 'tab')
-    if (tab.active) item.classList.add('active')
-    if (tab.heldBy) item.classList.add('held')
-    if (tab.waitingForHuman) item.classList.add('waiting')
-
-    if (tab.waitingForHuman) item.append(el('span', 'mark', '✋'))
-    else if (tab.heldBy) item.append(el('span', 'mark', '●'))
-
-    const title = el('span', 'title', tab.title || hostOf(tab.url) || 'New tab')
-    title.title = tab.heldBy ? `${tab.title}\nheld by ${tab.heldBy}` : tab.title
-    item.append(title)
-
-    const close = el('span', 'close', '✕')
-    close.onclick = (event) => {
-      event.stopPropagation()
-      void ab.closeTab(projectId, tab.id)
-    }
-    item.append(close)
-    item.onclick = () => void ab.selectTab(projectId, tab.id)
-    strip.append(item)
+  const current = activeTab()
+  if (current?.waitingForHuman) {
+    const callout = el('div', 'callout')
+    callout.append(el('h3', '', 'An agent needs you'))
+    callout.append(el('p', '', current.waitingForHuman))
+    callout.append(primary('I have done it', () => void ab.humanDone(projectId, current.id)))
+    wrap.append(callout)
+  } else if (current?.heldBy) {
+    const held = el('div', 'held-row')
+    held.append(el('span', 'state', `held by ${current.heldBy}`))
+    held.append(button('Take over', () => void ab.takeOver(projectId, current.id)))
+    wrap.append(held)
   }
 
-  const add = el('div', 'tab')
-  add.append(el('span', 'title', '+'))
-  add.onclick = () => void ab.newTab(projectId)
-  strip.append(add)
-  wrap.append(strip)
+  wrap.append(renderTree(groups))
+  return wrap
+}
 
+function renderBar(): HTMLElement {
   const bar = el('div', 'bar')
   const current = activeTab()
 
@@ -146,76 +94,101 @@ function renderTop(): HTMLElement {
     else void ab.newTab(projectId, value)
   }
   bar.append(url)
-
-  if (current?.waitingForHuman) {
-    const state = el('span', 'state warn', `waiting for you: ${current.waitingForHuman}`)
-    bar.append(state)
-    bar.append(primary('Done', () => void ab.humanDone(projectId, current.id)))
-  } else if (current?.heldBy) {
-    bar.append(el('span', 'state', `held by ${current.heldBy}`))
-    bar.append(button('Take over', () => void ab.takeOver(projectId, current.id)))
-  } else if (agents.length > 0) {
-    bar.append(el('span', 'state', `${agents.length} agent${agents.length === 1 ? '' : 's'}`))
-  }
-
-  wrap.append(bar)
-  return wrap
+  bar.append(button('+', () => void ab.newTab(projectId), 'New tab'))
+  return bar
 }
 
-// ------------------------------------------------------------------ side panel
+// ------------------------------------------------------------------- the tree
 
-function renderSide(): HTMLElement {
-  const wrap = el('div', 'side')
-
-  const waiting = tabs.find((tab) => tab.waitingForHuman)
-  if (waiting) {
-    const callout = el('div', 'callout')
-    const heading = el('h3', '', 'An agent needs you')
-    const text = el('p', '', waiting.waitingForHuman ?? '')
-    const act = primary('I have done it', () => void ab.humanDone(projectId, waiting.id))
-    callout.append(heading, text, act)
-    wrap.append(callout)
-  }
-
-  const agentSection = el('div', 'section')
-  agentSection.append(el('h2', '', 'Agents here'))
+function renderTree(groups: TreeGroup[]): HTMLElement {
+  const tree = el('div', 'tree')
+  // Said whenever no agent is here, not only when the tree is empty: on a first
+  // launch the window already has a tab of its own, and without this the panel
+  // would explain nothing to the person who has just opened the application.
   if (agents.length === 0) {
-    agentSection.append(
-      el('div', 'empty', `No agent is connected. Point one at ${projectName} and it will show up here.`),
-    )
-  } else {
-    for (const agent of agents) {
-      const row = el('div', 'agent')
-      row.append(el('span', 'dot'))
-      row.append(el('span', '', agent.label))
-      row.append(el('span', 'ide', agent.ide))
-      agentSection.append(row)
+    tree.append(el('div', 'empty', `No agent is connected. Point one at ${projectName} and it will show up here.`))
+  }
+
+  for (const group of groups) {
+    const key = groupKey(group)
+    const open = expanded.has(key)
+    tree.append(groupRow(group, open, key))
+    if (!open) continue
+
+    if (group.tabs.length === 0) {
+      tree.append(depth(el('div', 'empty note', 'no tab yet'), 1))
+      continue
+    }
+    for (const entry of group.tabs) {
+      const tabId = tabKey(group, entry.tab)
+      const tabOpen = expanded.has(tabId)
+      tree.append(tabRow(entry.tab, entry.commands.length, tabOpen, tabId))
+      if (!tabOpen) continue
+      if (entry.commands.length === 0) {
+        tree.append(depth(el('div', 'empty note', 'nothing done here yet'), 2))
+        continue
+      }
+      for (const command of entry.commands) tree.append(commandRow(command))
     }
   }
-  wrap.append(agentSection)
+  return tree
+}
 
-  const log = el('div', 'log')
-  const heading = el('h2', '', 'What happened')
-  heading.style.margin = '0 0 8px'
-  heading.style.fontSize = '0.85rem'
-  heading.style.letterSpacing = '0.04em'
-  heading.style.textTransform = 'uppercase'
-  heading.style.color = 'var(--text-dim)'
-  log.append(heading)
+function groupRow(group: TreeGroup, open: boolean, key: string): HTMLElement {
+  const row = depth(el('div', 'row group'), 0)
+  row.append(twist(open))
+  if (group.id !== null) row.append(el('span', 'dot'))
+  row.append(el('span', 'name', group.label))
+  if (group.ide) row.append(el('span', 'ide', group.ide))
+  row.onclick = () => toggle(key)
+  return row
+}
 
-  if (activity.length === 0) {
-    log.append(el('div', 'empty', 'Every action an agent takes is listed here as it happens.'))
-  } else {
-    for (const entry of activity) {
-      const row = el('div', 'entry')
-      row.append(el('span', 'who', entry.agent))
-      row.append(el('span', 'when', clock(entry.at)))
-      row.append(el('span', 'what', entry.text))
-      log.append(row)
-    }
+function tabRow(tab: TabDescriptor, count: number, open: boolean, key: string): HTMLElement {
+  const row = depth(el('div', 'row tab'), 1)
+  if (tab.active) row.classList.add('active')
+  if (tab.heldBy) row.classList.add('held')
+  if (tab.waitingForHuman) row.classList.add('waiting')
+
+  const arrow = twist(open)
+  arrow.onclick = (event) => {
+    event.stopPropagation()
+    toggle(key)
   }
-  wrap.append(log)
-  return wrap
+  row.append(arrow)
+
+  if (tab.waitingForHuman) row.append(el('span', 'mark', '✋'))
+  else if (tab.heldBy) row.append(el('span', 'mark', '●'))
+
+  const title = el('span', 'name', tab.title || hostOf(tab.url) || 'New tab')
+  title.title = tab.heldBy ? `${tab.title}\nheld by ${tab.heldBy}` : tab.title
+  row.append(title)
+  if (count > 0) row.append(el('span', 'count', String(count)))
+
+  const close = el('span', 'close', '✕')
+  close.onclick = (event) => {
+    event.stopPropagation()
+    void ab.closeTab(projectId, tab.id)
+  }
+  row.append(close)
+
+  // Clicking the tab itself brings the page forward; the triangle is the only
+  // part that folds it.
+  row.onclick = () => void ab.selectTab(projectId, tab.id)
+  return row
+}
+
+function commandRow(command: AgentCommand): HTMLElement {
+  const row = depth(el('div', 'row cmd'), 2)
+  row.append(el('span', 'when', clock(command.at)))
+  row.append(el('span', 'what', command.text))
+  return row
+}
+
+function toggle(key: string): void {
+  if (expanded.has(key)) expanded.delete(key)
+  else expanded.add(key)
+  render()
 }
 
 // ---------------------------------------------------------------------- utils
@@ -225,6 +198,16 @@ function el(tag: string, className = '', text = ''): HTMLElement {
   if (className) node.className = className
   if (text) node.textContent = text
   return node
+}
+
+/** Indentation is a custom property so a level is one number, not a stylesheet. */
+function depth(node: HTMLElement, level: number): HTMLElement {
+  node.style.setProperty('--depth', String(level))
+  return node
+}
+
+function twist(open: boolean): HTMLElement {
+  return el('span', open ? 'twist open' : 'twist', '▸')
 }
 
 function button(label: string, onClick: () => void, title = ''): HTMLElement {
@@ -258,14 +241,19 @@ function clock(at: number): string {
 
 ab.on('tabs', (payload) => {
   tabs = payload as TabDescriptor[]
+  // A closed tab's history has no reader left, and a window open all day would
+  // otherwise keep every call made in every tab it ever had.
+  const alive = new Set(tabs.map((tab) => tab.id))
+  for (const tabId of commands.keys()) if (!alive.has(tabId)) commands.delete(tabId)
   render()
 })
 ab.on('agents', (payload) => {
   agents = payload as AgentRow[]
   render()
 })
-ab.on('activity', (payload) => {
-  activity = payload as ActivityRow[]
+ab.on('commands', (payload) => {
+  const { tabId, commands: list } = payload as { tabId: string; commands: AgentCommand[] }
+  commands.set(tabId, list)
   render()
 })
 
@@ -273,7 +261,7 @@ void ab.state(projectId).then((state) => {
   if (!state) return
   tabs = state.tabs
   agents = state.agents
-  activity = state.activity
+  for (const [tabId, list] of Object.entries(state.commands)) commands.set(tabId, list)
   render()
 })
 

@@ -37,6 +37,24 @@ export interface TabDescriptor {
   heldBy: string | null
   /** Set while the tab is waiting for the person to finish something. */
   waitingForHuman: string | null
+  /** The agent that opened the tab, or `null` when the person did. */
+  openedBy: string | null
+}
+
+/**
+ * One thing an actor did in a tab.
+ *
+ * This never rides on `TabDescriptor`: that type goes to every agent on
+ * `tab-opened` and `tab-navigated`, and the tab list is re-sent on every title
+ * change, so a history hung off it would cross the wire dozens of times a
+ * minute to readers with no use for it. The panel gets it on its own channel.
+ */
+export interface AgentCommand {
+  at: number
+  /** The agent that made the call, or `null` when the person did. */
+  agentId: string | null
+  agentLabel: string
+  text: string
 }
 
 export type ClientMessage =

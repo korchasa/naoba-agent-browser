@@ -153,6 +153,9 @@ function numberFlag(name: string, fallback: number): number {
   return Number.isFinite(value) ? value : fallback
 }
 
+/** The person, as an actor in a tab's history. */
+const YOU = { id: null, label: 'you' }
+
 /** What the window's own interface can ask the main process to do. */
 function wireChrome(hub: Hub): void {
   const contextOf = (projectId: string) => hub.contexts.get(projectId) ?? null
@@ -169,7 +172,7 @@ function wireChrome(hub: Hub): void {
         ide: agent.descriptor.ide,
         tabId: agent.currentTabId,
       })),
-      activity: context.activity.slice(0, 60),
+      commands: context.commandsByTab(),
     }
   })
 
@@ -177,7 +180,7 @@ function wireChrome(hub: Hub): void {
     const context = contextOf(projectId)
     if (!context) return null
     const tab = context.openTab(url ? normalizeUrl(url) : undefined)
-    context.log('you', `opened a tab`, tab.id)
+    context.log(YOU, `opened a tab`, tab.id)
     return context.describeTab(tab)
   })
 
@@ -196,7 +199,7 @@ function wireChrome(hub: Hub): void {
     const tab = context?.tab(tabId)
     if (!context || !tab) return false
     await tab.navigate(normalizeUrl(url))
-    context.log('you', `went to ${url}`, tabId)
+    context.log(YOU, `went to ${url}`, tabId)
     return true
   })
 
@@ -205,7 +208,7 @@ function wireChrome(hub: Hub): void {
     const context = contextOf(projectId)
     if (!context) return false
     context.leases.takeOver(tabId, { kind: 'human' })
-    context.log('you', 'took over this tab', tabId)
+    context.log(YOU, 'took over this tab', tabId)
     return true
   })
 
@@ -213,7 +216,7 @@ function wireChrome(hub: Hub): void {
     const context = contextOf(projectId)
     if (!context) return false
     context.leases.release(tabId, { kind: 'human' })
-    context.log('you', 'gave the tab back', tabId)
+    context.log(YOU, 'gave the tab back', tabId)
     return true
   })
 
@@ -223,15 +226,8 @@ function wireChrome(hub: Hub): void {
     const pending = context?.pendingHuman.get(tabId)
     if (!context || !pending) return false
     pending.resolve('done')
-    context.log('you', 'finished what the agent asked for', tabId)
+    context.log(YOU, 'finished what the agent asked for', tabId)
     return true
-  })
-
-  ipcMain.on('ab:chrome-height', (_event, projectId: string, height: number) => {
-    if (process.env.AB_SNAPSHOT_DEBUG) {
-      process.stdout.write(`chrome-height ${projectId} ${height} ctx=${!!contextOf(projectId)}\n`)
-    }
-    contextOf(projectId)?.setChromeHeight(height)
   })
 
   ipcMain.handle('ab:projects', () => hub.admissions())
