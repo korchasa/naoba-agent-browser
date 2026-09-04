@@ -4,7 +4,7 @@
  * in, and what each did there.
  */
 import type { AgentCommand, TabDescriptor } from '../main/protocol.ts'
-import { type AgentRow, buildTree, expandNew, groupKey, tabKey, type Tree, type TreeGroup, type TreeTab } from './tree.ts'
+import { type AgentRow, buildTree, expandNew, groupKey, tabKey, type TreeGroup, type TreeTab } from './tree.ts'
 
 declare const ab: {
   state(projectId: string): Promise<
@@ -43,13 +43,13 @@ function activeTab(): TabDescriptor | null {
 }
 
 function render(): void {
-  const tree = buildTree(tabs, agents, commands)
-  expandNew(tree, seen, expanded)
+  const groups = buildTree(tabs, agents, commands)
+  expandNew(groups, seen, expanded)
   root.innerHTML = ''
-  root.append(renderPanel(tree))
+  root.append(renderPanel(groups))
 }
 
-function renderPanel(tree: Tree): HTMLElement {
+function renderPanel(groups: TreeGroup[]): HTMLElement {
   const wrap = el('div', 'panel')
 
   // The window buttons sit over the top-left of the content, so the panel keeps
@@ -77,7 +77,7 @@ function renderPanel(tree: Tree): HTMLElement {
     wrap.append(held)
   }
 
-  wrap.append(renderTree(tree))
+  wrap.append(renderTree(groups))
   wrap.append(renderFoot())
   return wrap
 }
@@ -114,7 +114,7 @@ function renderBar(): HTMLElement {
 
 // ------------------------------------------------------------------- the tree
 
-function renderTree(tree: Tree): HTMLElement {
+function renderTree(groups: TreeGroup[]): HTMLElement {
   const root = el('div', 'tree')
   // Said whenever no agent is here, not only when the tree is empty: on a first
   // launch the window already has a tab of its own, and without this the panel
@@ -130,7 +130,7 @@ function renderTree(tree: Tree): HTMLElement {
     root.append(empty)
   }
 
-  for (const [at, group] of tree.groups.entries()) {
+  for (const [at, group] of groups.entries()) {
     const key = groupKey(group)
     const open = expanded.has(key)
     root.append(groupRow(group, open, key, at))
@@ -140,31 +140,30 @@ function renderTree(tree: Tree): HTMLElement {
       root.append(depth(el('div', 'empty note', 'no tab yet'), 1))
       continue
     }
-    for (const entry of group.tabs) renderTab(root, group, entry, 1)
+    for (const entry of group.tabs) renderTab(root, group, entry)
   }
-  // Tabs with no agent stand on their own, after the agents and at their level.
-  for (const entry of tree.loose) renderTab(root, null, entry, 0)
   return root
 }
 
-function renderTab(into: HTMLElement, group: TreeGroup | null, entry: TreeTab, level: number): void {
+function renderTab(into: HTMLElement, group: TreeGroup, entry: TreeTab): void {
   const key = tabKey(group, entry.tab)
   const open = expanded.has(key)
-  into.append(tabRow(entry.tab, entry.commands.length, open, key, level))
+  into.append(tabRow(entry.tab, entry.commands.length, open, key))
   if (!open) return
   if (entry.commands.length === 0) {
-    into.append(depth(el('div', 'empty note', 'nothing done here yet'), level + 1))
+    into.append(depth(el('div', 'empty note', 'nothing done here yet'), 2))
     return
   }
-  for (const command of entry.commands) into.append(commandRow(command, group?.id ?? null, level + 1))
+  for (const command of entry.commands) into.append(commandRow(command, group.id, 2))
 }
 
 function groupRow(group: TreeGroup, open: boolean, key: string, at: number): HTMLElement {
-  const row = depth(el('div', 'row group'), 0)
+  const row = depth(el('div', group.id === null ? 'row group you' : 'row group'), 0)
   row.append(twist(open))
   // Each agent keeps its colour for as long as it is connected: the dot is
-  // how a person tells three agents apart across the whole tree.
-  row.style.setProperty('--agent', `var(--agent-${at % 5})`)
+  // how a person tells three agents apart across the whole tree. The person
+  // has a colour of their own, outside the agents' run.
+  row.style.setProperty('--agent', group.id === null ? 'var(--you)' : `var(--agent-${at % 5})`)
   row.append(el('span', 'dot'))
   row.append(el('span', 'name', group.label))
   if (group.ide) row.append(el('span', 'ide', group.ide))
@@ -172,8 +171,8 @@ function groupRow(group: TreeGroup, open: boolean, key: string, at: number): HTM
   return row
 }
 
-function tabRow(tab: TabDescriptor, count: number, open: boolean, key: string, level: number): HTMLElement {
-  const row = depth(el('div', 'row tab'), level)
+function tabRow(tab: TabDescriptor, count: number, open: boolean, key: string): HTMLElement {
+  const row = depth(el('div', 'row tab'), 1)
   if (tab.active) row.classList.add('active')
   if (tab.heldBy) row.classList.add('held')
   if (tab.waitingForHuman) row.classList.add('waiting')

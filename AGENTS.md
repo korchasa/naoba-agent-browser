@@ -34,12 +34,13 @@ state must go through the project's own session, never through
 
 ## Things learned the hard way
 
-- **The tree has no section for the person.** A tab hangs under the agent
-  that opened it, and everything done in it — by that agent, another agent or
-  the person — is one history, with a name on the calls made by anybody else.
-  Tabs with no agent stand loose at the top level. The earlier "Yours" section
-  listed a tab under every actor who had touched it, so one press of Reload
-  made an agent's tab appear twice, and read as a defect (2026-09-05).
+- **A tab has one place in the tree.** It hangs under the actor that opened
+  it — an agent, or the person, who is drawn as one more group with a colour
+  and a badge — and everything done in it, by anyone, is one history with a
+  name on the calls made by anybody else. A tab whose agent has gone falls to
+  the person's group. The earlier tree listed a tab under every actor who had
+  touched it, so one press of Reload made an agent's tab appear twice, and
+  read as a defect (2026-09-05).
 - **A departed agent's tabs close after a grace period, not at once.** A
   session that restarts comes back as a new agent and wants the page it was
   on; `--orphan-close-ms` (default five minutes) is how long that page waits.

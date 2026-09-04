@@ -8,10 +8,12 @@ export interface AgentRow {
   tabId: string | null
 }
 
-/** An agent and the tabs it opened. */
+/** One actor and the tabs it opened: an agent, or the person. */
 export interface TreeGroup {
-  id: string
+  /** The agent's id, or `null` for the person. */
+  id: string | null
   label: string
+  /** The badge: the agent's IDE, or `you`. */
   ide: string
   tabs: TreeTab[]
 }
@@ -22,16 +24,6 @@ export interface TreeTab {
   commands: AgentCommand[]
 }
 
-export interface Tree {
-  groups: TreeGroup[]
-  /**
-   * Tabs with no agent to hang under: opened by the person, or left behind by
-   * an agent that has gone. They stand at the top level with no heading —
-   * a heading would make an actor out of a section.
-   */
-  loose: TreeTab[]
-}
-
 /**
  * Turn the window's state into the levels the panel draws.
  *
@@ -39,12 +31,17 @@ export interface Tree {
  * made in it, whoever made it. So a tab borrowed with `selectTab` stays in
  * one place, and the borrower's calls read in order next to the owner's,
  * marked with the borrower's name. The person's own actions land the same way.
+ *
+ * The person is an actor like the others, drawn last: their group holds the
+ * tabs they opened by hand and any tab whose agent has gone — a tab in no
+ * branch would be one nobody can select or close. The group is left out
+ * while it is empty.
  */
 export function buildTree(
   tabs: readonly TabDescriptor[],
   agents: readonly AgentRow[],
   commands: ReadonlyMap<string, readonly AgentCommand[]>,
-): Tree {
+): TreeGroup[] {
   const groups: TreeGroup[] = agents.map((agent) => ({
     id: agent.id,
     label: agent.label,
@@ -52,22 +49,21 @@ export function buildTree(
     tabs: [],
   }))
   const byAgent = new Map(groups.map((group) => [group.id, group]))
-  const loose: TreeTab[] = []
+  const mine: TreeGroup = { id: null, label: 'you', ide: 'you', tabs: [] }
   for (const tab of [...tabs].sort((a, b) => a.index - b.index)) {
     const entry: TreeTab = { tab, commands: [...(commands.get(tab.id) ?? [])] }
     const owner = tab.openedBy ? byAgent.get(tab.openedBy) : undefined
-    if (owner) owner.tabs.push(entry)
-    else loose.push(entry)
+    ;(owner ?? mine).tabs.push(entry)
   }
-  return { groups, loose }
+  return mine.tabs.length > 0 ? [...groups, mine] : groups
 }
 
 export function groupKey(group: TreeGroup): string {
-  return `group:${group.id}`
+  return `group:${group.id ?? 'you'}`
 }
 
-export function tabKey(group: TreeGroup | null, tab: TabDescriptor): string {
-  return `tab:${group?.id ?? 'loose'}:${tab.id}`
+export function tabKey(group: TreeGroup, tab: TabDescriptor): string {
+  return `tab:${group.id ?? 'you'}:${tab.id}`
 }
 
 /**
@@ -80,20 +76,18 @@ export function tabKey(group: TreeGroup | null, tab: TabDescriptor): string {
  * the person had just folded shut. So each key is decided once, when it first
  * turns up, and never again.
  */
-export function expandNew(tree: Tree, seen: Set<string>, open: Set<string>): void {
-  const tabs: [TreeGroup | null, TreeTab][] = tree.loose.map((entry) => [null, entry])
-  for (const group of tree.groups) {
+export function expandNew(groups: readonly TreeGroup[], seen: Set<string>, open: Set<string>): void {
+  for (const group of groups) {
     const key = groupKey(group)
     if (!seen.has(key)) {
       seen.add(key)
       open.add(key)
     }
-    for (const entry of group.tabs) tabs.push([group, entry])
-  }
-  for (const [group, entry] of tabs) {
-    const tab = tabKey(group, entry.tab)
-    if (seen.has(tab)) continue
-    seen.add(tab)
-    if (entry.tab.active) open.add(tab)
+    for (const entry of group.tabs) {
+      const tab = tabKey(group, entry.tab)
+      if (seen.has(tab)) continue
+      seen.add(tab)
+      if (entry.tab.active) open.add(tab)
+    }
   }
 }

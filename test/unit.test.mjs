@@ -174,7 +174,7 @@ const tabAt = (index, id, openedBy, extra = {}) => ({
 const said = (agentId, agentLabel, text) => ({ at: 1, agentId, agentLabel, text })
 
 test('a tab hangs under the agent that opened it', () => {
-  const { groups, loose } = buildTree(
+  const groups = buildTree(
     [tabAt(0, 'tab-a', 'agent-1')],
     [{ id: 'agent-1', label: 'claude', ide: 'claude', tabId: 'tab-a' }],
     new Map(),
@@ -182,7 +182,6 @@ test('a tab hangs under the agent that opened it', () => {
   assert.equal(groups.length, 1)
   assert.equal(groups[0].id, 'agent-1')
   assert.deepEqual(groups[0].tabs.map((entry) => entry.tab.id), ['tab-a'])
-  assert.deepEqual(loose, [])
 })
 
 test('a borrowed tab stays in one place, and its history keeps every call in order', () => {
@@ -194,7 +193,7 @@ test('a borrowed tab stays in one place, and its history keeps every call in ord
     'tab-a',
     [said('agent-2', 'codex', 'click(button.pay)'), said('agent-1', 'claude', 'fill(#coupon)'), said(null, 'you', 'went to /')],
   ]])
-  const { groups } = buildTree(
+  const groups = buildTree(
     [tabAt(0, 'tab-a', 'agent-1')],
     [
       { id: 'agent-1', label: 'claude', ide: 'claude', tabId: 'tab-a' },
@@ -206,43 +205,42 @@ test('a borrowed tab stays in one place, and its history keeps every call in ord
   assert.deepEqual(groups[0].tabs[0].commands.map((entry) => entry.text), ['click(button.pay)', 'fill(#coupon)', 'went to /'])
 })
 
-test('a tab the person opened stands loose, after the agents', () => {
-  const { groups, loose } = buildTree(
+test('the tabs a person opened are a group of their own, and it comes last', () => {
+  const groups = buildTree(
     [tabAt(0, 'mine', null), tabAt(1, 'theirs', 'agent-1')],
     [{ id: 'agent-1', label: 'claude', ide: 'claude', tabId: 'theirs' }],
     new Map(),
   )
-  assert.deepEqual(groups.map((group) => group.id), ['agent-1'])
-  assert.deepEqual(loose.map((entry) => entry.tab.id), ['mine'])
+  assert.deepEqual(groups.map((group) => group.id), ['agent-1', null])
+  assert.deepEqual(groups.at(-1).tabs.map((entry) => entry.tab.id), ['mine'])
+  assert.equal(groups.at(-1).ide, 'you')
 })
 
-test('a tab whose agent has gone stands loose, never out of the tree', () => {
+test('a tab whose agent has gone falls to the person, never out of the tree', () => {
   // Otherwise it is in the window and in no branch: nobody can select it and
   // nobody can close it.
-  const { groups, loose } = buildTree([tabAt(0, 'orphan', 'agent-gone')], [], new Map())
-  assert.deepEqual(groups, [])
-  assert.deepEqual(loose.map((entry) => entry.tab.id), ['orphan'])
+  const groups = buildTree([tabAt(0, 'orphan', 'agent-gone')], [], new Map())
+  assert.deepEqual(groups.map((group) => group.id), [null])
+  assert.deepEqual(groups[0].tabs.map((entry) => entry.tab.id), ['orphan'])
 })
 
 test('an agent with no tab still has a place in the tree', () => {
-  const { groups } = buildTree([], [{ id: 'agent-1', label: 'claude', ide: 'claude', tabId: null }], new Map())
+  const groups = buildTree([], [{ id: 'agent-1', label: 'claude', ide: 'claude', tabId: null }], new Map())
   assert.deepEqual(groups.map((group) => group.id), ['agent-1'])
   assert.deepEqual(groups[0].tabs, [])
 })
 
 test('the tree opens on every agent and on the tab in front', () => {
-  const tree = buildTree(
-    [tabAt(0, 'tab-a', 'agent-1', { active: true }), tabAt(1, 'tab-b', 'agent-1'), tabAt(2, 'mine', null)],
+  const groups = buildTree(
+    [tabAt(0, 'tab-a', 'agent-1', { active: true }), tabAt(1, 'tab-b', 'agent-1')],
     [{ id: 'agent-1', label: 'claude', ide: 'claude', tabId: 'tab-a' }],
     new Map(),
   )
   const open = new Set()
-  expandNew(tree, new Set(), open)
-  const [group] = tree.groups
-  assert.ok(open.has(groupKey(group)))
-  assert.ok(open.has(tabKey(group, group.tabs[0].tab)))
-  assert.ok(!open.has(tabKey(group, group.tabs[1].tab)))
-  assert.ok(!open.has(tabKey(null, tree.loose[0].tab)))
+  expandNew(groups, new Set(), open)
+  assert.ok(open.has(groupKey(groups[0])))
+  assert.ok(open.has(tabKey(groups[0], groups[0].tabs[0].tab)))
+  assert.ok(!open.has(tabKey(groups[0], groups[0].tabs[1].tab)))
 })
 
 test('an agent that connects later opens too, and a branch folded by hand stays folded', () => {
@@ -252,7 +250,7 @@ test('an agent that connects later opens too, and a branch folded by hand stays 
   const open = new Set()
   const first = buildTree([], [{ id: 'agent-1', label: 'claude', ide: 'claude', tabId: null }], new Map())
   expandNew(first, seen, open)
-  open.delete(groupKey(first.groups[0]))
+  open.delete(groupKey(first[0]))
 
   const later = buildTree([], [
     { id: 'agent-1', label: 'claude', ide: 'claude', tabId: null },
@@ -260,8 +258,8 @@ test('an agent that connects later opens too, and a branch folded by hand stays 
   ], new Map())
   expandNew(later, seen, open)
 
-  assert.ok(!open.has(groupKey(later.groups[0])), 'the folded branch stays folded')
-  assert.ok(open.has(groupKey(later.groups[1])), 'the new agent opens')
+  assert.ok(!open.has(groupKey(later[0])), 'the folded branch stays folded')
+  assert.ok(open.has(groupKey(later[1])), 'the new agent opens')
 })
 
 test('a tab keeps its newest calls and drops the oldest', () => {

@@ -300,6 +300,11 @@ input.url:focus {
   font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
 }
+.row.group.you .ide {
+  color: var(--color-accent-800);
+  background: var(--color-accent-100);
+}
+
 .row.cmd .who {
   flex: none;
   font-size: 0.85rem;
