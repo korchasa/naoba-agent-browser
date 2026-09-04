@@ -34,6 +34,10 @@ state must go through the project's own session, never through
 
 ## Things learned the hard way
 
+- **Every colour lives in `src/renderer/palette.css`.** The panel and the
+  snapshot demo page both link it, so a tint changes in one place. A colour
+  literal anywhere else in the renderer is a defect: the demo page kept a
+  blue button through two accent changes because it carried its own hex.
 - **Input goes through the DevTools protocol, not `sendInputEvent`.** Both look
   trusted to the page, but `sendInputEvent` is delivered through the window and
   does nothing when that window is hidden.

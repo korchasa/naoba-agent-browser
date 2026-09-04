@@ -47,6 +47,7 @@ await build({
 })
 
 await cp(join(root, 'src/renderer/chrome.html'), join(out, 'chrome.html'))
+await cp(join(root, 'src/renderer/palette.css'), join(out, 'palette.css'))
 await cp(join(root, 'src/renderer/chrome.css'), join(out, 'chrome.css'))
 await cp(join(root, 'src/renderer/demo.html'), join(out, 'demo.html'))
 

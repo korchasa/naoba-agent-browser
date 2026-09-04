@@ -1,0 +1,78 @@
+/* The palette: every colour Naoba draws, in one place. The panel and the
+   demo page both link this file, so a tint chosen here lands everywhere.
+   Nothing else in the renderer may spell a colour literal. */
+
+/* Tokens of the "Modern MacOS/iOS" design system (Modernist Native): warm
+   neutrals, one tint, SF through the system stack, continuous-corner radii
+   and hairline dividers. Kept verbatim except the tint: the system's red is
+   swapped for a pastel green that suits a browser, with a ramp of the same
+   shape (100 tint, 600 hover, 700 press, 800 text on the 100 tint). */
+:root {
+  --color-bg: #f3f2f2;
+  --color-surface: #ffffff;
+  --color-text: #201e1d;
+  --color-accent: #6dbf94;
+  --color-accent-600: #5db386;
+  --color-accent-700: #3f8f66;
+  --color-accent-100: #e9f6ee;
+  --color-accent-800: #1f5a3d;
+  --color-divider: color-mix(in srgb, #201e1d 16%, transparent);
+  --material-bar: color-mix(in srgb, #f3f2f2 78%, transparent);
+  --color-neutral-200: #eae7e7;
+  --color-neutral-800: #444141;
+  --font-body: -apple-system, BlinkMacSystemFont, "Helvetica Neue", system-ui, sans-serif;
+  --font-mono: ui-monospace, Menlo, monospace;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-full: 999px;
+  --shadow-sm: 0 1px 2px color-mix(in srgb, #2d2b2b 12%, transparent);
+  --shadow-md: 0 3px 12px color-mix(in srgb, #2d2b2b 15%, transparent);
+
+  /* Derived roles the system leaves to the page. */
+  --on-accent: #0f2e1f;
+  --page-bg: var(--color-surface);
+  --page-text: var(--color-text);
+  --text: var(--color-text);
+  --text-dim: color-mix(in srgb, var(--color-text) 55%, transparent);
+  --text-faint: color-mix(in srgb, var(--color-text) 30%, transparent);
+  --fill: color-mix(in srgb, var(--color-text) 6%, transparent);
+  --fill-strong: color-mix(in srgb, var(--color-text) 12%, transparent);
+  --select: color-mix(in srgb, var(--color-text) 8%, transparent);
+  --accent: var(--color-accent);
+  --held: var(--color-accent-700);
+  --ok: #2f8f5b;
+  /* One colour per agent: the tint first, then ink steps, so a fourth agent
+     is still told apart without a second hue entering the system. */
+  --agent-0: var(--color-accent);
+  --agent-1: var(--color-text);
+  --agent-2: var(--color-accent-700);
+  --agent-3: var(--color-neutral-800);
+  --agent-4: var(--color-accent-600);
+  /* One step of the tree. Rows carry their level in --depth and multiply. */
+  --indent: 16px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #1c1b1a;
+    --color-surface: #272524;
+    --color-text: #f1efee;
+    --color-accent: #86d3a9;
+    --color-accent-600: #a8e1c3;
+    --color-accent-700: #c9edd9;
+    --color-accent-100: #173d2a;
+    --color-accent-800: #e0f5e9;
+    --color-divider: color-mix(in srgb, #f1efee 16%, transparent);
+    --material-bar: color-mix(in srgb, #1c1b1a 72%, transparent);
+    --color-neutral-200: #444141;
+    --color-neutral-800: #eae7e7;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+    --shadow-md: 0 3px 12px rgba(0, 0, 0, 0.55);
+    --ok: #5ccf8a;
+  }
+}

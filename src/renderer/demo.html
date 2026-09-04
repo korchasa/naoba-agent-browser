@@ -3,25 +3,22 @@
   <head>
     <meta charset="utf-8" />
     <title>Checkout — Example Shop</title>
+    <!-- The stand-in page of the store screenshots. Its colours come from
+         palette.css, the same file the panel uses. -->
+    <link rel="stylesheet" href="palette.css" />
     <style>
     :root {
       color-scheme: light dark;
     }
     body {
       margin: 0;
-      font: 15px/1.55 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-      color: #1a1a1e;
-      background: #fff;
-    }
-    @media (prefers-color-scheme: dark) {
-      body {
-        color: #f0f0f4;
-        background: #131316;
-      }
+      font: 15px/1.55 var(--font-body);
+      color: var(--page-text);
+      background: var(--page-bg);
     }
     header {
       padding: 18px 32px;
-      border-bottom: 1px solid rgba(128,128,140,0.28);
+      border-bottom: 1px solid var(--color-divider);
       font-weight: 600;
     }
     main {
@@ -34,18 +31,13 @@
     }
     p.lede {
       margin: 0 0 22px;
-      color: #6a6a72;
-    }
-    @media (prefers-color-scheme: dark) {
-      p.lede {
-        color: #9a9aa4;
-      }
+      color: var(--text-dim);
     }
     .row {
       display: flex;
       justify-content: space-between;
       padding: 11px 0;
-      border-bottom: 1px solid rgba(128,128,140,0.2);
+      border-bottom: 1px solid var(--color-divider);
     }
     .total {
       font-weight: 600;
@@ -61,8 +53,8 @@
       flex: 1;
       font: inherit;
       padding: 9px 12px;
-      border-radius: 8px;
-      border: 1px solid rgba(128,128,140,0.4);
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--color-divider);
       background: transparent;
       color: inherit;
     }
@@ -70,16 +62,17 @@
       font: inherit;
       padding: 9px 18px;
       border: none;
-      border-radius: 8px;
-      background: #2f6df6;
-      color: #fff;
-      font-weight: 500;
+      border-radius: var(--radius-sm);
+      background: var(--color-accent);
+      color: var(--on-accent);
+      font-weight: 600;
     }
     .note {
       margin-top: 26px;
       padding: 14px 16px;
-      border-radius: 9px;
-      background: rgba(47,109,246,0.1);
+      border-radius: var(--radius-md);
+      background: var(--color-accent-100);
+      color: var(--color-accent-800);
     }
     </style>
   </head>

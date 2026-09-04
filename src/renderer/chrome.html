@@ -2,11 +2,12 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <!-- 'self' covers chrome.css and chrome.js; without it the stylesheet is
-         blocked and the window renders as unstyled serif text. -->
+    <!-- 'self' covers palette.css, chrome.css and chrome.js; without it the
+         stylesheets are blocked and the window renders as unstyled serif text. -->
     <meta http-equiv="Content-Security-Policy"
       content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'" />
     <title>Naoba</title>
+    <link rel="stylesheet" href="palette.css" />
     <link rel="stylesheet" href="chrome.css" />
   </head>
   <body>
