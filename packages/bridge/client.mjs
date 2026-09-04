@@ -35,6 +35,14 @@ export class AppClient {
   }
 
   async connect(port) {
+    // `findPort` answers null when nothing is listening, and passing that
+    // straight to node gives ERR_INVALID_ARG_TYPE about `options.port` — an
+    // error about an argument, when the fact is that the browser is not up.
+    if (port === null || port === undefined) {
+      throw new Error(
+        'Agent Browser is not running: nothing is listening on its port range. Start the application and try again.',
+      )
+    }
     await new Promise((resolve, reject) => {
       const socket = connect({ port, host: '127.0.0.1' }, () => {
         socket.setNoDelay(true)

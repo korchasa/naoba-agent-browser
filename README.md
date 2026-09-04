@@ -146,6 +146,12 @@ another rather than interleaving. `claimTab` holds a tab across several calls
 for a scenario that must not be interrupted, and the person can always take it
 back.
 
+An agent's tabs belong to it and close when it disconnects, so a day of sessions
+starting and finishing does not leave a window full of pages nobody is reading.
+Tabs the person opened stay. That also means a tab you take over from an agent
+goes away when that agent's session ends — copy the address out if you want to
+keep it.
+
 ## Commands
 
 - `deno task check` — types and build

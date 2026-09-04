@@ -40,7 +40,7 @@ Frames
 
 Moving around
   api.navigate(url) / api.goBack() / api.goForward() / api.reload() / api.waitForLoad()
-  api.getTabs() / api.newTab(url?) / api.selectTab(indexOrId) / api.closeTab(indexOrId?)
+  api.getTabs() / api.newTab(url) / api.selectTab(indexOrId) / api.closeTab(indexOrId?)
   api.currentTab()                   the tab your calls act on; each agent gets
                                      its own, so this is the id to pass another
                                      agent when you want to share one

@@ -275,9 +275,10 @@ export class ProjectContext {
 
   // --------------------------------------------------------------------- tabs
 
-  openTab(url?: string): Tab {
+  openTab(url?: string, openedBy: string | null = null): Tab {
     this.window()
     const tab = new Tab(this.session, this.#paths.preload)
+    tab.openedBy = openedBy
     this.#tabs.push(tab)
     this.#window?.contentView.addChildView(tab.view)
     this.#activeTabId = tab.id
@@ -285,7 +286,7 @@ export class ProjectContext {
     tab.wc.setWindowOpenHandler(({ url: target }) => {
       // A page opening a window becomes a tab, never a stray window the agent
       // cannot see or the person cannot close.
-      const child = this.openTab(target)
+      const child = this.openTab(target, tab.openedBy)
       void child
       return { action: 'deny' }
     })
@@ -364,7 +365,7 @@ export class ProjectContext {
       const chosen = this.tab(agent.currentTabId)
       if (chosen && !chosen.destroyed) return chosen
     }
-    const fresh = this.openTab()
+    const fresh = this.openTab(undefined, agent.id)
     agent.currentTabId = fresh.id
     return fresh
   }
@@ -408,6 +409,12 @@ export class ProjectContext {
         this.pendingHuman.delete(tabId)
         pending.resolve('cancelled')
       }
+    }
+    // Everything this agent opened goes with it. Sessions come and go all day;
+    // without this the window fills with pages nobody is reading — twelve blank
+    // tabs out of twenty-seven after ten minutes of four agents working.
+    for (const tabId of this.#tabs.filter((tab) => tab.openedBy === agentId).map((tab) => tab.id)) {
+      this.closeTab(tabId)
     }
     this.broadcast({ type: 'agent-left', agentId })
     this.notifyAgents()

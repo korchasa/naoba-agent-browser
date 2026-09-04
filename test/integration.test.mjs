@@ -203,6 +203,95 @@ test('a frame is reachable: read it, type in it, click in it', async () => {
   agent.close()
 })
 
+test('a tab an agent opened leaves with the agent', async () => {
+  const watcher = await app.agent(PROJECT_A, 'tab-watcher')
+  const leaver = await app.agent(PROJECT_A, 'tab-leaver')
+
+  // The watcher runs first so that its own tab is part of the baseline: what is
+  // measured here is what the leaver adds and what it takes away with it.
+  const baseline = await watcher.run(`return (await api.getTabs()).length`)
+  const opened = await leaver.run(`
+    const tab = await api.newTab(${JSON.stringify(origin + '/second.html')})
+    return tab.id
+  `)
+
+  const during = await watcher.run(`return (await api.getTabs()).map((tab) => tab.id)`)
+  assert.ok(during.value.includes(opened.value), 'the tab should be there while its agent is')
+  // One tab per agent, not two: the tab an agent is given before its script
+  // runs is the one `newTab` uses, rather than an empty one left beside it.
+  assert.equal(during.value.length, baseline.value + 1, `the leaver added ${during.value.length - baseline.value} tabs`)
+
+  leaver.close()
+  await new Promise((resolve) => setTimeout(resolve, 500))
+
+  // Sessions come and go all day. Without this the window fills with pages
+  // nobody is reading: twelve blank tabs out of twenty-seven after ten minutes
+  // of four agents working.
+  const after = await watcher.run(`return (await api.getTabs()).map((tab) => tab.id)`)
+  assert.ok(!after.value.includes(opened.value), 'the tab should have gone with its agent')
+  assert.equal(after.value.length, baseline.value, 'nothing of the leaver should be left')
+  watcher.close()
+})
+
+test('connecting when the browser is not running says exactly that', async () => {
+  const { AppClient } = await import('../packages/bridge/client.mjs')
+  // Passing a null port straight to node gives ERR_INVALID_ARG_TYPE about
+  // `options.port`, which reads as a bug in the caller rather than as a browser
+  // that is not up.
+  await assert.rejects(() => new AppClient().connect(null), /Agent Browser is not running/)
+})
+
+test('opening a tab without an address says what is missing', async () => {
+  const agent = await app.agent(PROJECT_A, 'blank-tab')
+  const outcome = await agent.run(`
+    try {
+      await api.newTab()
+      return 'no complaint'
+    } catch (error) {
+      return error.message
+    }
+  `)
+  assert.match(outcome.value, /newTab needs the address/)
+  agent.close()
+})
+
+test('a selector that never matches says which page it was looking at', async () => {
+  const agent = await app.agent(PROJECT_A, 'missing')
+  const outcome = await agent.run(`
+    await api.navigate(${JSON.stringify(origin + '/page.html')})
+    try {
+      await api.waitFor('#nothing-here', { timeout: 300 })
+      return 'no complaint'
+    } catch (error) {
+      return error.message
+    }
+  `)
+  // Reading "no element matched" alone, an agent goes hunting through its
+  // selector — three of them did, on markup that was correct, while the call
+  // was running against a different page.
+  assert.match(outcome.value, /#nothing-here/)
+  assert.match(outcome.value, /page\.html/)
+  agent.close()
+})
+
+test('a ref from a snapshot the page has replaced says so', async () => {
+  const agent = await app.agent(PROJECT_A, 'stale-ref')
+  const outcome = await agent.run(`
+    await api.navigate(${JSON.stringify(origin + '/page.html')})
+    await api.snapshot()
+    await api.navigate(${JSON.stringify(origin + '/second.html')})
+    try {
+      await api.click('ref_0', { timeout: 300 })
+      return 'no complaint'
+    } catch (error) {
+      return error.message
+    }
+  `)
+  assert.match(outcome.value, /snapshot/)
+  assert.match(outcome.value, /second\.html/)
+  agent.close()
+})
+
 test('two agents in one project share the same tabs', async () => {
   const one = await app.agent(PROJECT_A, 'shared-one')
   const two = await app.agent(PROJECT_A, 'shared-two')
@@ -304,15 +393,19 @@ test('a claimed tab keeps another agent out, and names who is holding it', async
 })
 
 test('an agent that disconnects mid-lease lets go of the tab', async () => {
-  const holder = await app.agent(PROJECT_A, 'leaver')
   const other = await app.agent(PROJECT_A, 'stayer')
+  const holder = await app.agent(PROJECT_A, 'leaver')
 
-  const held = await holder.run(`
-    await api.navigate(${JSON.stringify(origin + '/page.html')})
-    await api.claimTab({ timeout: 60000 })
-    return (await api.getTabs()).find((tab) => tab.heldBy).id
+  // The tab belongs to the agent that stays, because an agent's own tabs leave
+  // with it — what is under test here is the lease, not the tab.
+  const owned = await other.run(`
+    const tab = await api.newTab(${JSON.stringify(origin + '/page.html')})
+    return tab.id
   `)
-  await other.run(`await api.selectTab(${JSON.stringify('TAB')})`.replace('TAB', held.value))
+  await holder.run(`
+    await api.selectTab(${JSON.stringify('TAB')})
+    await api.claimTab({ timeout: 60000 })
+  `.replace('TAB', owned.value))
   holder.close()
   await new Promise((resolve) => setTimeout(resolve, 500))
 
@@ -375,7 +468,7 @@ test('a FoxCode scenario runs unchanged', async () => {
 test('the network log carries requests and their bodies', async () => {
   const agent = await app.agent(PROJECT_B, 'network')
   const outcome = await agent.run(`
-    await api.newTab()
+    await api.newTab('about:blank')
     await api.captureNetwork(true)
     await api.navigate(${JSON.stringify(origin + '/page.html')})
     await api.waitFor('#appeared', { timeout: 4000 })

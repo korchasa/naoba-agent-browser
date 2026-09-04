@@ -283,12 +283,32 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
       return context.describeTab(tab())
     },
 
-    async newTab(url?: string) {
+    async newTab(url: string) {
       context.touch()
-      const created = context.openTab(url)
+      if (typeof url !== 'string' || url.trim() === '') {
+        throw new Error(
+          'newTab needs the address of the page to open, as in newTab("https://example.com"). ' +
+            'A tab with nothing in it is not something an agent can work with.',
+        )
+      }
+      // An agent is given a tab before its script runs, so the queue has
+      // something to key on. When the script's first act is `newTab`, that tab
+      // is still empty and untouched — use it rather than leaving it behind for
+      // the rest of the session.
+      const current = agent.currentTabId ? context.tab(agent.currentTabId) : null
+      // A tab created a moment ago has committed no document yet, so its URL is
+      // the empty string rather than `about:blank` — check for both, or the
+      // reuse silently never happens.
+      const parked = current ? current.wc.getURL() : null
+      const spare = current && !current.destroyed && (parked === '' || parked === 'about:blank') &&
+        !context.leases.holderOf(current.id)
+      const created = spare ? current : context.openTab(url, agent.id)
+      // Navigating a blank tab to `about:blank` is a move to where it already
+      // is, which Chromium aborts with ERR_FAILED rather than treating as done.
+      if (spare && parked !== url && url !== 'about:blank') await created.navigate(url)
       agent.currentTabId = created.id
-      log(`newTab(${url ?? 'blank'})`)
-      if (url) await created.waitForLoad()
+      log(`newTab(${url})`)
+      await created.waitForLoad()
       return context.describeTab(created)
     },
 

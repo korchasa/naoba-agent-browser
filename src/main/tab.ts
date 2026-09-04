@@ -47,6 +47,13 @@ export class Tab {
   readonly console: ConsoleEntry[] = []
   readonly network = new Map<string, NetworkEntry>()
 
+  /**
+   * The agent that opened this tab, or null when the person did. An agent's
+   * tabs go away with it: a session that ends leaves nothing behind for the
+   * next one to wade through.
+   */
+  openedBy: string | null = null
+
   /** Resolves when the tab has a document to talk to. */
   #ready: Promise<void> = Promise.resolve()
   #consoleCapturing = false
@@ -537,6 +544,21 @@ export class Tab {
 
   // -------------------------------------------------------------------- waiting
 
+  /**
+   * An agent that reads "no element matched" goes hunting through its selector,
+   * so the message has to rule out the two things that are not the selector: a
+   * page that is not the one the agent thinks it is on, and a `ref_N` taken
+   * from a snapshot the page has since replaced. Three agents in a row lost
+   * several calls each to exactly this, on markup that was correct.
+   */
+  #nothingMatched(selector: string, timeoutMs: number, visible: boolean): string {
+    const where = `the page here is ${this.wc.getURL()} ("${this.wc.getTitle()}")`
+    if (/^ref_\d+$/.test(selector)) {
+      return `${selector} is not on this page: ${where}. A ref belongs to the snapshot() that produced it and dies when the page changes — take a fresh snapshot and use its refs.`
+    }
+    return `no ${visible ? 'visible ' : ''}element matched ${selector} within ${timeoutMs}ms; ${where}`
+  }
+
   async waitFor(selector: string, timeoutMs: number, visible: boolean): Promise<boolean> {
     const deadline = Date.now() + timeoutMs
     for (;;) {
@@ -554,7 +576,7 @@ export class Tab {
       )
       if (found) return true
       if (Date.now() >= deadline) {
-        throw new Error(`no ${visible ? 'visible ' : ''}element matched ${selector} within ${timeoutMs}ms`)
+        throw new Error(this.#nothingMatched(selector, timeoutMs, visible))
       }
       await pause(50)
     }
