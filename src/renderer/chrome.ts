@@ -1,15 +1,16 @@
 /**
  * The window's own interface: one panel down the left edge holding the address
- * bar and a tree of the agents in this project, the tabs each of them has been
- * in, and what each did there.
+ * bar and a tree of every project, the agents in each, the tabs each of them
+ * has been in, and what each did there.
  */
-import type { AgentCommand, TabDescriptor } from '../main/protocol.ts'
+import type { AgentCommand, ProjectDescriptor, TabDescriptor } from '../main/protocol.ts'
 import {
   Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   createElement,
+  Folder,
   Globe,
   Hand,
   type IconNode,
@@ -23,45 +24,64 @@ import {
 } from 'lucide'
 import {
   type AgentRow,
-  buildTree,
+  buildForest,
   expandNew,
   groupKey,
+  projectKey,
+  type ProjectState,
   SORT_MODES,
   type SortMode,
-  sortGroups,
   tabKey,
   type TreeGroup,
+  type TreeProject,
   type TreeTab,
 } from './tree.ts'
 
+interface ProjectSnapshot extends ProjectDescriptor {
+  tabs: TabDescriptor[]
+  agents: AgentRow[]
+  commands: Record<string, AgentCommand[]>
+}
+
 declare const ab: {
-  state(projectId: string): Promise<
-    { tabs: TabDescriptor[]; agents: AgentRow[]; commands: Record<string, AgentCommand[]>; port: number } | null
-  >
+  state(): Promise<{ port: number; projects: ProjectSnapshot[] }>
   newTab(projectId: string, url?: string): Promise<unknown>
   selectTab(projectId: string, tabId: string): Promise<boolean>
   closeTab(projectId: string, tabId: string): Promise<boolean>
   navigate(projectId: string, tabId: string, url: string): Promise<boolean>
-  panelWidth(projectId: string, width: number): Promise<number>
+  panelWidth(width: number): Promise<number>
   tabMenu(projectId: string, tabId: string): Promise<void>
-  projectMenu(projectId: string): Promise<void>
   quit(): Promise<void>
   takeOver(projectId: string, tabId: string): Promise<boolean>
   release(projectId: string, tabId: string): Promise<boolean>
   humanDone(projectId: string, tabId: string): Promise<boolean>
-  on(channel: 'tabs' | 'agents' | 'commands', handler: (payload: unknown) => void): () => void
+  on(channel: 'projects' | 'tabs' | 'agents' | 'commands', handler: (payload: unknown) => void): () => void
 }
 
-const params = new URLSearchParams(location.search)
-const projectId = params.get('project') ?? ''
-const projectName = params.get('name') ?? 'project'
 const root = document.getElementById('root')!
 
-let tabs: TabDescriptor[] = []
-let agents: AgentRow[] = []
+/** Every project the main process has told the panel about, in arrival order. */
+const projects = new Map<string, ProjectState>()
 /** Where agents connect; shown in the foot once the main process has said. */
 let port: number | null = null
-const commands = new Map<string, AgentCommand[]>()
+
+/** The project's slot, made on first mention so a push about it never has nowhere to land. */
+function project(descriptor: ProjectDescriptor): ProjectState {
+  let state = projects.get(descriptor.id)
+  if (!state) {
+    state = { ...descriptor, tabs: [], agents: [], commands: new Map() }
+    projects.set(descriptor.id, state)
+  }
+  return state
+}
+
+function allTabs(): TabDescriptor[] {
+  return [...projects.values()].flatMap((state) => state.tabs)
+}
+
+function allAgents(): AgentRow[] {
+  return [...projects.values()].flatMap((state) => state.agents)
+}
 
 /**
  * Which branches are open. It lives outside `render` on purpose: the panel is
@@ -103,62 +123,62 @@ function setSort(mode: SortMode): void {
 /** Every branch key already decided on, so a fold by hand is not undone. */
 const seen = new Set<string>()
 
-function activeTab(): TabDescriptor | null {
-  return tabs.find((tab) => tab.active) ?? null
+/** The tab in front, and the project it belongs to. */
+function activeTab(): { tab: TabDescriptor; projectId: string } | null {
+  for (const state of projects.values()) {
+    const tab = state.tabs.find((entry) => entry.active)
+    if (tab) return { tab, projectId: state.id }
+  }
+  return null
 }
 
 function render(): void {
-  const groups = sortGroups(buildTree(tabs, agents, commands), sort)
-  expandNew(groups, seen, expanded)
+  const forest = buildForest(projects.values(), sort)
+  expandNew(forest, seen, expanded)
   root.innerHTML = ''
-  root.append(renderPanel(groups))
+  root.append(renderPanel(forest))
 }
 
-function renderPanel(groups: TreeGroup[]): HTMLElement {
+function renderPanel(forest: TreeProject[]): HTMLElement {
   const wrap = el('div', 'panel')
 
   // The window buttons sit over the top-left of the content, so the panel keeps
   // that strip empty and hands it to the window as a drag region.
   const strip = el('div', 'drag')
-  // The project's name opens the application's own menu: the other projects,
-  // the port, quitting. It is the one control in the strip, so it sits at the
-  // right where the drag region ends.
-  const project = el('button', 'project')
-  project.title = 'Projects and application'
-  project.append(el('span', '', projectName), icon('chevron-down', 'chev'))
-  project.onclick = () => void ab.projectMenu(projectId)
-  strip.append(icon('bolt', 'bolt'), el('span', 'brand', 'naoba'), el('span', '', '·'), project)
+  strip.append(icon('bolt', 'bolt'), el('span', 'brand', 'naoba'))
   wrap.append(strip)
   wrap.append(grip())
   wrap.append(renderBar())
 
-  const current = activeTab()
-  if (current?.waitingForHuman) {
+  const front = activeTab()
+  const current = front?.tab
+  if (front && current?.waitingForHuman) {
     const callout = el('div', 'callout')
     const heading = el('h3')
     heading.append(icon('hand'), el('span', '', `${current.askedBy ?? 'An agent'} needs you`))
     callout.append(heading)
     callout.append(el('p', '', current.waitingForHuman))
-    callout.append(primary('I have done it', () => void ab.humanDone(projectId, current.id)))
+    callout.append(primary('I have done it', () => void ab.humanDone(front.projectId, current.id)))
     wrap.append(callout)
-  } else if (current?.heldBy) {
+  } else if (front && current?.heldBy) {
     const held = el('div', 'held-row')
     const state = el('span', 'state held')
     state.append(icon('lock'), el('span', '', `held by ${current.heldBy}`))
     held.append(state)
-    held.append(button('Take over', () => void ab.takeOver(projectId, current.id)))
+    held.append(button('Take over', () => void ab.takeOver(front.projectId, current.id)))
     wrap.append(held)
   }
 
-  wrap.append(renderTree(groups))
+  wrap.append(renderTree(forest))
   wrap.append(renderFoot())
   return wrap
 }
 
 function renderFoot(): HTMLElement {
   const foot = el('div', 'foot')
+  const agents = allAgents().filter((agent) => !agent.gone)
   foot.append(el('span', agents.length > 0 ? 'dot live' : 'dot'))
-  const counts = `${plural(agents.length, 'agent')} · ${plural(tabs.length, 'tab')}`
+  const counts = `${plural(agents.length, 'agent')} · ${plural(allTabs().length, 'tab')}`
   // The address an agent connects to sits with the counts: the one line of
   // the panel about the application rather than the project.
   foot.append(el('span', 'status', port === null ? counts : `${counts} · 127.0.0.1:${port}`))
@@ -170,26 +190,29 @@ function renderFoot(): HTMLElement {
 
 function renderBar(): HTMLElement {
   const bar = el('div', 'bar')
-  const current = activeTab()
+  const front = activeTab()
+  const current = front?.tab
 
   bar.append(iconButton('back', () => history.back(), 'Back'))
-  bar.append(iconButton('reload', () => current && void ab.navigate(projectId, current.id, current.url), 'Reload'))
+  bar.append(
+    iconButton('reload', () => front && void ab.navigate(front.projectId, front.tab.id, front.tab.url), 'Reload'),
+  )
 
   const url = document.createElement('input')
   url.className = 'url'
   url.value = current?.url ?? ''
-  url.placeholder = `Open a page in ${projectName}`
+  url.placeholder = front ? `Open a page in ${projects.get(front.projectId)?.name ?? 'this project'}` : 'No tab in front'
+  url.disabled = !front
   url.onkeydown = (event) => {
-    if (event.key !== 'Enter') return
+    if (event.key !== 'Enter' || !front) return
     const value = url.value.trim()
     if (!value) return
-    if (current) void ab.navigate(projectId, current.id, value)
-    else void ab.newTab(projectId, value)
+    void ab.navigate(front.projectId, front.tab.id, value)
   }
   bar.append(url)
   // A new tab joins the agent whose tab is in front; with no agent here there
   // is nobody to open one for.
-  const plus = iconButton('plus', () => void ab.newTab(projectId), 'New tab beside this agent')
+  const plus = iconButton('plus', () => front && void ab.newTab(front.projectId), 'New tab beside this agent')
   if (!current?.openedBy) plus.disabled = true
   bar.append(plus)
   bar.append(sortControl())
@@ -216,7 +239,7 @@ function grip(): HTMLElement {
       pending = move.clientX
       requestAnimationFrame(() => {
         if (pending === null) return
-        void ab.panelWidth(projectId, Math.round(pending))
+        void ab.panelWidth(Math.round(pending))
         pending = null
       })
     }
@@ -254,51 +277,75 @@ function sortControl(): HTMLElement {
 
 // ------------------------------------------------------------------- the tree
 
-function renderTree(groups: TreeGroup[]): HTMLElement {
+function renderTree(forest: TreeProject[]): HTMLElement {
   const root = el('div', 'tree')
   // Said whenever no agent is here, not only when the tree is empty: on a first
   // launch the window already has a tab of its own, and without this the panel
   // would explain nothing to the person who has just opened the application.
-  if (agents.length === 0) {
+  if (allAgents().every((agent) => agent.gone)) {
     const empty = el('div', 'empty')
     empty.append(icon('bolt', 'bolt'))
     empty.append(el('h3', '', 'No agent is here yet'))
-    const hint = el('p')
-    hint.append('Point one at ', el('b', '', projectName), ' and it will show up here, with every tab it opens and every call it makes.')
-    empty.append(hint)
+    empty.append(
+      el('p', '', 'Point one at a project and it will show up here, with every tab it opens and every call it makes.'),
+    )
     empty.append(el('code', '', 'claude mcp add naoba -- node <checkout>/packages/bridge/index.mjs'))
     root.append(empty)
   }
 
-  for (const [at, group] of groups.entries()) {
-    const key = groupKey(group)
+  for (const project of forest) {
+    const key = projectKey(project)
     const open = expanded.has(key)
-    root.append(groupRow(group, open, key, at))
+    root.append(projectRow(project, open, key))
     if (!open) continue
-
-    if (group.tabs.length === 0) {
-      root.append(depth(el('div', 'empty note', 'no tab yet'), 1))
+    if (project.groups.length === 0) {
+      root.append(depth(el('div', 'empty note', 'no agent here'), 1))
       continue
     }
-    for (const entry of group.tabs) renderTab(root, group, entry)
+    for (const [at, group] of project.groups.entries()) renderGroup(root, project, group, at)
   }
   return root
 }
 
-function renderTab(into: HTMLElement, group: TreeGroup, entry: TreeTab): void {
-  const key = tabKey(group, entry.tab)
+function renderGroup(into: HTMLElement, project: TreeProject, group: TreeGroup, at: number): void {
+  const key = groupKey(project, group)
   const open = expanded.has(key)
-  into.append(tabRow(entry.tab, entry.commands.length, open, key))
+  into.append(groupRow(group, open, key, at))
   if (!open) return
-  if (entry.commands.length === 0) {
-    into.append(depth(el('div', 'empty note', 'nothing done here yet'), 2))
+  if (group.tabs.length === 0) {
+    into.append(depth(el('div', 'empty note', 'no tab yet'), 2))
     return
   }
-  for (const command of entry.commands) into.append(commandRow(command, group.id, 2))
+  for (const entry of group.tabs) renderTab(into, project, group, entry)
+}
+
+function renderTab(into: HTMLElement, project: TreeProject, group: TreeGroup, entry: TreeTab): void {
+  const key = tabKey(project, group, entry.tab)
+  const open = expanded.has(key)
+  into.append(tabRow(project.id, entry.tab, entry.commands.length, open, key))
+  if (!open) return
+  if (entry.commands.length === 0) {
+    into.append(depth(el('div', 'empty note', 'nothing done here yet'), 3))
+    return
+  }
+  for (const command of entry.commands) into.append(commandRow(command, group.id, 3))
+}
+
+/** The top level: a project, named after its folder, with the folder as its tooltip. */
+function projectRow(project: TreeProject, open: boolean, key: string): HTMLElement {
+  const row = depth(el('div', 'row project'), 0)
+  row.append(twist(open))
+  row.append(icon('folder', 'folder'))
+  row.append(el('span', 'name', project.name))
+  const live = project.groups.filter((group) => !group.gone).length
+  if (live > 0) row.append(el('span', 'count', String(live)))
+  row.title = project.root
+  row.onclick = () => toggle(key)
+  return row
 }
 
 function groupRow(group: TreeGroup, open: boolean, key: string, at: number): HTMLElement {
-  const row = depth(el('div', group.gone ? 'row group gone' : 'row group'), 0)
+  const row = depth(el('div', group.gone ? 'row group gone' : 'row group'), 1)
   row.append(twist(open))
   // Each agent keeps its colour for as long as it is connected: the dot is
   // how a person tells three agents apart across the whole tree. One that
@@ -312,8 +359,8 @@ function groupRow(group: TreeGroup, open: boolean, key: string, at: number): HTM
   return row
 }
 
-function tabRow(tab: TabDescriptor, count: number, open: boolean, key: string): HTMLElement {
-  const row = depth(el('div', 'row tab'), 1)
+function tabRow(projectId: string, tab: TabDescriptor, count: number, open: boolean, key: string): HTMLElement {
+  const row = depth(el('div', 'row tab'), 2)
   if (tab.active) row.classList.add('active')
   if (tab.heldBy) row.classList.add('held')
   if (tab.waitingForHuman) row.classList.add('waiting')
@@ -422,13 +469,14 @@ const ICONS: Record<string, IconNode> = {
   hand: Hand,
   bolt: Zap,
   globe: Globe,
+  folder: Folder,
   sliders: SlidersHorizontal,
   check: Check,
   'chevron-down': ChevronDown,
   power: Power,
 }
 
-const ICON_SIZE: Record<string, number> = { chevron: 11, 'chevron-down': 12, x: 11, lock: 12, hand: 12, check: 13, power: 13 }
+const ICON_SIZE: Record<string, number> = { folder: 14, chevron: 11, 'chevron-down': 12, x: 11, lock: 12, hand: 12, check: 13, power: 13 }
 
 function icon(name: string, className = ''): SVGElement {
   const node = ICONS[name]
@@ -481,30 +529,43 @@ function clock(at: number): string {
 
 // ------------------------------------------------------------------ lifecycle
 
+ab.on('projects', (payload) => {
+  const { projects: list } = payload as { projects: ProjectDescriptor[] }
+  for (const descriptor of list) project(descriptor)
+  render()
+})
 ab.on('tabs', (payload) => {
-  tabs = payload as TabDescriptor[]
+  const { projectId, tabs } = payload as { projectId: string; tabs: TabDescriptor[] }
+  const state = projects.get(projectId)
+  if (!state) return
+  state.tabs = tabs
   // A closed tab's history has no reader left, and a window open all day would
   // otherwise keep every call made in every tab it ever had.
   const alive = new Set(tabs.map((tab) => tab.id))
-  for (const tabId of commands.keys()) if (!alive.has(tabId)) commands.delete(tabId)
+  for (const tabId of state.commands.keys()) if (!alive.has(tabId)) state.commands.delete(tabId)
   render()
 })
 ab.on('agents', (payload) => {
-  agents = payload as AgentRow[]
+  const { projectId, agents } = payload as { projectId: string; agents: AgentRow[] }
+  const state = projects.get(projectId)
+  if (!state) return
+  state.agents = agents
   render()
 })
 ab.on('commands', (payload) => {
-  const { tabId, commands: list } = payload as { tabId: string; commands: AgentCommand[] }
-  commands.set(tabId, list)
+  const { projectId, tabId, commands } = payload as { projectId: string; tabId: string; commands: AgentCommand[] }
+  projects.get(projectId)?.commands.set(tabId, commands)
   render()
 })
 
-void ab.state(projectId).then((state) => {
-  if (!state) return
-  tabs = state.tabs
-  agents = state.agents
+void ab.state().then((state) => {
   port = state.port
-  for (const [tabId, list] of Object.entries(state.commands)) commands.set(tabId, list)
+  for (const snapshot of state.projects) {
+    const slot = project(snapshot)
+    slot.tabs = snapshot.tabs
+    slot.agents = snapshot.agents
+    for (const [tabId, list] of Object.entries(snapshot.commands)) slot.commands.set(tabId, list)
+  }
   render()
 })
 

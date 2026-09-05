@@ -72,16 +72,17 @@ export async function writeSnapshots(hub: Hub, directory: string, demoPage: stri
   }
 
   context.reveal(false)
-  const window = context.window()
-  window.setContentSize(1440, 900)
-  context.layout()
+  const shell = hub.shell
+  shell.window().setContentSize(1440, 900)
+  shell.layout()
+  const composed = { window: () => shell.window(), panel: () => shell.panel(), activeTab: () => context.activeTab() }
   await pause(600)
 
   const shoot = async (name: string): Promise<void> => {
     for (const appearance of ['light', 'dark'] as const) {
       nativeTheme.themeSource = appearance
       await pause(500)
-      const image = await composeWindow(context)
+      const image = await composeWindow(composed)
       const file = join(directory, `${name}-${appearance}.png`)
       writeFileSync(file, image)
       process.stdout.write(`snapshot: ${file}\n`)
@@ -105,9 +106,9 @@ export async function writeSnapshots(hub: Hub, directory: string, demoPage: stri
   // every string a third larger. Nothing may fall out of it. The size is set on
   // the root element rather than through the zoom factor: zoom leaves the view
   // showing a stale frame, and the panel then photographs as it was a step ago.
-  await setTextSize(context, '18px')
+  await setTextSize(shell, '18px')
   await shoot('03-large-text')
-  await setTextSize(context, '13px')
+  await setTextSize(shell, '13px')
 
   // What the first launch actually looks like: no agent yet, and so no tab.
   context.pendingHuman.clear()
@@ -124,8 +125,8 @@ async function named(tab: Tab, title: string): Promise<void> {
 }
 
 /** Grow or restore the interface's own text, the way a reader would. */
-async function setTextSize(context: ReturnType<Hub['contextFor']>, size: string): Promise<void> {
-  const view = context.panel()
+async function setTextSize(shell: Hub['shell'], size: string): Promise<void> {
+  const view = shell.panel()
   await view?.webContents.executeJavaScript(`document.documentElement.style.fontSize = ${JSON.stringify(size)}`)
   await pause(300)
 }

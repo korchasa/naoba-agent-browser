@@ -82,9 +82,7 @@ async function start(): Promise<void> {
   // The window is hidden while agents work; these are the ways a person asks
   // for it. Both are deliberate acts, which is the whole rule: the browser
   // never puts itself on screen uninvited.
-  const revealAll = () => {
-    for (const context of hub.contexts.values()) if (context.loaded) context.reveal(true)
-  }
+  const revealAll = () => hub.shell.reveal(true)
   app.on('second-instance', revealAll)
   app.on('activate', revealAll)
   buildMenu(hub)
@@ -179,17 +177,18 @@ const YOU = { id: null, label: 'you' }
 function wireChrome(hub: Hub): void {
   const contextOf = (projectId: string) => hub.contexts.get(projectId) ?? null
 
-  ipcMain.handle('ab:state', (_event, projectId: string) => {
-    const context = contextOf(projectId)
-    if (!context) return null
-    return {
-      project: context.identity,
-      port: hub.port,
+  /** Everything the panel draws, for every project, the moment it starts. */
+  ipcMain.handle('ab:state', () => ({
+    port: hub.port,
+    projects: [...hub.contexts.values()].map((context) => ({
+      id: context.identity.id,
+      name: context.identity.name,
+      root: context.identity.root,
       tabs: context.describeTabs(),
       agents: context.agentRows(),
       commands: context.commandsByTab(),
-    }
-  })
+    })),
+  }))
 
   /**
    * A tab the person opens belongs to the agent whose tab is in front: the
@@ -267,43 +266,14 @@ function wireChrome(hub: Hub): void {
       { type: 'separator' },
       { label: 'Close tab', click: () => void context.closeTab(tabId) },
     ])
-    menu.popup({ window: context.window() })
-  })
-
-  /**
-   * The application's menu, under the project's name in the panel: the other
-   * projects to switch to, the port an agent connects to, and Quit. The menu
-   * bar icon only opens a window, so this is where those live.
-   */
-  ipcMain.handle('ab:project-menu', (_event, projectId: string) => {
-    const context = contextOf(projectId)
-    if (!context) return
-    const projects = [...hub.contexts.values()].map((other) => {
-      const agents = other.agents.size
-      const asking = other.pendingHuman.size > 0
-      return {
-        label: `${asking ? '✋ ' : ''}${other.identity.name}  —  ${agents} agent${agents === 1 ? '' : 's'}`,
-        type: 'checkbox' as const,
-        checked: other === context,
-        click: () => other.reveal(true),
-      }
-    })
-    const menu = Menu.buildFromTemplate([
-      { label: 'Projects', enabled: false },
-      ...projects,
-      { type: 'separator' },
-      { label: `Agents connect to 127.0.0.1:${hub.port}`, enabled: false },
-      { type: 'separator' },
-      { label: 'Quit Naoba', click: () => app.quit() },
-    ])
-    menu.popup({ window: context.window() })
+    menu.popup({ window: hub.shell.window() })
   })
 
   ipcMain.handle('ab:quit', () => app.quit())
 
-  ipcMain.handle('ab:panel-width', (_event, projectId: string, width: number) => {
-    if (!contextOf(projectId) || !Number.isFinite(width)) return null
-    const kept = hub.setPanelWidth(width)
+  ipcMain.handle('ab:panel-width', (_event, width: number) => {
+    if (!Number.isFinite(width)) return null
+    const kept = hub.shell.setPanelWidth(width)
     writeSettings({ panelWidth: kept })
     return kept
   })

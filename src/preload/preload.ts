@@ -7,21 +7,20 @@ import { contextBridge, ipcRenderer } from 'electron'
  * page's own world.
  */
 const api = {
-  state: (projectId: string) => ipcRenderer.invoke('ab:state', projectId),
+  state: () => ipcRenderer.invoke('ab:state'),
   newTab: (projectId: string, url?: string) => ipcRenderer.invoke('ab:new-tab', projectId, url),
   selectTab: (projectId: string, tabId: string) => ipcRenderer.invoke('ab:select-tab', projectId, tabId),
   closeTab: (projectId: string, tabId: string) => ipcRenderer.invoke('ab:close-tab', projectId, tabId),
   navigate: (projectId: string, tabId: string, url: string) => ipcRenderer.invoke('ab:navigate', projectId, tabId, url),
-  panelWidth: (projectId: string, width: number) => ipcRenderer.invoke('ab:panel-width', projectId, width),
+  panelWidth: (width: number) => ipcRenderer.invoke('ab:panel-width', width),
   tabMenu: (projectId: string, tabId: string) => ipcRenderer.invoke('ab:tab-menu', projectId, tabId),
-  projectMenu: (projectId: string) => ipcRenderer.invoke('ab:project-menu', projectId),
   quit: () => ipcRenderer.invoke('ab:quit'),
   takeOver: (projectId: string, tabId: string) => ipcRenderer.invoke('ab:take-over', projectId, tabId),
   release: (projectId: string, tabId: string) => ipcRenderer.invoke('ab:release', projectId, tabId),
   humanDone: (projectId: string, tabId: string) => ipcRenderer.invoke('ab:human-done', projectId, tabId),
   projects: () => ipcRenderer.invoke('ab:projects'),
   forgetProject: (root: string) => ipcRenderer.invoke('ab:forget-project', root),
-  on: (channel: 'tabs' | 'agents' | 'commands', handler: (payload: unknown) => void) => {
+  on: (channel: 'projects' | 'tabs' | 'agents' | 'commands', handler: (payload: unknown) => void) => {
     const listener = (_event: unknown, payload: unknown) => handler(payload)
     ipcRenderer.on(channel, listener)
     return () => ipcRenderer.off(channel, listener)

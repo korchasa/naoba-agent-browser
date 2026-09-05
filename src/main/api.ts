@@ -372,9 +372,9 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
 
     async resize(width: number, height: number) {
       context.touch()
-      const window = context.window()
+      const window = context.shell.window()
       window.setContentSize(Math.round(width), Math.round(height) + 96)
-      context.layout()
+      context.shell.layout()
       await pause(120)
       log(`resize(${width}, ${height})`)
       return true

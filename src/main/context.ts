@@ -1,18 +1,11 @@
-import { app, BaseWindow, dialog, screen, session as electronSession, WebContentsView } from 'electron'
+import { session as electronSession } from 'electron'
 import type { Session } from 'electron'
 import { type Holder, holderLabel, LeaseTable } from './lease.ts'
 import { KeyedQueue } from './queue.ts'
 import { partitionFor, type ProjectIdentity } from './project.ts'
 import { Tab } from './tab.ts'
+import type { Shell } from './shell.ts'
 import type { AgentCommand, AgentDescriptor, AgentRow, AppEvent, ServerMessage, TabDescriptor } from './protocol.ts'
-
-/**
- * The panel is the window's whole chrome, so it has to hold an address bar and
- * a three-level tree without either one being unreadable.
- */
-export const PANEL_WIDTH = 340
-/** Narrower than this and the address bar has no room for an address. */
-export const PANEL_MIN_WIDTH = 240
 
 export interface AgentHandle {
   readonly id: string
@@ -31,20 +24,18 @@ export interface PendingHuman {
 
 export interface ContextPaths {
   preload: string
-  chromeHtml: string
-  headless?: boolean
+  /** The window every project's tabs live in. */
+  shell: Shell
   /** How long a departed agent's tabs stay open before they are closed. */
   orphanCloseMs?: number
-  /** The panel's width as the person last left it. */
-  panelWidth?: number
 }
 
 /**
- * One project: its own browsing session, its own window, its own tabs, and the
- * agents allowed to drive them. Nothing here is reachable from another project
- * — that is the whole point of the application, and the reason each context
- * builds its own Electron session from a partition named after the project's
- * hash.
+ * One project: its own browsing session, its own tabs, and the agents allowed
+ * to drive them. Nothing here is reachable from another project — that is the
+ * whole point of the application, and the reason each context builds its own
+ * Electron session from a partition named after the project's hash. The
+ * window is the one thing projects share; it is the shell's.
  */
 export class ProjectContext {
   readonly identity: ProjectIdentity
@@ -54,14 +45,9 @@ export class ProjectContext {
   readonly agents = new Map<string, AgentHandle>()
   readonly pendingHuman = new Map<string, PendingHuman>()
 
-  #window: BaseWindow | null = null
-  #panel: WebContentsView | null = null
-  /** Whether the person has actually been shown this window. */
-  #onScreen = false
-  #closing = false
+  readonly shell: Shell
   #tabs: Tab[] = []
   #activeTabId: string | null = null
-  #panelWidth: number
   /** Pending closes of tabs whose agent has gone, keyed by that agent. */
   readonly #orphanTimers = new Map<string, NodeJS.Timeout>()
   /**
@@ -73,12 +59,9 @@ export class ProjectContext {
   #lastTouched = Date.now()
 
   readonly #paths: ContextPaths
-  /** A test run drives the browser without putting windows on the owner's screen. */
-  readonly headless: boolean
 
   constructor(identity: ProjectIdentity, paths: ContextPaths) {
-    this.headless = paths.headless ?? false
-    this.#panelWidth = paths.panelWidth ?? PANEL_WIDTH
+    this.shell = paths.shell
     this.identity = identity
     this.#paths = paths
     this.session = electronSession.fromPartition(partitionFor(identity.id))
@@ -102,13 +85,9 @@ export class ProjectContext {
     this.#lastTouched = Date.now()
   }
 
+  /** Whether renderers of this project exist — tabs, in a window shared with every other project. */
   get loaded(): boolean {
-    return this.#window !== null
-  }
-
-  /** Whether the person can see the window right now. */
-  get onScreen(): boolean {
-    return this.#onScreen
+    return this.#tabs.length > 0
   }
 
   get tabs(): readonly Tab[] {
@@ -117,187 +96,22 @@ export class ProjectContext {
 
   // ------------------------------------------------------------------- window
 
-  window(): BaseWindow {
-    if (this.#window && !this.#window.isDestroyed()) return this.#window
-
-    // Wide on purpose. The panel takes 340 of it, and what is left is what the
-    // site sees: below about 1000 CSS pixels many sites (Wikipedia among them)
-    // serve their compact layout, where the search field is folded behind a
-    // button and an agent looking for it finds nothing. It must still fit on
-    // the screen — a window hanging off the edge is not composited there, and
-    // clicks aimed at that part land on nothing.
-    const room = screen.getPrimaryDisplay().workAreaSize
-    const window = new BaseWindow({
-      width: Math.min(1520, Math.max(1000, room.width - 80)),
-      height: Math.min(940, Math.max(700, room.height - 80)),
-      show: false,
-      title: `${this.identity.name} — Naoba`,
-      titleBarStyle: 'hiddenInset',
-      // The panel is drawn over the system's sidebar material, the way a native
-      // source list is: the desktop shows through it, and the appearance
-      // switch is the system's, not a stylesheet's.
-      vibrancy: 'sidebar',
-      backgroundColor: '#00000000',
-    })
-    this.#window = window
-
-    // One view, down the left edge: the address bar and the tree of agents,
-    // their tabs and what they did there. It is on the left because
-    // `titleBarStyle: 'hiddenInset'` puts the window buttons over the top-left
-    // of the content — a panel on the right would leave the page painted
-    // underneath them.
-    const panel = new WebContentsView({
-      // The window spends most of its life shown but transparent, which
-      // Chromium treats as hidden: a throttled panel stops producing frames,
-      // so what a snapshot captures — and what the person sees on reveal — is
-      // the tree as it was a step ago.
-      webPreferences: { preload: this.#paths.preload, contextIsolation: true, sandbox: true, backgroundThrottling: false },
-    })
-    // Transparent, or the page paints over the material and there is none.
-    panel.setBackgroundColor('#00000000')
-    window.contentView.addChildView(panel)
-    void panel.webContents.loadFile(this.#paths.chromeHtml, {
-      query: { project: this.identity.id, name: this.identity.name },
-    })
-    this.#panel = panel
-
-    window.on('resize', () => this.layout())
-    // The close button is ambiguous for a menu-bar application: the person may
-    // want the window out of the way, or the whole thing gone. Ask, every
-    // time — the two answers differ by every tab the agents are working in.
-    window.on('close', (event) => {
-      if (this.#closing) return
-      event.preventDefault()
-      void this.#askToClose()
-    })
-    window.on('closed', () => {
-      this.#window = null
-      this.#panel = null
-      this.#onScreen = false
-      // Tabs belong to the window; drop them with it, but keep the session on
-      // disk so a login made by hand outlives the window.
-      for (const tab of this.#tabs) tab.destroy()
-      this.#tabs = []
-      for (const timer of this.#orphanTimers.values()) clearTimeout(timer)
-      this.#orphanTimers.clear()
-      this.#departed.clear()
-      this.#activeTabId = null
-    })
-
-    this.layout()
-    return window
-  }
-
-  panel(): WebContentsView | null {
-    return this.#panel
-  }
-
-  panelWidth(): number {
-    const width = this.#window?.getContentBounds().width ?? this.#panelWidth
-    return Math.max(PANEL_MIN_WIDTH, Math.min(this.#panelWidth, Math.floor(width / 2)))
-  }
-
-  /** Take a width the person dragged to, keep it within reason, and lay out; returns what was kept. */
-  setPanelWidth(width: number): number {
-    const window = this.#window?.getContentBounds().width ?? Number.MAX_SAFE_INTEGER
-    this.#panelWidth = Math.max(PANEL_MIN_WIDTH, Math.min(Math.round(width), Math.floor(window / 2)))
-    this.layout()
-    return this.#panelWidth
-  }
-
-  layout(): void {
-    const window = this.#window
-    if (!window || window.isDestroyed()) return
-    const { width, height } = window.getContentBounds()
-    const panelWidth = this.panelWidth()
-
-    this.#panel?.setBounds({ x: 0, y: 0, width: panelWidth, height })
-    for (const tab of this.#tabs) {
-      const visible = tab.id === this.#activeTabId
-      tab.view.setVisible(visible)
-      if (visible) {
-        tab.view.setBounds({ x: panelWidth, y: 0, width: Math.max(0, width - panelWidth), height })
-      }
-    }
-  }
-
-  /**
-   * An agent opening a browser must not interrupt whoever is at the keyboard.
-   * The window appears behind what the person is doing; only `requestHuman`
-   * earns the right to come forward.
-   */
-  /**
-   * Make the window exist without putting it in anybody's way.
-   *
-   * A window that has never been shown has no compositor, and a renderer with
-   * no compositor does no hit-testing — clicks would land on nothing. So the
-   * window is shown, but fully transparent and deaf to the mouse. An agent
-   * starting work must not take over the screen of the person who asked for the
-   * work; the window becomes visible when they ask for it, or when an agent
-   * needs them.
-   *
-   * Parking it off-screen is not an option: macOS slides a window back against
-   * the edge, where it sits in the way.
-   */
+  /** Make the window exist, off screen, so the tabs have a compositor. */
   show(): void {
-    const window = this.window()
-    if (this.#onScreen) return
-    window.setOpacity(0)
-    window.setIgnoreMouseEvents(true)
-    if (!window.isVisible()) window.showInactive()
+    this.shell.show()
   }
 
-  /** Take the window off screen the way `show` keeps it: alive, transparent, out of the way. */
-  hide(): void {
-    const window = this.#window
-    if (!window || window.isDestroyed()) return
-    this.#onScreen = false
-    window.setOpacity(0)
-    window.setIgnoreMouseEvents(true)
-    window.blur()
-  }
-
-  async #askToClose(): Promise<void> {
-    const window = this.window()
-    const { response } = await dialog.showMessageBox(window, {
-      type: 'question',
-      message: `Close the ${this.identity.name} window?`,
-      detail: 'Hide it and the agents keep working in their tabs. Quit and every project closes.',
-      buttons: ['Hide to Menu Bar', 'Quit Naoba', 'Cancel'],
-      defaultId: 0,
-      cancelId: 2,
-    })
-    if (response === 0) this.hide()
-    else if (response === 1) {
-      this.#closing = true
-      app.quit()
-    }
-  }
-
-  /** Put the window on screen for real: the person asked, or an agent needs them. */
+  /** Put the window on screen with this project's tab in front. */
   reveal(focus: boolean): void {
-    if (this.headless) return
-    const window = this.window()
-    this.#onScreen = true
-    this.touch()
-    window.setIgnoreMouseEvents(false)
-    window.setOpacity(1)
-    if (focus) {
-      // A menu-bar application has no dock icon and is not "active"; without
-      // this the window is shown, but behind whatever the person is in.
-      app.focus({ steal: true })
-      window.show()
-      window.focus()
-    } else if (!window.isVisible()) {
-      window.showInactive()
-    }
+    const active = this.activeTab()
+    if (active) this.shell.bringFront(active.view)
+    this.shell.reveal(focus)
   }
 
   bringToFront(): void {
     this.reveal(true)
   }
 
-  /** Free the renderers of a project nobody is using; its session stays on disk. */
   /**
    * Push the session to disk. Cookies and local storage are written lazily, so
    * a login made a moment ago is still only in memory: without this, quitting
@@ -308,25 +122,23 @@ export class ProjectContext {
     await this.session.flushStorageData()
   }
 
+  /** Free the renderers of a project nobody is using; its session stays on disk. */
   unload(): void {
-    if (!this.#window) return
-    for (const tab of this.#tabs) tab.destroy()
-    this.#tabs = []
+    for (const tab of [...this.#tabs]) this.closeTab(tab.id)
+    for (const timer of this.#orphanTimers.values()) clearTimeout(timer)
+    this.#orphanTimers.clear()
+    this.#departed.clear()
     this.#activeTabId = null
-    if (!this.#window.isDestroyed()) this.#window.destroy()
-    this.#window = null
-    this.#panel = null
   }
 
   // --------------------------------------------------------------------- tabs
 
   openTab(url?: string, openedBy: string | null = null): Tab {
-    this.window()
     const tab = new Tab(this.session, this.#paths.preload)
     tab.openedBy = openedBy
     this.#tabs.push(tab)
-    this.#window?.contentView.addChildView(tab.view)
     this.#activeTabId = tab.id
+    this.shell.attach(tab.view)
 
     tab.wc.setWindowOpenHandler(({ url: target }) => {
       // A page opening a window becomes a tab, never a stray window the agent
@@ -352,7 +164,6 @@ export class ProjectContext {
     tab.wc.on('did-navigate-in-page', () => this.notifyTabs())
     tab.wc.on('did-stop-loading', () => this.notifyTabs())
 
-    this.layout()
     this.broadcast({ type: 'tab-opened', tab: this.describeTab(tab) })
     this.notifyTabs()
     // A view with no document at all makes `executeJavaScript` wait forever, so
@@ -367,13 +178,12 @@ export class ProjectContext {
     if (at < 0) return false
     const [tab] = this.#tabs.splice(at, 1)
     if (!tab) return false
-    this.#window?.contentView.removeChildView(tab.view)
-    tab.destroy()
     if (this.#activeTabId === tabId) this.#activeTabId = this.#tabs.at(-1)?.id ?? null
     for (const agent of this.agents.values()) {
       if (agent.currentTabId === tabId) agent.currentTabId = this.#activeTabId
     }
-    this.layout()
+    this.shell.detach(tab.view, this.activeTab()?.view ?? null)
+    tab.destroy()
     this.broadcast({ type: 'tab-closed', tabId })
     this.notifyTabs()
     // The last tab of a departed agent takes the agent's row with it.
@@ -395,9 +205,10 @@ export class ProjectContext {
   }
 
   selectTab(tabId: string): boolean {
-    if (!this.tab(tabId)) return false
+    const tab = this.tab(tabId)
+    if (!tab) return false
     this.#activeTabId = tabId
-    this.layout()
+    this.shell.bringFront(tab.view)
     this.notifyTabs()
     return true
   }
@@ -429,7 +240,7 @@ export class ProjectContext {
       index: this.#tabs.indexOf(tab),
       title: tab.title,
       url: tab.url,
-      active: tab.id === this.#activeTabId,
+      active: this.shell.isFront(tab.view),
       loading: tab.loading,
       heldBy: holder ? holderLabel(holder) : null,
       waitingForHuman: waiting ? waiting.reason : null,
@@ -532,11 +343,11 @@ export class ProjectContext {
   }
 
   notifyTabs(): void {
-    this.toChrome('tabs', this.describeTabs())
+    this.toChrome('tabs', { tabs: this.describeTabs() })
   }
 
   notifyAgents(): void {
-    this.toChrome('agents', this.agentRows())
+    this.toChrome('agents', { agents: this.agentRows() })
   }
 
   /** The agents the panel draws: the connected ones, then the departed ones whose tabs are still here. */
@@ -552,9 +363,8 @@ export class ProjectContext {
     return [...connected, ...departed]
   }
 
-  toChrome(channel: string, payload: unknown): void {
-    const view = this.#panel
-    if (!view || view.webContents.isDestroyed()) return
-    view.webContents.send(channel, payload)
+  /** Everything the panel draws goes out stamped with the project it belongs to. */
+  toChrome(channel: string, payload: Record<string, unknown>): void {
+    this.shell.toChrome(channel, { projectId: this.identity.id, ...payload })
   }
 }

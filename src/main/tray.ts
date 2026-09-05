@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, nativeImage, Tray } from 'electron'
+import { BrowserWindow, nativeImage, Tray } from 'electron'
 import { Globe, Hand, type IconNode } from 'lucide'
 import type { Hub } from './hub.ts'
 
@@ -29,24 +29,10 @@ export function installTray(hub: Hub): Tray {
 
   const open = () => {
     const context = foremost()
-    if (context) {
-      context.reveal(true)
-      return
-    }
-    // Nothing to show yet. Say so, and say how to get a window, rather than
-    // answering a click with nothing.
-    app.focus({ steal: true })
-    void dialog.showMessageBox({
-      type: 'info',
-      message: 'No project has connected yet',
-      detail: `Point an agent at a project and its window appears here.\n\n` +
-        `claude mcp add naoba -- node <checkout>/packages/bridge/index.mjs\n\n` +
-        `Listening on 127.0.0.1:${hub.port}`,
-      buttons: ['OK', 'Quit Naoba'],
-      defaultId: 0,
-    }).then(({ response }) => {
-      if (response === 1) app.quit()
-    })
+    // With no project yet the window still opens: its panel says how to
+    // connect an agent, which beats answering a click with nothing.
+    if (context) context.reveal(true)
+    else hub.shell.reveal(true)
   }
   tray.on('click', open)
   tray.on('right-click', open)

@@ -3,28 +3,25 @@ import { randomUUID } from 'node:crypto'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { buildApi } from './api.ts'
-import { type AgentHandle, type ContextPaths, ProjectContext } from './context.ts'
+import { type AgentHandle, ProjectContext } from './context.ts'
+import { Shell, type ShellPaths } from './shell.ts'
 import { identify, normalizeRoot, type ProjectIdentity } from './project.ts'
-import { type ClientMessage, type ErrorCode, PROTOCOL_VERSION, type ServerMessage } from './protocol.ts'
+import { type ClientMessage, type ErrorCode, type ProjectDescriptor, PROTOCOL_VERSION, type ServerMessage } from './protocol.ts'
 import { runScript, ScriptError } from './runner.ts'
 import { BridgeServer, type Connection } from './server.ts'
 import { pause } from './tab.ts'
 
-export interface HubOptions extends ContextPaths {
+export interface HubOptions extends ShellPaths {
   /** How long a project may sit with no agent and no interaction before its renderers are freed. */
   idleUnloadMs: number
   /** How long a departed agent's tabs stay open, in case its session comes back. */
   orphanCloseMs: number
-  /** The panel width every window starts with; the person's last drag, when there was one. */
-  panelWidth?: number
   /** How long a call waits for a tab another agent is holding. */
   contentionWaitMs: number
   /** Ceiling on a single script's run time unless the caller asks for more. */
   defaultScriptTimeoutMs: number
   /** Skips the admission dialog. Used by the test harness, never in a shipped build. */
   admitEverything?: boolean
-  /** Keeps windows off the screen. Used by the test harness. */
-  headless?: boolean
 }
 
 type Decision = 'allowed' | 'denied'
@@ -44,6 +41,8 @@ interface AdmissionRecord {
  */
 export class Hub {
   readonly contexts = new Map<string, ProjectContext>()
+  /** The one window, shared by every project. */
+  readonly shell: Shell
   readonly #admissions = new Map<string, AdmissionRecord>()
   readonly #server: BridgeServer
   readonly #agentsByConnection = new Map<number, { agentId: string; projectId: string }>()
@@ -54,6 +53,12 @@ export class Hub {
 
   constructor(options: HubOptions) {
     this.#options = options
+    this.shell = new Shell(options)
+    // The tab in front changed: every project's rows say whether theirs is
+    // the one, so every project is told to redraw.
+    this.shell.onFrontChange(() => {
+      for (const context of this.contexts.values()) context.notifyTabs()
+    })
     this.#server = new BridgeServer((connection) => this.#onConnection(connection))
     this.#loadAdmissions()
   }
@@ -79,12 +84,13 @@ export class Hub {
     this.#server.close()
   }
 
-  /** One width for every window: the person drags in one and the others follow. */
-  setPanelWidth(width: number): number {
-    let kept = width
-    for (const context of this.contexts.values()) kept = context.setPanelWidth(width)
-    this.#options = { ...this.#options, panelWidth: kept }
-    return kept
+  /** The projects the panel lists, in the order they first connected. */
+  projectRows(): ProjectDescriptor[] {
+    return [...this.contexts.values()].map(({ identity }) => ({
+      id: identity.id,
+      name: identity.name,
+      root: identity.root,
+    }))
   }
 
   // -------------------------------------------------------------- admissions
@@ -146,7 +152,7 @@ export class Hub {
         title: 'A new project wants a browser',
         message: `Let agents working in “${identity.name}” open a browser?`,
         detail: `${agentLabel} is asking on behalf of:\n${identity.root}\n\n` +
-          `This project gets its own window, its own cookies and its own logins. ` +
+          `This project gets its own cookies and its own logins. ` +
           `Nothing in it is visible to agents working in any other project.`,
       })
       const decision: Decision = answer.response === 0 ? 'allowed' : 'denied'
@@ -165,12 +171,11 @@ export class Hub {
     if (existing) return existing
     const created = new ProjectContext(identity, {
       preload: this.#options.preload,
-      chromeHtml: this.#options.chromeHtml,
-      headless: this.#options.headless,
+      shell: this.shell,
       orphanCloseMs: this.#options.orphanCloseMs,
-      panelWidth: this.#options.panelWidth,
     })
     this.contexts.set(identity.id, created)
+    this.shell.toChrome('projects', { projects: this.projectRows() })
     return created
   }
 
@@ -181,7 +186,7 @@ export class Hub {
       if (context.agents.size > 0) continue
       if (context.pendingHuman.size > 0) continue
       // A window the person is looking at is not idle, whatever the clock says.
-      if (context.onScreen) continue
+      if (this.shell.onScreen) continue
       if (now - context.lastTouched < this.#options.idleUnloadMs) continue
       // The session stays on disk: a login done by hand outlives the window.
       context.unload()

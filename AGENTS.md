@@ -51,6 +51,13 @@ state must go through the project's own session, never through
   and drawn inline so they take the text colour. Add a glyph by importing its
   node into the `ICONS` map in `src/renderer/chrome.ts`; nothing is drawn by
   hand any more, and nothing loads at run time (the CSP would block it).
+- **One window for every project, owned by `src/main/shell.ts`.** A
+  `ProjectContext` keeps its own session, tabs and agents and nothing else; its
+  tab views are attached to the shell, which lays out the panel and whichever
+  tab is in front. The panel's tree is project → agent → tab → call, and every
+  push to the panel carries the `projectId` it belongs to. Do not give a
+  project a window of its own again: the person asked for the projects in one
+  list, and the sessions stay apart without separate windows.
 - **What the person sets by hand goes through `src/main/settings.ts`** — one
   `settings.json` in the user-data directory. Today that is the panel width,
   which the person drags on the panel's right edge; the main process owns the

@@ -9,7 +9,7 @@ import { LeaseTable } from '../src/main/lease.ts'
 import { toTransferable } from '../src/main/serialize.ts'
 import { decodeLines } from '../src/main/protocol.ts'
 import { CommandLog } from '../src/main/commands.ts'
-import { buildTree, expandNew, groupKey, sortGroups, tabKey } from '../src/renderer/tree.ts'
+import { buildTree, expandNew, groupKey, projectKey, sortGroups, tabKey } from '../src/renderer/tree.ts'
 
 test('a project is the repository the agent is working in, not its subdirectory', () => {
   const base = mkdtempSync(join(tmpdir(), 'ab-project-'))
@@ -251,11 +251,13 @@ test('the tree opens on every agent and on the tab in front', () => {
     [here('agent-1', 'claude', 'claude', 'tab-a')],
     new Map(),
   )
+  const project = { id: 'p1', name: 'checkout', root: '/x', groups }
   const open = new Set()
-  expandNew(groups, new Set(), open)
-  assert.ok(open.has(groupKey(groups[0])))
-  assert.ok(open.has(tabKey(groups[0], groups[0].tabs[0].tab)))
-  assert.ok(!open.has(tabKey(groups[0], groups[0].tabs[1].tab)))
+  expandNew([project], new Set(), open)
+  assert.ok(open.has(projectKey(project)))
+  assert.ok(open.has(groupKey(project, groups[0])))
+  assert.ok(open.has(tabKey(project, groups[0], groups[0].tabs[0].tab)))
+  assert.ok(!open.has(tabKey(project, groups[0], groups[0].tabs[1].tab)))
 })
 
 test('an agent that connects later opens too, and a branch folded by hand stays folded', () => {
@@ -263,18 +265,19 @@ test('an agent that connects later opens too, and a branch folded by hand stays 
   // agent but the first is a collapsed row hiding its own work.
   const seen = new Set()
   const open = new Set()
-  const first = buildTree([], [here('agent-1', 'claude', 'claude')], new Map())
-  expandNew(first, seen, open)
-  open.delete(groupKey(first[0]))
+  const within = (groups) => ({ id: 'p1', name: 'checkout', root: '/x', groups })
+  const first = within(buildTree([], [here('agent-1', 'claude', 'claude')], new Map()))
+  expandNew([first], seen, open)
+  open.delete(groupKey(first, first.groups[0]))
 
-  const later = buildTree([], [
+  const later = within(buildTree([], [
     here('agent-1', 'claude', 'claude'),
     here('agent-2', 'codex', 'codex'),
-  ], new Map())
-  expandNew(later, seen, open)
+  ], new Map()))
+  expandNew([later], seen, open)
 
-  assert.ok(!open.has(groupKey(later[0])), 'the folded branch stays folded')
-  assert.ok(open.has(groupKey(later[1])), 'the new agent opens')
+  assert.ok(!open.has(groupKey(later, later.groups[0])), 'the folded branch stays folded')
+  assert.ok(open.has(groupKey(later, later.groups[1])), 'the new agent opens')
 })
 
 test('a tab keeps its newest calls and drops the oldest', () => {

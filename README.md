@@ -3,10 +3,11 @@
 A browser that several AI coding agents drive at once — and that keeps the
 projects they work on apart.
 
-Agents working in the same project share one window: its tabs, its cookies, its
-logged-in sessions. Agents working in different projects share nothing at all —
-not a tab, not a cookie, not a login. That boundary is the point of the
-application.
+Agents working in the same project share its tabs, its cookies, its logged-in
+sessions. Agents working in different projects share nothing at all — not a
+tab, not a cookie, not a login. That boundary is the point of the application.
+There is one window, and its panel lists every project, the agents in each,
+their tabs and what they did there; the projects meet only in that list.
 
 ## Why it exists
 

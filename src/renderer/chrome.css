@@ -93,24 +93,6 @@ svg {
   color: var(--text);
 }
 /* The project's name, as a quiet button: plain until hovered, then a fill. */
-.drag .project {
-  -webkit-app-region: no-drag;
-  min-height: 1.8rem;
-  padding: 0 4px 0 6px;
-  gap: 2px;
-  font-size: inherit;
-  font-weight: 500;
-  color: var(--text);
-  background: none;
-  border-color: transparent;
-  box-shadow: none;
-}
-.drag .project:hover {
-  background: var(--fill);
-}
-.drag .project .chev {
-  color: var(--text-dim);
-}
 
 .bar {
   flex: none;
@@ -321,8 +303,29 @@ input.url:focus {
   transform: rotate(90deg);
 }
 
+/* The top level: a project, set apart by weight and by the folder glyph. */
+.row.project {
+  margin-top: 10px;
+  color: var(--text-dim);
+}
+.row.project .name {
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+}
+.row.project .folder {
+  flex: none;
+  color: var(--accent);
+}
+.row.project .count {
+  flex: none;
+  font-size: 0.85rem;
+  color: var(--text-faint);
+}
+
 .row.group {
-  margin-top: 8px;
+  margin-top: 4px;
 }
 .row.group .name {
   font-weight: 600;

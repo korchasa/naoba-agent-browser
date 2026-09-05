@@ -2,6 +2,24 @@ import type { AgentCommand, AgentRow, TabDescriptor } from '../main/protocol.ts'
 
 export type { AgentRow }
 
+/** A project as the panel holds it: what the main process has said about it so far. */
+export interface ProjectState {
+  id: string
+  name: string
+  root: string
+  tabs: TabDescriptor[]
+  agents: AgentRow[]
+  commands: Map<string, AgentCommand[]>
+}
+
+/** The top of the tree: a project, and the agents working in it. */
+export interface TreeProject {
+  id: string
+  name: string
+  root: string
+  groups: TreeGroup[]
+}
+
 /** An agent and the tabs it opened. */
 export interface TreeGroup {
   id: string
@@ -19,8 +37,18 @@ export interface TreeTab {
   commands: AgentCommand[]
 }
 
+/** Every project, its agents in the chosen order, and under them the tabs and calls. */
+export function buildForest(projects: Iterable<ProjectState>, mode: SortMode): TreeProject[] {
+  return [...projects].map((project) => ({
+    id: project.id,
+    name: project.name,
+    root: project.root,
+    groups: sortGroups(buildTree(project.tabs, project.agents, project.commands), mode),
+  }))
+}
+
 /**
- * Turn the window's state into the levels the panel draws.
+ * Turn a project's state into the levels the panel draws under it.
  *
  * A tab belongs to the agent that opened it, and its history holds every call
  * made in it, whoever made it. So a tab borrowed with `selectTab` stays in
@@ -89,17 +117,21 @@ export function sortGroups(groups: readonly TreeGroup[], mode: SortMode): TreeGr
   return sorted
 }
 
-export function groupKey(group: TreeGroup): string {
-  return `group:${group.id}`
+export function projectKey(project: TreeProject): string {
+  return `project:${project.id}`
 }
 
-export function tabKey(group: TreeGroup, tab: TabDescriptor): string {
-  return `tab:${group.id}:${tab.id}`
+export function groupKey(project: TreeProject, group: TreeGroup): string {
+  return `group:${project.id}:${group.id}`
+}
+
+export function tabKey(project: TreeProject, group: TreeGroup, tab: TabDescriptor): string {
+  return `tab:${project.id}:${group.id}:${tab.id}`
 }
 
 /**
- * Open a branch the first time it is seen: an actor when it appears, and the
- * tab in front of it.
+ * Open a branch the first time it is seen: a project and an agent when they
+ * appear, and the tab in front.
  *
  * `seen` is what makes this safe to call on every render. Seeding once at
  * startup would leave every agent that connects later as a collapsed row
@@ -107,18 +139,19 @@ export function tabKey(group: TreeGroup, tab: TabDescriptor): string {
  * the person had just folded shut. So each key is decided once, when it first
  * turns up, and never again.
  */
-export function expandNew(groups: readonly TreeGroup[], seen: Set<string>, open: Set<string>): void {
-  for (const group of groups) {
-    const key = groupKey(group)
-    if (!seen.has(key)) {
-      seen.add(key)
-      open.add(key)
-    }
-    for (const entry of group.tabs) {
-      const tab = tabKey(group, entry.tab)
-      if (seen.has(tab)) continue
-      seen.add(tab)
-      if (entry.tab.active) open.add(tab)
+export function expandNew(projects: readonly TreeProject[], seen: Set<string>, open: Set<string>): void {
+  const first = (key: string): boolean => {
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  }
+  for (const project of projects) {
+    if (first(projectKey(project))) open.add(projectKey(project))
+    for (const group of project.groups) {
+      if (first(groupKey(project, group))) open.add(groupKey(project, group))
+      for (const entry of group.tabs) {
+        if (first(tabKey(project, group, entry.tab)) && entry.tab.active) open.add(tabKey(project, group, entry.tab))
+      }
     }
   }
 }
