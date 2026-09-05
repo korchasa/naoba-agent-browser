@@ -6,16 +6,29 @@ import type { Hub } from './hub.ts'
  * The application lives in the menu bar. Agents work in windows nobody has to
  * look at, and a window comes to the screen only when the person clicks for it
  * here — or when an agent needs them.
+ *
+ * A click on the icon brings the application forward, the way a click on a
+ * menu-bar app is expected to: the project that is waiting for the person if
+ * there is one, otherwise the one worked in most recently. Everything else —
+ * the list of projects, the port, quitting — sits behind a right click, where
+ * macOS keeps the secondary things.
  */
 export function installTray(hub: Hub): Tray {
   const tray = new Tray(trayIcon())
-  tray.setToolTip('Naoba')
+  tray.setToolTip('Naoba — click to open, right-click for the projects')
 
-  const rebuild = () => {
-    const contexts = [...hub.contexts.values()]
-    const waiting = contexts.filter((context) => context.pendingHuman.size > 0)
+  const contexts = () => [...hub.contexts.values()]
+  const waiting = () => contexts().filter((context) => context.pendingHuman.size > 0)
 
-    const projectItems = contexts.map((context) => {
+  /** The window a click should bring up, or `null` when there is none yet. */
+  const foremost = () => {
+    const asking = waiting()
+    if (asking.length > 0) return asking[0]!
+    return contexts().sort((a, b) => b.lastTouched - a.lastTouched)[0] ?? null
+  }
+
+  const menu = () => {
+    const projectItems = contexts().map((context) => {
       const agents = context.agents.size
       const tabs = context.tabs.length
       const asking = context.pendingHuman.size > 0
@@ -25,30 +38,38 @@ export function installTray(hub: Hub): Tray {
         click: () => context.reveal(true),
       }
     })
+    const asking = waiting()
+    return Menu.buildFromTemplate([
+      { label: asking.length > 0 ? `${asking.length} agent${asking.length === 1 ? '' : 's'} need you` : 'Naoba', enabled: false },
+      { type: 'separator' },
+      ...(projectItems.length > 0
+        ? projectItems
+        : [{ label: 'No project has connected yet', enabled: false as const }]),
+      { type: 'separator' },
+      { label: `Listening on 127.0.0.1:${hub.port}`, enabled: false },
+      { label: 'Quit Naoba', click: () => app.quit() },
+    ])
+  }
 
-    tray.setContextMenu(
-      Menu.buildFromTemplate([
-        { label: waiting.length > 0 ? `${waiting.length} agent needs you` : 'Naoba', enabled: false },
-        { type: 'separator' },
-        ...(projectItems.length > 0
-          ? projectItems
-          : [{ label: 'No project has connected yet', enabled: false as const }]),
-        { type: 'separator' },
-        { label: `Listening on 127.0.0.1:${hub.port}`, enabled: false },
-        { label: 'Quit Naoba', click: () => app.quit() },
-      ]),
-    )
+  tray.on('click', () => {
+    const context = foremost()
+    // Nothing to show yet: the menu at least says so, and how to connect.
+    if (context) context.reveal(true)
+    else tray.popUpContextMenu(menu())
+  })
+  tray.on('right-click', () => tray.popUpContextMenu(menu()))
 
+  const refresh = () => {
     // Next to the icon: how many agents are connected, and a hand when one of
     // them is waiting for the person — the two things worth a glance at the
     // menu bar. Nothing at all while nobody is connected.
-    const connected = contexts.reduce((sum, context) => sum + context.agents.size, 0)
-    const parts = [waiting.length > 0 ? '✋' : '', connected > 0 ? String(connected) : '']
+    const connected = contexts().reduce((sum, context) => sum + context.agents.size, 0)
+    const parts = [waiting().length > 0 ? '✋' : '', connected > 0 ? String(connected) : '']
     tray.setTitle(parts.filter(Boolean).join(' '))
   }
 
-  rebuild()
-  const timer = setInterval(rebuild, 2_000)
+  refresh()
+  const timer = setInterval(refresh, 2_000)
   timer.unref?.()
   return tray
 }
