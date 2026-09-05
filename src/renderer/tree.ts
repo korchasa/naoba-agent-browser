@@ -131,7 +131,8 @@ export function tabKey(project: TreeProject, group: TreeGroup, tab: TabDescripto
 
 /**
  * Open a branch the first time it is seen: a project and an agent when they
- * appear, and the tab in front.
+ * appear. A tab stays folded — its calls are there for when the person wants
+ * them, and a tree that unrolls every call of every agent is a log, not a tree.
  *
  * `seen` is what makes this safe to call on every render. Seeding once at
  * startup would leave every agent that connects later as a collapsed row
@@ -149,9 +150,7 @@ export function expandNew(projects: readonly TreeProject[], seen: Set<string>, o
     if (first(projectKey(project))) open.add(projectKey(project))
     for (const group of project.groups) {
       if (first(groupKey(project, group))) open.add(groupKey(project, group))
-      for (const entry of group.tabs) {
-        if (first(tabKey(project, group, entry.tab)) && entry.tab.active) open.add(tabKey(project, group, entry.tab))
-      }
+      for (const entry of group.tabs) first(tabKey(project, group, entry.tab))
     }
   }
 }

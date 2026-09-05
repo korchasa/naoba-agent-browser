@@ -245,7 +245,7 @@ test('the agents can be ordered by arrival, by latest activity, or by name', () 
   assert.deepEqual(names(groups), ['cursor', 'claude', 'bob'], 'the input is left as it was')
 })
 
-test('the tree opens on every agent and on the tab in front', () => {
+test('the tree opens on every agent and keeps every tab folded', () => {
   const groups = buildTree(
     [tabAt(0, 'tab-a', 'agent-1', { active: true }), tabAt(1, 'tab-b', 'agent-1')],
     [here('agent-1', 'claude', 'claude', 'tab-a')],
@@ -256,7 +256,7 @@ test('the tree opens on every agent and on the tab in front', () => {
   expandNew([project], new Set(), open)
   assert.ok(open.has(projectKey(project)))
   assert.ok(open.has(groupKey(project, groups[0])))
-  assert.ok(open.has(tabKey(project, groups[0], groups[0].tabs[0].tab)))
+  assert.ok(!open.has(tabKey(project, groups[0], groups[0].tabs[0].tab)), 'the tab in front stays folded too')
   assert.ok(!open.has(tabKey(project, groups[0], groups[0].tabs[1].tab)))
 })
 
