@@ -184,6 +184,7 @@ function wireChrome(hub: Hub): void {
     if (!context) return null
     return {
       project: context.identity,
+      port: hub.port,
       tabs: context.describeTabs(),
       agents: context.agentRows(),
       commands: context.commandsByTab(),
@@ -297,6 +298,8 @@ function wireChrome(hub: Hub): void {
     ])
     menu.popup({ window: context.window() })
   })
+
+  ipcMain.handle('ab:quit', () => app.quit())
 
   ipcMain.handle('ab:panel-width', (_event, projectId: string, width: number) => {
     if (!contextOf(projectId) || !Number.isFinite(width)) return null

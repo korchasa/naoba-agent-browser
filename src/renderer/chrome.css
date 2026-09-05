@@ -542,3 +542,23 @@ input.url:focus {
 .foot .dot.live {
   background: var(--ok);
 }
+.foot .status {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Quit: a quiet icon at the end of the line, plain until hovered. */
+.foot .quit {
+  width: 1.8rem;
+  min-height: 1.8rem;
+  color: var(--text-dim);
+  background: none;
+  border-color: transparent;
+  box-shadow: none;
+}
+.foot .quit:hover {
+  color: var(--text);
+  background: var(--fill);
+}

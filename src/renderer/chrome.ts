@@ -15,6 +15,7 @@ import {
   type IconNode,
   Lock,
   Plus,
+  Power,
   RotateCw,
   SlidersHorizontal,
   X,
@@ -35,7 +36,7 @@ import {
 
 declare const ab: {
   state(projectId: string): Promise<
-    { tabs: TabDescriptor[]; agents: AgentRow[]; commands: Record<string, AgentCommand[]> } | null
+    { tabs: TabDescriptor[]; agents: AgentRow[]; commands: Record<string, AgentCommand[]>; port: number } | null
   >
   newTab(projectId: string, url?: string): Promise<unknown>
   selectTab(projectId: string, tabId: string): Promise<boolean>
@@ -44,6 +45,7 @@ declare const ab: {
   panelWidth(projectId: string, width: number): Promise<number>
   tabMenu(projectId: string, tabId: string): Promise<void>
   projectMenu(projectId: string): Promise<void>
+  quit(): Promise<void>
   takeOver(projectId: string, tabId: string): Promise<boolean>
   release(projectId: string, tabId: string): Promise<boolean>
   humanDone(projectId: string, tabId: string): Promise<boolean>
@@ -57,6 +59,8 @@ const root = document.getElementById('root')!
 
 let tabs: TabDescriptor[] = []
 let agents: AgentRow[] = []
+/** Where agents connect; shown in the foot once the main process has said. */
+let port: number | null = null
 const commands = new Map<string, AgentCommand[]>()
 
 /**
@@ -154,7 +158,13 @@ function renderPanel(groups: TreeGroup[]): HTMLElement {
 function renderFoot(): HTMLElement {
   const foot = el('div', 'foot')
   foot.append(el('span', agents.length > 0 ? 'dot live' : 'dot'))
-  foot.append(el('span', '', `${plural(agents.length, 'agent')} · ${plural(tabs.length, 'tab')}`))
+  const counts = `${plural(agents.length, 'agent')} · ${plural(tabs.length, 'tab')}`
+  // The address an agent connects to sits with the counts: the one line of
+  // the panel about the application rather than the project.
+  foot.append(el('span', 'status', port === null ? counts : `${counts} · 127.0.0.1:${port}`))
+  const quit = iconButton('power', () => void ab.quit(), 'Quit Naoba')
+  quit.classList.add('quit')
+  foot.append(quit)
   return foot
 }
 
@@ -415,9 +425,10 @@ const ICONS: Record<string, IconNode> = {
   sliders: SlidersHorizontal,
   check: Check,
   'chevron-down': ChevronDown,
+  power: Power,
 }
 
-const ICON_SIZE: Record<string, number> = { chevron: 11, 'chevron-down': 12, x: 11, lock: 12, hand: 12, check: 13 }
+const ICON_SIZE: Record<string, number> = { chevron: 11, 'chevron-down': 12, x: 11, lock: 12, hand: 12, check: 13, power: 13 }
 
 function icon(name: string, className = ''): SVGElement {
   const node = ICONS[name]
@@ -492,6 +503,7 @@ void ab.state(projectId).then((state) => {
   if (!state) return
   tabs = state.tabs
   agents = state.agents
+  port = state.port
   for (const [tabId, list] of Object.entries(state.commands)) commands.set(tabId, list)
   render()
 })

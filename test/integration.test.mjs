@@ -209,7 +209,7 @@ test('a tab an agent opened leaves with the agent', async () => {
 
   // The watcher runs first so that its own tab is part of the baseline: what is
   // measured here is what the leaver adds and what it takes away with it.
-  const baseline = await watcher.run(`return (await api.getTabs()).length`)
+  const baseline = await watcher.run(`return (await api.getTabs()).map((tab) => tab.id)`)
   const opened = await leaver.run(`
     const tab = await api.newTab(${JSON.stringify(origin + '/second.html')})
     return tab.id
@@ -219,7 +219,10 @@ test('a tab an agent opened leaves with the agent', async () => {
   assert.ok(during.value.includes(opened.value), 'the tab should be there while its agent is')
   // One tab per agent, not two: the tab an agent is given before its script
   // runs is the one `newTab` uses, rather than an empty one left beside it.
-  assert.equal(during.value.length, baseline.value + 1, `the leaver added ${during.value.length - baseline.value} tabs`)
+  // Compared by id, not by count: tabs left by earlier tests' agents go on
+  // their own timer, and one may close between the two readings.
+  const added = during.value.filter((id) => !baseline.value.includes(id))
+  assert.deepEqual(added, [opened.value], `the leaver added ${added.length} tabs`)
 
   leaver.close()
   await new Promise((resolve) => setTimeout(resolve, 500))
