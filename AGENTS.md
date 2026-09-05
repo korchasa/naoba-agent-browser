@@ -78,6 +78,13 @@ state must go through the project's own session, never through
   measuring first: `window.chrome` is an empty object and
   `Notification.permission` is `granted` without a prompt, both of which a
   check can read, and both were left alone on purpose (2026-09-05).
+- **`Tab.track` is a queue of one, and a DevTools command needs a document.**
+  Each tracked step waits on the one tracked before it, so two steps are two
+  `track` calls in order — a single chain that holds the `navigate` waits on
+  itself and the tab never loads (cost one red run, 2026-09-05). And a tab
+  that has never loaded anything has no renderer to answer the DevTools
+  protocol: a command sent before the blank page is up never returns, which
+  is why the disguise is tracked after the first navigate, not before it.
 - **Input goes through the DevTools protocol, not `sendInputEvent`.** Both look
   trusted to the page, but `sendInputEvent` is delivered through the window and
   does nothing when that window is hidden.
