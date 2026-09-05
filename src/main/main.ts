@@ -1,4 +1,4 @@
-import { app, dialog, ipcMain, Menu } from 'electron'
+import { app, clipboard, dialog, ipcMain, Menu } from 'electron'
 import { dirname, join } from 'node:path'
 import { existsSync, renameSync } from 'node:fs'
 import { Hub } from './hub.ts'
@@ -224,6 +224,51 @@ function wireChrome(hub: Hub): void {
   })
 
   /** The person always wins a tab; the agent holding it is told, never left guessing. */
+  /**
+   * The context menu of a tab row. Built here, not in the panel: a native menu
+   * matches the rest of the machine, and every action it offers is one the
+   * main process performs anyway.
+   */
+  ipcMain.handle('ab:tab-menu', (_event, projectId: string, tabId: string) => {
+    const context = contextOf(projectId)
+    const tab = context?.tab(tabId)
+    if (!context || !tab) return
+    const holder = context.leases.holderOf(tabId)
+    const heldByPerson = holder?.kind === 'human'
+    const menu = Menu.buildFromTemplate([
+      { label: 'Bring to front', click: () => void context.selectTab(tabId) },
+      {
+        label: 'Reload',
+        click: () => {
+          void tab.reload()
+          context.log(YOU, 'reloaded the page', tabId)
+        },
+      },
+      { type: 'separator' },
+      { label: 'Copy address', enabled: tab.url !== '', click: () => clipboard.writeText(tab.url) },
+      { label: 'Copy title', enabled: tab.title !== '', click: () => clipboard.writeText(tab.title) },
+      { type: 'separator' },
+      heldByPerson
+        ? {
+          label: 'Give the tab back',
+          click: () => {
+            context.leases.release(tabId, { kind: 'human' })
+            context.log(YOU, 'gave the tab back', tabId)
+          },
+        }
+        : {
+          label: holder ? `Take over from ${holder.kind === 'agent' ? holder.label : 'the holder'}` : 'Take over this tab',
+          click: () => {
+            context.leases.takeOver(tabId, { kind: 'human' })
+            context.log(YOU, 'took over this tab', tabId)
+          },
+        },
+      { type: 'separator' },
+      { label: 'Close tab', click: () => void context.closeTab(tabId) },
+    ])
+    menu.popup({ window: context.window() })
+  })
+
   ipcMain.handle('ab:panel-width', (_event, projectId: string, width: number) => {
     if (!contextOf(projectId) || !Number.isFinite(width)) return null
     const kept = hub.setPanelWidth(width)

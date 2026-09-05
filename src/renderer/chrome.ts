@@ -41,6 +41,7 @@ declare const ab: {
   closeTab(projectId: string, tabId: string): Promise<boolean>
   navigate(projectId: string, tabId: string, url: string): Promise<boolean>
   panelWidth(projectId: string, width: number): Promise<number>
+  tabMenu(projectId: string, tabId: string): Promise<void>
   takeOver(projectId: string, tabId: string): Promise<boolean>
   release(projectId: string, tabId: string): Promise<boolean>
   humanDone(projectId: string, tabId: string): Promise<boolean>
@@ -335,6 +336,12 @@ function tabRow(tab: TabDescriptor, count: number, open: boolean, key: string): 
   // Clicking the tab itself brings the page forward; the triangle is the only
   // part that folds it.
   row.onclick = () => void ab.selectTab(projectId, tab.id)
+  // The menu is the system's, built in the main process, so it looks and
+  // behaves like every other context menu on the machine.
+  row.oncontextmenu = (event) => {
+    event.preventDefault()
+    void ab.tabMenu(projectId, tab.id)
+  }
   return row
 }
 
