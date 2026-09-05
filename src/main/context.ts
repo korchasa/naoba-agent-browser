@@ -106,6 +106,11 @@ export class ProjectContext {
     return this.#window !== null
   }
 
+  /** Whether the person can see the window right now. */
+  get onScreen(): boolean {
+    return this.#onScreen
+  }
+
   get tabs(): readonly Tab[] {
     return this.#tabs
   }
@@ -274,6 +279,7 @@ export class ProjectContext {
     if (this.headless) return
     const window = this.window()
     this.#onScreen = true
+    this.touch()
     window.setIgnoreMouseEvents(false)
     window.setOpacity(1)
     if (focus) {

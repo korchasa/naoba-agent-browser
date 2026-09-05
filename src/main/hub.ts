@@ -180,6 +180,8 @@ export class Hub {
       if (!context.loaded) continue
       if (context.agents.size > 0) continue
       if (context.pendingHuman.size > 0) continue
+      // A window the person is looking at is not idle, whatever the clock says.
+      if (context.onScreen) continue
       if (now - context.lastTouched < this.#options.idleUnloadMs) continue
       // The session stays on disk: a login done by hand outlives the window.
       context.unload()
