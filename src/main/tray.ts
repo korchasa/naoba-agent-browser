@@ -1,5 +1,5 @@
-import { app, dialog, nativeImage, Tray } from 'electron'
-import { deflateSync } from 'node:zlib'
+import { app, BrowserWindow, dialog, nativeImage, Tray } from 'electron'
+import { Globe, Hand, type IconNode } from 'lucide'
 import type { Hub } from './hub.ts'
 
 /**
@@ -13,8 +13,9 @@ import type { Hub } from './hub.ts'
  * quitting — is inside the window, under the project's name.
  */
 export function installTray(hub: Hub): Tray {
-  const tray = new Tray(trayIcon())
+  const tray = new Tray(nativeImage.createEmpty())
   tray.setToolTip('Naoba — click to open')
+  const painter = new IconPainter()
 
   const contexts = () => [...hub.contexts.values()]
   const waiting = () => contexts().filter((context) => context.pendingHuman.size > 0)
@@ -50,13 +51,18 @@ export function installTray(hub: Hub): Tray {
   tray.on('click', open)
   tray.on('right-click', open)
 
+  let shown = ''
   const refresh = () => {
-    // Next to the icon: how many agents are connected, and a hand when one of
-    // them is waiting for the person — the two things worth a glance at the
-    // menu bar. Nothing at all while nobody is connected.
+    // The icon itself says it: a hand when an agent is waiting for the person,
+    // and the number of connected agents drawn into the glyph — the two things
+    // worth a glance at the menu bar.
     const connected = contexts().reduce((sum, context) => sum + context.agents.size, 0)
-    const parts = [waiting().length > 0 ? '✋' : '', connected > 0 ? String(connected) : '']
-    tray.setTitle(parts.filter(Boolean).join(' '))
+    const key = `${waiting().length > 0 ? 'hand' : 'globe'}:${connected}`
+    if (key === shown) return
+    shown = key
+    void painter.paint(waiting().length > 0, connected).then((image) => {
+      if (shown === key && !tray.isDestroyed()) tray.setImage(image)
+    })
   }
 
   refresh()
@@ -65,83 +71,76 @@ export function installTray(hub: Hub): Tray {
   return tray
 }
 
+
+/** Points across, in the menu bar. */
+const ICON_POINTS = 18
+/** The retina factor the icon is painted at. */
+const ICON_SCALE = 2
+
 /**
- * The icon, drawn here rather than shipped as a file: sixteen pixels of browser
- * window are not worth a binary asset, and a template image is just black plus
- * alpha, which macOS inverts for the menu bar on its own.
+ * The icon is painted by a canvas in an offscreen renderer rather than pixel
+ * by pixel here: a hand and a number both need anti-aliasing to read at
+ * eighteen points, and Chromium already knows how to draw both. A template
+ * image is black plus alpha; macOS inverts it for the menu bar on its own.
  */
-function trayIcon() {
-  const size = 16
-  const pixels = Buffer.alloc(size * size * 4)
-  const set = (x: number, y: number, alpha: number) => {
-    const at = (y * size + x) * 4
-    pixels[at] = 0
-    pixels[at + 1] = 0
-    pixels[at + 2] = 0
-    pixels[at + 3] = alpha
+class IconPainter {
+  #window: BrowserWindow | null = null
+
+  async paint(hand: boolean, count: number): Promise<Electron.NativeImage> {
+    const window = this.#window ?? (this.#window = await this.#open())
+    const dataUrl: string = await window.webContents.executeJavaScript(
+      `draw(${JSON.stringify(hand ? svg(Hand) : svg(Globe))}, ${count})`,
+    )
+    const png = Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64')
+    const image = nativeImage.createFromBuffer(png, { scaleFactor: ICON_SCALE })
+    image.setTemplateImage(true)
+    return image
   }
 
-  // A window outline with a title bar — the smallest thing that reads as a browser.
-  for (let x = 2; x <= 13; x++) {
-    set(x, 2, 255)
-    set(x, 13, 255)
-    if (x <= 13) set(x, 5, 180)
+  async #open(): Promise<BrowserWindow> {
+    const px = ICON_POINTS * ICON_SCALE
+    const window = new BrowserWindow({
+      show: false,
+      width: px,
+      height: px,
+      webPreferences: { offscreen: true, sandbox: true },
+    })
+    const html = `<canvas id="c" width="${px}" height="${px}"></canvas><script>
+      const PX = ${px}, S = ${ICON_SCALE}
+      const canvas = document.getElementById('c'), ctx = canvas.getContext('2d')
+      const glyph = (markup) => new Promise((resolve, reject) => {
+        const image = new Image()
+        image.onload = () => resolve(image)
+        image.onerror = () => reject(new Error('the icon did not load'))
+        image.src = 'data:image/svg+xml;utf8,' + encodeURIComponent(markup)
+      })
+      async function draw(markup, count) {
+        ctx.clearRect(0, 0, PX, PX)
+        ctx.drawImage(await glyph(markup), 0, 0, PX, PX)
+        if (count > 0) {
+          // A badge in the lower right: a hole in the glyph with the number in it,
+          // so it reads on the light bar and the dark one alike.
+          const label = String(count), r = 5.5 * S, cx = PX - r - 0.5 * S, cy = PX - r - 0.5 * S
+          ctx.globalCompositeOperation = 'destination-out'
+          ctx.beginPath(); ctx.arc(cx, cy, r + 1 * S, 0, Math.PI * 2); ctx.fill()
+          ctx.globalCompositeOperation = 'source-over'
+          ctx.fillStyle = '#000'
+          ctx.font = 'bold ' + (label.length > 1 ? 6.5 : 8) * S + 'px -apple-system, Helvetica, sans-serif'
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+          ctx.fillText(label, cx, cy + 0.5 * S)
+        }
+        return canvas.toDataURL('image/png')
+      }
+    </script>`
+    await window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+    return window
   }
-  for (let y = 2; y <= 13; y++) {
-    set(2, y, 255)
-    set(13, y, 255)
-  }
-  // Two dots in the title bar, the way a browser's controls sit there.
-  set(4, 3, 255)
-  set(6, 3, 255)
-
-  const image = nativeImage.createFromBuffer(encodePng(size, size, pixels), { width: size, height: size })
-  image.setTemplateImage(true)
-  return image
 }
 
-/** A minimal PNG encoder: one IHDR, one IDAT, one IEND, no filtering worth the name. */
-function encodePng(width: number, height: number, rgba: Buffer): Buffer {
-  const raw = Buffer.alloc((width * 4 + 1) * height)
-  for (let y = 0; y < height; y++) {
-    raw[y * (width * 4 + 1)] = 0 // filter: none
-    rgba.copy(raw, y * (width * 4 + 1) + 1, y * width * 4, (y + 1) * width * 4)
-  }
-
-  const chunk = (type: string, body: Buffer): Buffer => {
-    const length = Buffer.alloc(4)
-    length.writeUInt32BE(body.length)
-    const typed = Buffer.concat([Buffer.from(type, 'ascii'), body])
-    const crc = Buffer.alloc(4)
-    crc.writeUInt32BE(crc32(typed) >>> 0)
-    return Buffer.concat([length, typed, crc])
-  }
-
-  const header = Buffer.alloc(13)
-  header.writeUInt32BE(width, 0)
-  header.writeUInt32BE(height, 4)
-  header[8] = 8 // bit depth
-  header[9] = 6 // colour type: RGBA
-  return Buffer.concat([
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    chunk('IHDR', header),
-    chunk('IDAT', deflateSync(raw)),
-    chunk('IEND', Buffer.alloc(0)),
-  ])
-}
-
-const CRC_TABLE = (() => {
-  const table = new Int32Array(256)
-  for (let n = 0; n < 256; n++) {
-    let c = n
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
-    table[n] = c
-  }
-  return table
-})()
-
-function crc32(buffer: Buffer): number {
-  let c = -1
-  for (const byte of buffer) c = CRC_TABLE[(c ^ byte) & 0xff]! ^ (c >>> 8)
-  return c ^ -1
+/** A Lucide icon as standalone SVG markup, filled black the way a template image wants. */
+function svg(node: IconNode): string {
+  const body = node
+    .map(([tag, attrs]) => `<${tag} ${Object.entries(attrs).map(([k, v]) => `${k}="${v}"`).join(' ')}/>`)
+    .join('')
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`
 }
