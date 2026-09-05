@@ -1,4 +1,4 @@
-import { app, BaseWindow, screen, session as electronSession, WebContentsView } from 'electron'
+import { app, BaseWindow, dialog, screen, session as electronSession, WebContentsView } from 'electron'
 import type { Session } from 'electron'
 import { type Holder, holderLabel, LeaseTable } from './lease.ts'
 import { KeyedQueue } from './queue.ts'
@@ -58,6 +58,7 @@ export class ProjectContext {
   #panel: WebContentsView | null = null
   /** Whether the person has actually been shown this window. */
   #onScreen = false
+  #closing = false
   #tabs: Tab[] = []
   #activeTabId: string | null = null
   #panelWidth: number
@@ -156,6 +157,14 @@ export class ProjectContext {
     this.#panel = panel
 
     window.on('resize', () => this.layout())
+    // The close button is ambiguous for a menu-bar application: the person may
+    // want the window out of the way, or the whole thing gone. Ask, every
+    // time — the two answers differ by every tab the agents are working in.
+    window.on('close', (event) => {
+      if (this.#closing) return
+      event.preventDefault()
+      void this.#askToClose()
+    })
     window.on('closed', () => {
       this.#window = null
       this.#panel = null
@@ -231,6 +240,33 @@ export class ProjectContext {
     window.setOpacity(0)
     window.setIgnoreMouseEvents(true)
     if (!window.isVisible()) window.showInactive()
+  }
+
+  /** Take the window off screen the way `show` keeps it: alive, transparent, out of the way. */
+  hide(): void {
+    const window = this.#window
+    if (!window || window.isDestroyed()) return
+    this.#onScreen = false
+    window.setOpacity(0)
+    window.setIgnoreMouseEvents(true)
+    window.blur()
+  }
+
+  async #askToClose(): Promise<void> {
+    const window = this.window()
+    const { response } = await dialog.showMessageBox(window, {
+      type: 'question',
+      message: `Close the ${this.identity.name} window?`,
+      detail: 'Hide it and the agents keep working in their tabs. Quit and every project closes.',
+      buttons: ['Hide to Menu Bar', 'Quit Naoba', 'Cancel'],
+      defaultId: 0,
+      cancelId: 2,
+    })
+    if (response === 0) this.hide()
+    else if (response === 1) {
+      this.#closing = true
+      app.quit()
+    }
   }
 
   /** Put the window on screen for real: the person asked, or an agent needs them. */
