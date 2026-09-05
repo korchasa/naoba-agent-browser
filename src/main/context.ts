@@ -1,4 +1,4 @@
-import { BaseWindow, screen, session as electronSession, WebContentsView } from 'electron'
+import { app, BaseWindow, screen, session as electronSession, WebContentsView } from 'electron'
 import type { Session } from 'electron'
 import { type Holder, holderLabel, LeaseTable } from './lease.ts'
 import { KeyedQueue } from './queue.ts'
@@ -241,6 +241,9 @@ export class ProjectContext {
     window.setIgnoreMouseEvents(false)
     window.setOpacity(1)
     if (focus) {
+      // A menu-bar application has no dock icon and is not "active"; without
+      // this the window is shown, but behind whatever the person is in.
+      app.focus({ steal: true })
       window.show()
       window.focus()
     } else if (!window.isVisible()) {

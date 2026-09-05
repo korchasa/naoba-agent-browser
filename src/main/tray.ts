@@ -1,4 +1,4 @@
-import { app, Menu, nativeImage, Tray } from 'electron'
+import { app, dialog, nativeImage, Tray } from 'electron'
 import { deflateSync } from 'node:zlib'
 import type { Hub } from './hub.ts'
 
@@ -7,15 +7,14 @@ import type { Hub } from './hub.ts'
  * look at, and a window comes to the screen only when the person clicks for it
  * here — or when an agent needs them.
  *
- * A click on the icon brings the application forward, the way a click on a
- * menu-bar app is expected to: the project that is waiting for the person if
- * there is one, otherwise the one worked in most recently. Everything else —
- * the list of projects, the port, quitting — sits behind a right click, where
- * macOS keeps the secondary things.
+ * The icon does one thing: a click brings the application forward — the
+ * project that is waiting for the person if there is one, otherwise the one
+ * worked in most recently. Everything else — switching project, the port,
+ * quitting — is inside the window, under the project's name.
  */
 export function installTray(hub: Hub): Tray {
   const tray = new Tray(trayIcon())
-  tray.setToolTip('Naoba — click to open, right-click for the projects')
+  tray.setToolTip('Naoba — click to open')
 
   const contexts = () => [...hub.contexts.values()]
   const waiting = () => contexts().filter((context) => context.pendingHuman.size > 0)
@@ -27,37 +26,29 @@ export function installTray(hub: Hub): Tray {
     return contexts().sort((a, b) => b.lastTouched - a.lastTouched)[0] ?? null
   }
 
-  const menu = () => {
-    const projectItems = contexts().map((context) => {
-      const agents = context.agents.size
-      const tabs = context.tabs.length
-      const asking = context.pendingHuman.size > 0
-      return {
-        label: `${asking ? '✋ ' : ''}${context.identity.name}` +
-          `  —  ${agents} agent${agents === 1 ? '' : 's'}, ${tabs} tab${tabs === 1 ? '' : 's'}`,
-        click: () => context.reveal(true),
-      }
-    })
-    const asking = waiting()
-    return Menu.buildFromTemplate([
-      { label: asking.length > 0 ? `${asking.length} agent${asking.length === 1 ? '' : 's'} need you` : 'Naoba', enabled: false },
-      { type: 'separator' },
-      ...(projectItems.length > 0
-        ? projectItems
-        : [{ label: 'No project has connected yet', enabled: false as const }]),
-      { type: 'separator' },
-      { label: `Listening on 127.0.0.1:${hub.port}`, enabled: false },
-      { label: 'Quit Naoba', click: () => app.quit() },
-    ])
-  }
-
-  tray.on('click', () => {
+  const open = () => {
     const context = foremost()
-    // Nothing to show yet: the menu at least says so, and how to connect.
-    if (context) context.reveal(true)
-    else tray.popUpContextMenu(menu())
-  })
-  tray.on('right-click', () => tray.popUpContextMenu(menu()))
+    if (context) {
+      context.reveal(true)
+      return
+    }
+    // Nothing to show yet. Say so, and say how to get a window, rather than
+    // answering a click with nothing.
+    app.focus({ steal: true })
+    void dialog.showMessageBox({
+      type: 'info',
+      message: 'No project has connected yet',
+      detail: `Point an agent at a project and its window appears here.\n\n` +
+        `claude mcp add naoba -- node <checkout>/packages/bridge/index.mjs\n\n` +
+        `Listening on 127.0.0.1:${hub.port}`,
+      buttons: ['OK', 'Quit Naoba'],
+      defaultId: 0,
+    }).then(({ response }) => {
+      if (response === 1) app.quit()
+    })
+  }
+  tray.on('click', open)
+  tray.on('right-click', open)
 
   const refresh = () => {
     // Next to the icon: how many agents are connected, and a hand when one of

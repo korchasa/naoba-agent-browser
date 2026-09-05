@@ -269,6 +269,35 @@ function wireChrome(hub: Hub): void {
     menu.popup({ window: context.window() })
   })
 
+  /**
+   * The application's menu, under the project's name in the panel: the other
+   * projects to switch to, the port an agent connects to, and Quit. The menu
+   * bar icon only opens a window, so this is where those live.
+   */
+  ipcMain.handle('ab:project-menu', (_event, projectId: string) => {
+    const context = contextOf(projectId)
+    if (!context) return
+    const projects = [...hub.contexts.values()].map((other) => {
+      const agents = other.agents.size
+      const asking = other.pendingHuman.size > 0
+      return {
+        label: `${asking ? '✋ ' : ''}${other.identity.name}  —  ${agents} agent${agents === 1 ? '' : 's'}`,
+        type: 'checkbox' as const,
+        checked: other === context,
+        click: () => other.reveal(true),
+      }
+    })
+    const menu = Menu.buildFromTemplate([
+      { label: 'Projects', enabled: false },
+      ...projects,
+      { type: 'separator' },
+      { label: `Agents connect to 127.0.0.1:${hub.port}`, enabled: false },
+      { type: 'separator' },
+      { label: 'Quit Naoba', click: () => app.quit() },
+    ])
+    menu.popup({ window: context.window() })
+  })
+
   ipcMain.handle('ab:panel-width', (_event, projectId: string, width: number) => {
     if (!contextOf(projectId) || !Number.isFinite(width)) return null
     const kept = hub.setPanelWidth(width)

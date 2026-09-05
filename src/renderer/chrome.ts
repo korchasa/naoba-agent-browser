@@ -6,6 +6,7 @@
 import type { AgentCommand, TabDescriptor } from '../main/protocol.ts'
 import {
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   createElement,
@@ -42,6 +43,7 @@ declare const ab: {
   navigate(projectId: string, tabId: string, url: string): Promise<boolean>
   panelWidth(projectId: string, width: number): Promise<number>
   tabMenu(projectId: string, tabId: string): Promise<void>
+  projectMenu(projectId: string): Promise<void>
   takeOver(projectId: string, tabId: string): Promise<boolean>
   release(projectId: string, tabId: string): Promise<boolean>
   humanDone(projectId: string, tabId: string): Promise<boolean>
@@ -114,7 +116,14 @@ function renderPanel(groups: TreeGroup[]): HTMLElement {
   // The window buttons sit over the top-left of the content, so the panel keeps
   // that strip empty and hands it to the window as a drag region.
   const strip = el('div', 'drag')
-  strip.append(icon('bolt', 'bolt'), el('span', 'brand', 'naoba'), el('span', '', '·'), el('span', '', projectName))
+  // The project's name opens the application's own menu: the other projects,
+  // the port, quitting. It is the one control in the strip, so it sits at the
+  // right where the drag region ends.
+  const project = el('button', 'project')
+  project.title = 'Projects and application'
+  project.append(el('span', '', projectName), icon('chevron-down', 'chev'))
+  project.onclick = () => void ab.projectMenu(projectId)
+  strip.append(icon('bolt', 'bolt'), el('span', 'brand', 'naoba'), el('span', '', '·'), project)
   wrap.append(strip)
   wrap.append(grip())
   wrap.append(renderBar())
@@ -405,9 +414,10 @@ const ICONS: Record<string, IconNode> = {
   globe: Globe,
   sliders: SlidersHorizontal,
   check: Check,
+  'chevron-down': ChevronDown,
 }
 
-const ICON_SIZE: Record<string, number> = { chevron: 11, x: 11, lock: 12, hand: 12, check: 13 }
+const ICON_SIZE: Record<string, number> = { chevron: 11, 'chevron-down': 12, x: 11, lock: 12, hand: 12, check: 13 }
 
 function icon(name: string, className = ''): SVGElement {
   const node = ICONS[name]
