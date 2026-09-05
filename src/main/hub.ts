@@ -22,6 +22,8 @@ export interface HubOptions extends ShellPaths {
   defaultScriptTimeoutMs: number
   /** Skips the admission dialog. Used by the test harness, never in a shipped build. */
   admitEverything?: boolean
+  /** Whether pages are told that a program drives the browser, at the start. */
+  announceAutomation?: boolean
 }
 
 type Decision = 'allowed' | 'denied'
@@ -48,11 +50,13 @@ export class Hub {
   readonly #agentsByConnection = new Map<number, { agentId: string; projectId: string }>()
   #idleTimer: NodeJS.Timeout | null = null
   #admissionInFlight: Promise<unknown> = Promise.resolve()
+  #announceAutomation: boolean
 
   #options: HubOptions
 
   constructor(options: HubOptions) {
     this.#options = options
+    this.#announceAutomation = options.announceAutomation ?? false
     this.shell = new Shell(options)
     // The tab in front changed: every project's rows say whether theirs is
     // the one, so every project is told to redraw.
@@ -65,6 +69,16 @@ export class Hub {
 
   get port(): number {
     return this.#server.port
+  }
+
+  /** Whether pages are told that a program drives the browser. One switch for every project. */
+  get announceAutomation(): boolean {
+    return this.#announceAutomation
+  }
+
+  async setAnnounceAutomation(on: boolean): Promise<void> {
+    this.#announceAutomation = on
+    await Promise.all([...this.contexts.values()].map((context) => context.setAnnounceAutomation(on)))
   }
 
   async start(preferredPort?: number): Promise<number> {
@@ -173,6 +187,7 @@ export class Hub {
       preload: this.#options.preload,
       shell: this.shell,
       orphanCloseMs: this.#options.orphanCloseMs,
+      announceAutomation: this.#announceAutomation,
     })
     this.contexts.set(identity.id, created)
     this.shell.toChrome('projects', { projects: this.projectRows() })

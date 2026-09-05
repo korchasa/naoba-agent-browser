@@ -44,15 +44,38 @@ test('the browser does not announce itself as an automated client', async () => 
   const agent = await app.agent(PROJECT_A, 'ua')
   const outcome = await agent.run(`
     await api.navigate(${JSON.stringify(origin + '/page.html')})
-    return await api.eval('navigator.userAgent')
+    return await api.eval('({ ua: navigator.userAgent, webdriver: navigator.webdriver })')
   `)
   // Cloudflare's sign-in page refused to run its own verification widget while
   // the user agent carried these two words, and the person could not sign in at
   // all. What is underneath is Chromium, and that is what it must say.
-  assert.doesNotMatch(outcome.value, /Electron/)
-  assert.doesNotMatch(outcome.value, /naoba/)
-  assert.match(outcome.value, /Chrome\/\d+/)
+  assert.doesNotMatch(outcome.value.ua, /Electron/)
+  assert.doesNotMatch(outcome.value.ua, /naoba/)
+  assert.match(outcome.value.ua, /Chrome\/\d+/)
+  assert.equal(outcome.value.webdriver, false)
   agent.close()
+})
+
+test('with the disguise off, a page sees an automated client and says so', async () => {
+  // The person building a bot check needs both sides of it: a browser that
+  // hides what it is, and the same browser owning up. Owning up is the
+  // Electron user agent back in place and `navigator.webdriver` set, the two
+  // things a check reads first.
+  const honest = await startApp({ port: nextPort(), extraArgs: ['--announce-automation'] })
+  try {
+    const agent = await honest.agent(PROJECT_A, 'honest')
+    const outcome = await agent.run(`
+      await api.navigate(${JSON.stringify(origin + '/page.html')})
+      return await api.eval('({ ua: navigator.userAgent, webdriver: navigator.webdriver })')
+    `)
+    // The application's own name joins the user agent only in a packaged
+    // build; a test run from `dist/` carries Electron alone.
+    assert.match(outcome.value.ua, /Electron\/\d+/)
+    assert.equal(outcome.value.webdriver, true)
+    agent.close()
+  } finally {
+    await honest.stop()
+  }
 })
 
 test('a screenshot reaches the agent as a file, even with no window on screen', async () => {

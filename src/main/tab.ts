@@ -3,6 +3,7 @@ import type { Session, WebContents, WebFrameMain } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { toTransferable } from './serialize.ts'
 import { CommandLog } from './commands.ts'
+import { userAgentFor } from './disguise.ts'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
@@ -113,6 +114,28 @@ export class Tab {
     this.#destroyed = true
     this.#detachDebugger()
     if (!this.wc.isDestroyed()) this.wc.close()
+  }
+
+  // ----------------------------------------------------------------- disguise
+
+  /**
+   * Whether pages are told that a program drives this tab.
+   *
+   * Hidden, the page sees plain Chromium and `navigator.webdriver` is false —
+   * the two things a bot check reads first. Announced, the Electron user agent
+   * is back and the flag is set through the DevTools protocol, which changes
+   * the document already open and not only the next one. The person building
+   * such a check wants both sides of it, so this can flip while the tab lives.
+   */
+  async announceAutomation(on: boolean): Promise<void> {
+    // A tab that has never loaded anything has no renderer to answer the
+    // DevTools protocol, and a command sent to it never returns.
+    await this.#ready
+    if (this.destroyed) return
+    this.wc.setUserAgent(userAgentFor(on))
+    if (!on && !this.#debuggerAttached) return
+    this.#attachDebugger()
+    await this.wc.debugger.sendCommand('Emulation.setAutomationOverride', { enabled: on }).catch(() => undefined)
   }
 
   // ---------------------------------------------------------------- navigation

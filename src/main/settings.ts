@@ -8,6 +8,8 @@ import { join } from 'node:path'
  */
 interface Settings {
   panelWidth?: number
+  /** Whether pages are told that a program drives the browser. Off is the disguise. */
+  announceAutomation?: boolean
 }
 
 function file(): string {

@@ -4,6 +4,7 @@ import { type Holder, holderLabel, LeaseTable } from './lease.ts'
 import { KeyedQueue } from './queue.ts'
 import { partitionFor, type ProjectIdentity } from './project.ts'
 import { Tab } from './tab.ts'
+import { userAgentFor } from './disguise.ts'
 import type { Shell } from './shell.ts'
 import type { AgentCommand, AgentDescriptor, AgentRow, AppEvent, ServerMessage, TabDescriptor } from './protocol.ts'
 
@@ -28,6 +29,8 @@ export interface ContextPaths {
   shell: Shell
   /** How long a departed agent's tabs stay open before they are closed. */
   orphanCloseMs?: number
+  /** Whether pages are told that a program drives the browser, at the start. */
+  announceAutomation?: boolean
 }
 
 /**
@@ -57,6 +60,7 @@ export class ProjectContext {
    */
   readonly #departed = new Map<string, { label: string; ide: string }>()
   #lastTouched = Date.now()
+  #announceAutomation: boolean
 
   readonly #paths: ContextPaths
 
@@ -65,6 +69,8 @@ export class ProjectContext {
     this.identity = identity
     this.#paths = paths
     this.session = electronSession.fromPartition(partitionFor(identity.id))
+    this.#announceAutomation = paths.announceAutomation ?? false
+    this.session.setUserAgent(userAgentFor(this.#announceAutomation))
     this.leases = new LeaseTable()
     this.leases.onChange((event) => {
       if (event.type === 'claimed') {
@@ -92,6 +98,17 @@ export class ProjectContext {
 
   get tabs(): readonly Tab[] {
     return this.#tabs
+  }
+
+  /**
+   * Flip the disguise for every tab of this project, open or yet to open. A
+   * page already loaded keeps its user agent until it navigates; the
+   * `webdriver` flag changes on the spot.
+   */
+  async setAnnounceAutomation(on: boolean): Promise<void> {
+    this.#announceAutomation = on
+    this.session.setUserAgent(userAgentFor(on))
+    await Promise.all(this.#tabs.map((tab) => tab.announceAutomation(on)))
   }
 
   // ------------------------------------------------------------------- window
@@ -168,8 +185,14 @@ export class ProjectContext {
     this.notifyTabs()
     // A view with no document at all makes `executeJavaScript` wait forever, so
     // a blank tab is a real blank page rather than nothing. Tracking the load
-    // is what stops the agent's first navigate from racing it.
+    // is what stops the agent's first navigate from racing it. The disguise
+    // goes on once that blank page is there — a tab with no document cannot
+    // answer the DevTools protocol — and is tracked in turn, so the agent's
+    // first navigate waits for it and the first real page sees the browser as
+    // it should. Each step waits on the one tracked before it; a single chain
+    // holding both would be waiting on itself.
     void tab.track(tab.navigate(url ?? 'about:blank'))
+    void tab.track(tab.announceAutomation(this.#announceAutomation))
     return tab
   }
 

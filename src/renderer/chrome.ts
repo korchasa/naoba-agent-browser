@@ -5,18 +5,19 @@
  */
 import type { AgentCommand, ProjectDescriptor, TabDescriptor } from '../main/protocol.ts'
 import {
+  Bot,
   Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   createElement,
   Folder,
+  Ghost,
   Globe,
   Hand,
   type IconNode,
   Lock,
   Plus,
-  Power,
   RotateCw,
   SlidersHorizontal,
   X,
@@ -44,14 +45,14 @@ interface ProjectSnapshot extends ProjectDescriptor {
 }
 
 declare const ab: {
-  state(): Promise<{ port: number; projects: ProjectSnapshot[] }>
+  state(): Promise<{ port: number; announceAutomation: boolean; projects: ProjectSnapshot[] }>
   newTab(projectId: string, url?: string): Promise<unknown>
   selectTab(projectId: string, tabId: string): Promise<boolean>
   closeTab(projectId: string, tabId: string): Promise<boolean>
   navigate(projectId: string, tabId: string, url: string): Promise<boolean>
   panelWidth(width: number): Promise<number>
+  announceAutomation(on: boolean): Promise<boolean>
   tabMenu(projectId: string, tabId: string): Promise<void>
-  quit(): Promise<void>
   takeOver(projectId: string, tabId: string): Promise<boolean>
   release(projectId: string, tabId: string): Promise<boolean>
   humanDone(projectId: string, tabId: string): Promise<boolean>
@@ -64,6 +65,8 @@ const root = document.getElementById('root')!
 const projects = new Map<string, ProjectState>()
 /** Where agents connect; shown in the foot once the main process has said. */
 let port: number | null = null
+/** Whether pages are being told that a program drives the browser. */
+let announced = false
 
 /** The project's slot, made on first mention so a push about it never has nowhere to land. */
 function project(descriptor: ProjectDescriptor): ProjectState {
@@ -182,9 +185,22 @@ function renderFoot(): HTMLElement {
   // The address an agent connects to sits with the counts: the one line of
   // the panel about the application rather than the project.
   foot.append(el('span', 'status', port === null ? counts : `${counts} · 127.0.0.1:${port}`))
-  const quit = iconButton('power', () => void ab.quit(), 'Quit Naoba')
-  quit.classList.add('quit')
-  foot.append(quit)
+  // The disguise switch: a ghost while pages see plain Chromium, a robot while
+  // they are told the truth. Somebody building a bot check flips it to watch
+  // the check fire, then flips it back.
+  const disguise = iconButton(
+    announced ? 'bot' : 'ghost',
+    () => void ab.announceAutomation(!announced).then((kept) => {
+      announced = kept
+      render()
+    }),
+    announced
+      ? 'Pages are told a program drives this browser. Click to hide it.'
+      : 'Pages see an ordinary Chromium. Click to announce the automation.',
+  )
+  disguise.classList.add('disguise')
+  if (announced) disguise.classList.add('on')
+  foot.append(disguise)
   return foot
 }
 
@@ -473,10 +489,21 @@ const ICONS: Record<string, IconNode> = {
   sliders: SlidersHorizontal,
   check: Check,
   'chevron-down': ChevronDown,
-  power: Power,
+  ghost: Ghost,
+  bot: Bot,
 }
 
-const ICON_SIZE: Record<string, number> = { folder: 14, chevron: 11, 'chevron-down': 12, x: 11, lock: 12, hand: 12, check: 13, power: 13 }
+const ICON_SIZE: Record<string, number> = {
+  folder: 14,
+  chevron: 11,
+  'chevron-down': 12,
+  x: 11,
+  lock: 12,
+  hand: 12,
+  check: 13,
+  ghost: 13,
+  bot: 13,
+}
 
 function icon(name: string, className = ''): SVGElement {
   const node = ICONS[name]
@@ -560,6 +587,7 @@ ab.on('commands', (payload) => {
 
 void ab.state().then((state) => {
   port = state.port
+  announced = state.announceAutomation
   for (const snapshot of state.projects) {
     const slot = project(snapshot)
     slot.tabs = snapshot.tabs

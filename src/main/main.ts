@@ -6,18 +6,17 @@ import { installTray } from './tray.ts'
 import { readSettings, writeSettings } from './settings.ts'
 import { DEFAULT_PORT } from './protocol.ts'
 import { normalizeUrl } from './tab.ts'
+import { userAgentFor } from './disguise.ts'
 
 // Every page an agent visits is somebody else's, and Electron's warning about
 // their content security policy would drown the console an agent reads.
 process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true'
 
 // The default user agent announces both this application and Electron, and a
-// bot check reads that as an automated client: Cloudflare's sign-in page
-// refuses its own verification widget before a person can even use it. What is
-// underneath is Chromium, so that is what the browser says it is.
-app.userAgentFallback = app.userAgentFallback
-  .replace(/ naoba\/[\d.]+/, '')
-  .replace(/ Electron\/[\d.]+/, '')
+// bot check reads that as an automated client. Hidden is the rule; the switch
+// in the panel's foot (or `--announce-automation`) puts the truth back for
+// somebody building such a check.
+app.userAgentFallback = userAgentFor(false)
 
 // Held for the lifetime of the app; a tray dropped by the collector disappears
 // from the menu bar.
@@ -56,6 +55,7 @@ async function start(): Promise<void> {
     defaultScriptTimeoutMs: numberFlag('--script-timeout-ms', 60_000),
     admitEverything: isTestRun,
     headless: flags.has('--headless'),
+    announceAutomation: flags.has('--announce-automation') || readSettings().announceAutomation === true,
   })
 
   wireChrome(hub)
@@ -180,6 +180,7 @@ function wireChrome(hub: Hub): void {
   /** Everything the panel draws, for every project, the moment it starts. */
   ipcMain.handle('ab:state', () => ({
     port: hub.port,
+    announceAutomation: hub.announceAutomation,
     projects: [...hub.contexts.values()].map((context) => ({
       id: context.identity.id,
       name: context.identity.name,
@@ -269,13 +270,18 @@ function wireChrome(hub: Hub): void {
     menu.popup({ window: hub.shell.window() })
   })
 
-  ipcMain.handle('ab:quit', () => app.quit())
-
   ipcMain.handle('ab:panel-width', (_event, width: number) => {
     if (!Number.isFinite(width)) return null
     const kept = hub.shell.setPanelWidth(width)
     writeSettings({ panelWidth: kept })
     return kept
+  })
+
+  /** The disguise is one switch for the whole browser, kept across restarts like the panel width. */
+  ipcMain.handle('ab:announce-automation', async (_event, on: boolean) => {
+    await hub.setAnnounceAutomation(on === true)
+    writeSettings({ announceAutomation: hub.announceAutomation })
+    return hub.announceAutomation
   })
 
   ipcMain.handle('ab:take-over', (_event, projectId: string, tabId: string) => {

@@ -60,12 +60,24 @@ state must go through the project's own session, never through
   list, and the sessions stay apart without separate windows.
 - **What the person sets by hand goes through `src/main/settings.ts`** — one
   `settings.json` in the user-data directory. Today that is the panel width,
-  which the person drags on the panel's right edge; the main process owns the
-  layout, clamps the width, applies it to every window and writes it down.
+  which the person drags on the panel's right edge, and the disguise switch;
+  the main process owns the layout, clamps the width, applies it to every
+  window and writes it down.
 - **Every colour lives in `src/renderer/palette.css`.** The panel and the
   snapshot demo page both link it, so a tint changes in one place. A colour
   literal anywhere else in the renderer is a defect: the demo page kept a
   blue button through two accent changes because it carried its own hex.
+- **The disguise is one switch, and it flips live.** Pages see plain Chromium
+  by default (`src/main/disguise.ts` owns the user agent); the ghost in the
+  panel's foot, or `--announce-automation`, puts the Electron user agent back
+  and sets `navigator.webdriver` through `Emulation.setAutomationOverride`,
+  which changes the document already open. `session.setUserAgent` reaches only
+  tabs created afterwards, so a flip walks the open tabs with
+  `webContents.setUserAgent` as well — and a loaded page keeps the old string
+  until it navigates. Do not pile more spoofing onto the hidden side without
+  measuring first: `window.chrome` is an empty object and
+  `Notification.permission` is `granted` without a prompt, both of which a
+  check can read, and both were left alone on purpose (2026-09-05).
 - **Input goes through the DevTools protocol, not `sendInputEvent`.** Both look
   trusted to the page, but `sendInputEvent` is delivered through the window and
   does nothing when that window is hidden.

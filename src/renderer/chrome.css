@@ -552,8 +552,8 @@ input.url:focus {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* Quit: a quiet icon at the end of the line, plain until hovered. */
-.foot .quit {
+/* The disguise switch: a quiet icon at the end of the line, plain until hovered. */
+.foot .disguise {
   width: 1.8rem;
   min-height: 1.8rem;
   color: var(--text-dim);
@@ -561,7 +561,11 @@ input.url:focus {
   border-color: transparent;
   box-shadow: none;
 }
-.foot .quit:hover {
+.foot .disguise:hover {
   color: var(--text);
   background: var(--fill);
+}
+/* The disguise switch is lit only while pages are being told the truth. */
+.foot .disguise.on {
+  color: var(--color-accent-700);
 }

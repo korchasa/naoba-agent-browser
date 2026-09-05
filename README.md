@@ -41,6 +41,13 @@ left behind by an agent that has gone, sit in a group of your own at the
 bottom. The address bar for whichever tab is in front is above the tree, and
 a strip along the bottom says how many agents and tabs the project has.
 
+Pages see an ordinary Chromium: the user agent does not mention Electron or
+Naoba, and `navigator.webdriver` is false. The ghost in that bottom strip
+switches this off for the whole browser — the Electron user agent comes back
+and `navigator.webdriver` turns true — so a bot check you are building can be
+watched firing. The choice is kept across restarts; `--announce-automation`
+starts the browser that way.
+
 ## Requirements
 
 macOS, and Node 20 or newer for the bridge.
