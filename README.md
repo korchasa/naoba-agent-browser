@@ -126,6 +126,20 @@ The first start of the development copy on a machine that has been running the
 checkout copies that state — the logins above all — into its own directory, so
 it is useful from day one; the checkout keeps working on the original.
 
+## Settings
+
+The gear in the panel's foot opens the settings, in place of the tree. Four
+things live there: whether the application opens when you log in, whether
+pages are told a program drives the browser (the ghost in the foot is the same
+switch), the panel's width in points, and how many minutes a departed agent's
+tabs wait before they close. Each applies at once and is kept across restarts.
+
+An installed copy registers itself as a login item on its first start, once. The
+switch in the settings reads the OS's answer, and so does System Settings ›
+Login Items — turn it off in either place and the application does not turn it
+back on. A checkout never registers anything; `deno task install` says at the
+end whether the copy it just started is a login item.
+
 ## What an agent writes
 
 One call carries the whole flow:

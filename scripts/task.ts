@@ -97,7 +97,16 @@ const tasks: Record<string, () => Promise<number>> = {
     await run(LSREGISTER, ['-u', source])
     await run(LSREGISTER, ['-f', target])
     console.log(`installed ${target}`)
-    return await run('/usr/bin/open', ['-g', '-a', target])
+    const opened = await run('/usr/bin/open', ['-g', '-a', target])
+    if (opened !== 0) return opened
+    // The copy registers itself as a login item on its first start; the list
+    // System Events keeps is the one place a shell can read that back.
+    console.log(
+      (await isLoginItem(name, 15_000))
+        ? `login item: ${name} is registered`
+        : `login item: ${name} is not registered (off in System Settings, or the OS did not take it)`,
+    )
+    return 0
   },
 }
 
@@ -132,6 +141,22 @@ async function isRunning(name: string): Promise<boolean> {
     stderr: 'null',
   })
   return (await probe.output()).code === 0
+}
+
+/** Whether the login items System Settings shows include `name`, polled while the copy starts. */
+async function isLoginItem(name: string, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const listed = await new Deno.Command('osascript', {
+      args: ['-e', 'tell application "System Events" to get the name of every login item'],
+      stdout: 'piped',
+      stderr: 'null',
+    }).output()
+    const names = new TextDecoder().decode(listed.stdout).trim().split(', ')
+    if (names.includes(name)) return true
+    await new Promise((resolve) => setTimeout(resolve, 1_000))
+  }
+  return false
 }
 
 async function waitUntilGone(name: string, timeoutMs: number): Promise<void> {

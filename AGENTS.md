@@ -59,10 +59,23 @@ state must go through the project's own session, never through
   project a window of its own again: the person asked for the projects in one
   list, and the sessions stay apart without separate windows.
 - **What the person sets by hand goes through `src/main/settings.ts`** — one
-  `settings.json` in the user-data directory. Today that is the panel width,
-  which the person drags on the panel's right edge, and the disguise switch;
-  the main process owns the layout, clamps the width, applies it to every
-  window and writes it down.
+  `settings.json` in the user-data directory, and one settings view in the
+  panel (the gear in the foot) that shows every value in it. Today that is the
+  panel width, which the person also drags on the panel's right edge, the
+  disguise switch, and how long a departed agent's tabs wait; the main process
+  owns each value, clamps it, applies it live and writes it down. The renderer
+  draws what comes back, never what was asked for.
+- **The login item is offered once, and then the OS decides.** An installed
+  copy (`app.isPackaged`) registers itself with `app.setLoginItemSettings` on
+  its first start and writes `loginItemOffered` — only after
+  `getLoginItemSettings().status` says the OS took it (`enabled` or
+  `requires-approval`), so a refusal is offered again next start. Nothing ever
+  reads that marker for the switch's position: the OS is the source of truth,
+  and a person who turned the item off in System Settings must not find it
+  back on. A checkout and a test run are never packaged and never register —
+  a login item for `node_modules/electron/dist/Electron.app` would start a
+  stray Electron at every login. The pure decisions live in
+  `src/main/login.ts` so the unit tests reach them without Electron.
 - **Every colour lives in `src/renderer/palette.css`.** The panel and the
   snapshot demo page both link it, so a tint changes in one place. A colour
   literal anywhere else in the renderer is a defect: the demo page kept a

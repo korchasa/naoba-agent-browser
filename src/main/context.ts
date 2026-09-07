@@ -61,6 +61,7 @@ export class ProjectContext {
   readonly #departed = new Map<string, { label: string; ide: string }>()
   #lastTouched = Date.now()
   #announceAutomation: boolean
+  #orphanCloseMs: number
 
   readonly #paths: ContextPaths
 
@@ -70,6 +71,7 @@ export class ProjectContext {
     this.#paths = paths
     this.session = electronSession.fromPartition(partitionFor(identity.id))
     this.#announceAutomation = paths.announceAutomation ?? false
+    this.#orphanCloseMs = paths.orphanCloseMs ?? 0
     this.session.setUserAgent(userAgentFor(this.#announceAutomation))
     this.leases = new LeaseTable()
     this.leases.onChange((event) => {
@@ -105,6 +107,11 @@ export class ProjectContext {
    * page already loaded keeps its user agent until it navigates; the
    * `webdriver` flag changes on the spot.
    */
+  /** Applies to the next agent that leaves; a timer already running keeps its old length. */
+  setOrphanCloseMs(ms: number): void {
+    this.#orphanCloseMs = ms
+  }
+
   async setAnnounceAutomation(on: boolean): Promise<void> {
     this.#announceAutomation = on
     this.session.setUserAgent(userAgentFor(on))
@@ -308,7 +315,7 @@ export class ProjectContext {
     if (this.#tabs.some((tab) => tab.openedBy === agentId)) {
       this.#departed.set(agentId, { label: agent.label, ide: agent.descriptor.ide })
     }
-    const grace = this.#paths.orphanCloseMs ?? 0
+    const grace = this.#orphanCloseMs
     const timer = setTimeout(() => {
       this.#orphanTimers.delete(agentId)
       this.closeOrphans(agentId)

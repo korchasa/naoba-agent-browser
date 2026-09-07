@@ -8,6 +8,7 @@ import { DEFAULT_PORT } from './protocol.ts'
 import { normalizeUrl } from './tab.ts'
 import { userAgentFor } from './disguise.ts'
 import { appName, isDevVariant } from './variant.ts'
+import { accepted, decideLoginItem, describeLoginItem } from './login.ts'
 
 // Every page an agent visits is somebody else's, and Electron's warning about
 // their content security policy would drown the console an agent reads.
@@ -51,7 +52,8 @@ async function start(): Promise<void> {
     preload: join(__dirname, 'preload.js'),
     chromeHtml: join(__dirname, 'chrome.html'),
     idleUnloadMs: numberFlag('--idle-unload-ms', 10 * 60_000),
-    orphanCloseMs: numberFlag('--orphan-close-ms', 5 * 60_000),
+    // The flag wins over the setting so a test run keeps its short grace.
+    orphanCloseMs: numberFlag('--orphan-close-ms', readSettings().orphanCloseMs ?? 5 * 60_000),
     panelWidth: readSettings().panelWidth,
     contentionWaitMs: numberFlag('--contention-wait-ms', 30_000),
     defaultScriptTimeoutMs: numberFlag('--script-timeout-ms', 60_000),
@@ -95,6 +97,7 @@ async function start(): Promise<void> {
     // running.
     trayHandle = installTray(hub)
     app.dock?.hide()
+    offerLoginItem()
   }
 
   // The app is a server as much as a window: closing every window leaves it
@@ -169,6 +172,63 @@ function seedStateDirectory(names: string[]): void {
   })
 }
 
+/**
+ * An installed copy starts with the person's login, and says so once by
+ * registering itself. Once: the OS keeps the item and the person keeps the
+ * right to remove it in System Settings, so every later start leaves the
+ * registration alone and only reads it back for the settings view.
+ */
+function offerLoginItem(): void {
+  const decision = decideLoginItem({ packaged: app.isPackaged, offered: readSettings().loginItemOffered })
+  if (decision !== 'register') return
+  setLoginItem(true)
+}
+
+/**
+ * A refusal by the OS is a status, not an exception: the marker is written only
+ * for a registration it took, so a refused one is offered again next start.
+ */
+function setLoginItem(on: boolean): LoginItemState {
+  try {
+    app.setLoginItemSettings({ openAtLogin: on })
+  } catch (error) {
+    console.error(`could not change the login item: ${(error as Error).message}`)
+  }
+  const state = loginItem()
+  if (on && accepted(state.status)) writeSettings({ loginItemOffered: true })
+  return state
+}
+
+interface LoginItemState {
+  on: boolean
+  status: string
+  sentence: string
+}
+
+/** The OS's answer, in the two forms the settings view draws: a switch and a sentence. */
+function loginItem(): LoginItemState {
+  const packaged = app.isPackaged
+  const { openAtLogin, status } = packaged
+    ? app.getLoginItemSettings()
+    : { openAtLogin: false, status: 'not-registered' }
+  return { on: packaged && openAtLogin, status, sentence: describeLoginItem({ packaged, status }) }
+}
+
+/** Everything the settings view shows, in one shape. */
+function settingsFor(hub: Hub): {
+  loginItem: LoginItemState
+  announceAutomation: boolean
+  panelWidth: number
+  orphanCloseMs: number
+} {
+  return {
+    loginItem: loginItem(),
+    announceAutomation: hub.announceAutomation,
+    panelWidth: hub.shell.panelWidth(),
+    orphanCloseMs: hub.orphanCloseMs,
+  }
+}
+
 function stringFlag(name: string): string | null {
   const at = process.argv.indexOf(name)
   if (at < 0) return null
@@ -218,6 +278,7 @@ function wireChrome(hub: Hub): void {
   ipcMain.handle('ab:state', () => ({
     port: hub.port,
     announceAutomation: hub.announceAutomation,
+    settings: settingsFor(hub),
     projects: [...hub.contexts.values()].map((context) => ({
       id: context.identity.id,
       name: context.identity.name,
@@ -321,6 +382,20 @@ function wireChrome(hub: Hub): void {
     await hub.setAnnounceAutomation(on === true)
     writeSettings({ announceAutomation: hub.announceAutomation })
     return hub.announceAutomation
+  })
+
+  /** The settings view, read fresh: the OS may have changed the login item behind our back. */
+  ipcMain.handle('ab:settings', () => settingsFor(hub))
+
+  /** The switch in the settings view; the result is the OS's answer, not the request. */
+  ipcMain.handle('ab:open-at-login', (_event, on: boolean) => setLoginItem(on === true))
+
+  ipcMain.handle('ab:orphan-close-ms', (_event, ms: number) => {
+    if (!Number.isFinite(ms) || ms < 0) return hub.orphanCloseMs
+    const kept = Math.round(ms)
+    hub.setOrphanCloseMs(kept)
+    writeSettings({ orphanCloseMs: kept })
+    return kept
   })
 
   ipcMain.handle('ab:take-over', (_event, projectId: string, tabId: string) => {

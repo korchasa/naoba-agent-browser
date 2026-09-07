@@ -323,3 +323,36 @@ test('the bridge tries the release copy, then the development copy, then a check
   assert.equal(candidates({ HOME: '/Users/x', NAOBA_APP: '/x/Naoba.app' })[0].kind, 'explicit')
   assert.ok(!candidates({ HOME: '/Users/x' }).some((c) => c.kind === 'dev'))
 })
+
+test('the login item is registered once, by an installed copy, and never by a test or a checkout', async () => {
+  const { accepted, decideLoginItem } = await import('../src/main/login.ts')
+  // A checkout runs node_modules' Electron.app; registering that would start a
+  // stray Electron at every login.
+  assert.equal(decideLoginItem({ packaged: false, offered: undefined }), 'leave')
+  assert.equal(decideLoginItem({ packaged: false, offered: true }), 'leave')
+  // The installed copy registers on its first start and then leaves the OS
+  // alone: a person who turns the item off in System Settings is not overruled.
+  assert.equal(decideLoginItem({ packaged: true, offered: undefined }), 'register')
+  assert.equal(decideLoginItem({ packaged: true, offered: true }), 'leave')
+  // A registration the OS took is either live or waiting for approval; anything
+  // else is a refusal, and the marker stays unwritten so the next start tries again.
+  assert.equal(accepted('enabled'), true)
+  assert.equal(accepted('requires-approval'), true)
+  assert.equal(accepted('not-registered'), false)
+  assert.equal(accepted('not-found'), false)
+})
+
+test("the settings view describes the login item in the person's terms", async () => {
+  const { describeLoginItem } = await import('../src/main/login.ts')
+  assert.equal(describeLoginItem({ packaged: true, status: 'enabled' }), 'Starts when you log in.')
+  assert.equal(
+    describeLoginItem({ packaged: true, status: 'requires-approval' }),
+    'Waiting for your approval in System Settings › Login Items.',
+  )
+  assert.equal(describeLoginItem({ packaged: true, status: 'not-registered' }), 'Off.')
+  assert.equal(describeLoginItem({ packaged: true, status: 'not-found' }), 'Off.')
+  assert.equal(
+    describeLoginItem({ packaged: false, status: 'not-registered' }),
+    'Not available from a checkout — install the application first.',
+  )
+})

@@ -569,3 +569,92 @@ input.url:focus {
 .foot .disguise.on {
   color: var(--color-accent-700);
 }
+
+/* The settings view stands where the tree does, as a list of labelled rows. */
+.settings {
+  padding: 8px 14px 12px;
+}
+.settings h6 {
+  margin: 6px 4px 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.setting {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 4px;
+  border-top: 1px solid var(--color-divider);
+}
+.setting:first-of-type {
+  border-top: none;
+}
+.setting .text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.setting .label {
+  font-weight: 500;
+  color: var(--text);
+}
+.setting .hint,
+.settings .hint {
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--text-dim);
+}
+/* The switch: the tint when on, a neutral fill when off, the knob slides. */
+.switch {
+  flex: none;
+  position: relative;
+  width: 2.4rem;
+  min-height: 0;
+  height: 1.45rem;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--fill-strong);
+  box-shadow: none;
+}
+.switch.on {
+  background: var(--color-accent);
+}
+.switch .knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: calc(1.45rem - 4px);
+  height: calc(1.45rem - 4px);
+  border-radius: 50%;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  transition: left 0.15s ease;
+}
+.switch.on .knob {
+  left: calc(100% - 1.45rem + 2px);
+}
+input.number {
+  -webkit-app-region: no-drag;
+  flex: none;
+  width: 4.5rem;
+  min-height: 2rem;
+  font: inherit;
+  text-align: right;
+  color: var(--text);
+  caret-color: var(--color-accent);
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-sm);
+  padding: 0 8px;
+}
+input.number:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 25%, transparent);
+}

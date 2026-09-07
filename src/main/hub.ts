@@ -6,7 +6,13 @@ import { buildApi } from './api.ts'
 import { type AgentHandle, ProjectContext } from './context.ts'
 import { Shell, type ShellPaths } from './shell.ts'
 import { identify, normalizeRoot, type ProjectIdentity } from './project.ts'
-import { type ClientMessage, type ErrorCode, type ProjectDescriptor, PROTOCOL_VERSION, type ServerMessage } from './protocol.ts'
+import {
+  type ClientMessage,
+  type ErrorCode,
+  type ProjectDescriptor,
+  PROTOCOL_VERSION,
+  type ServerMessage,
+} from './protocol.ts'
 import { runScript, ScriptError } from './runner.ts'
 import { BridgeServer, type Connection } from './server.ts'
 import { pause } from './tab.ts'
@@ -79,6 +85,16 @@ export class Hub {
   async setAnnounceAutomation(on: boolean): Promise<void> {
     this.#announceAutomation = on
     await Promise.all([...this.contexts.values()].map((context) => context.setAnnounceAutomation(on)))
+  }
+
+  get orphanCloseMs(): number {
+    return this.#options.orphanCloseMs
+  }
+
+  /** One value for every project, the open ones included. */
+  setOrphanCloseMs(ms: number): void {
+    this.#options.orphanCloseMs = ms
+    for (const context of this.contexts.values()) context.setOrphanCloseMs(ms)
   }
 
   async start(preferredPort?: number): Promise<number> {
