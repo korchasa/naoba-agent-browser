@@ -1,12 +1,13 @@
 import { app, clipboard, dialog, ipcMain, Menu } from 'electron'
 import { dirname, join } from 'node:path'
-import { existsSync, renameSync } from 'node:fs'
+import { cpSync, existsSync } from 'node:fs'
 import { Hub } from './hub.ts'
 import { installTray } from './tray.ts'
 import { readSettings, writeSettings } from './settings.ts'
 import { DEFAULT_PORT } from './protocol.ts'
 import { normalizeUrl } from './tab.ts'
 import { userAgentFor } from './disguise.ts'
+import { appName, isDevVariant } from './variant.ts'
 
 // Every page an agent visits is somebody else's, and Electron's warning about
 // their content security policy would drown the console an agent reads.
@@ -30,6 +31,7 @@ const isTestRun = flags.has('--admit-everything')
 // copy the owner is actually using for a lock neither of them wants to share.
 const userDataDir = stringFlag('--user-data-dir')
 if (userDataDir) app.setPath('userData', userDataDir)
+else if (isDevVariant()) seedDevStateDirectory()
 else adoptOldStateDirectory()
 
 /**
@@ -74,7 +76,7 @@ async function start(): Promise<void> {
     // The bridge reads this line when it starts the app itself.
     process.stdout.write(`naoba listening on 127.0.0.1:${port}\n`)
   } catch (error) {
-    dialog.showErrorBox('Naoba cannot start', String(error))
+    dialog.showErrorBox(`${appName()} cannot start`, String(error))
     app.quit()
     return
   }
@@ -122,14 +124,49 @@ async function start(): Promise<void> {
  * The application used to be called Agent Browser, and Electron keeps the state
  * under the application's name — so the rename alone would have started every
  * project signed out and asked again about every folder. The old directory is
- * moved once, whole, and only when nothing has been written under the new name
- * yet; after that this is a no-op forever.
+ * copied once, whole, and only while nothing has been written under the new
+ * name yet; after that this is a no-op forever.
  */
 function adoptOldStateDirectory(): void {
+  seedStateDirectory(['agent-browser'])
+}
+
+/**
+ * The development copy keeps its own state, like every " Dev" copy of the other
+ * applications — but it is installed on a machine where the person has been
+ * signing in through the checkout for weeks, and starting it signed out of
+ * everything would make it useless on day one. So its first start copies the
+ * state the checkout has been using: `Electron` is what a bare `electron
+ * dist/main.js` names its directory, and `projects.json` inside it is the
+ * proof the directory is this application's and not some other Electron app's.
+ */
+function seedDevStateDirectory(): void {
+  seedStateDirectory(['Naoba', 'Electron', 'agent-browser'])
+}
+
+/**
+ * Copy the first of `names` that holds this application's state into the state
+ * directory of this copy, unless this copy has state of its own already.
+ *
+ * A copy, not a move: the source keeps working for whoever still runs it.
+ * Chromium creates the directory itself before this code runs, so "nothing
+ * written yet" is judged by `projects.json`, not by the directory existing;
+ * and Chromium's own lock files are left behind, they belong to a process.
+ */
+function seedStateDirectory(names: string[]): void {
   const current = app.getPath('userData')
-  const previous = join(dirname(current), 'agent-browser')
-  if (existsSync(current) || !existsSync(previous)) return
-  renameSync(previous, current)
+  const marker = 'projects.json'
+  if (existsSync(join(current, marker))) return
+  const support = dirname(current)
+  const source = names.map((name) => join(support, name)).find((dir) =>
+    dir !== current && existsSync(join(dir, marker))
+  )
+  if (!source) return
+  cpSync(source, current, {
+    recursive: true,
+    force: true,
+    filter: (path) => !/\/Singleton(Lock|Cookie|Socket)$/.test(path),
+  })
 }
 
 function stringFlag(name: string): string | null {
@@ -258,7 +295,9 @@ function wireChrome(hub: Hub): void {
           },
         }
         : {
-          label: holder ? `Take over from ${holder.kind === 'agent' ? holder.label : 'the holder'}` : 'Take over this tab',
+          label: holder
+            ? `Take over from ${holder.kind === 'agent' ? holder.label : 'the holder'}`
+            : 'Take over this tab',
           click: () => {
             context.leases.takeOver(tabId, { kind: 'human' })
             context.log(YOU, 'took over this tab', tabId)

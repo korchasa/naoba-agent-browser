@@ -6,20 +6,33 @@ export const BUNDLE_ID = 'dev.korchasa.Naoba'
 export const APP_NAME = 'Naoba.app'
 
 /**
- * Where the application might be, in the order worth trying.
+ * The development copy: the same application under its own bundle id and
+ * name, so it can be installed next to the release one and keeps its own
+ * state. `deno task install dev` in the repository builds and installs it.
+ */
+export const DEV_BUNDLE_ID = 'dev.korchasa.Naoba.dev'
+export const DEV_APP_NAME = 'Naoba Dev.app'
+
+/**
+ * Where the application might be, in the order worth trying: the release copy
+ * first, then the development copy, then a bare checkout.
  *
  * The last entry is the one that matters while the app itself is being built:
  * there is no bundle in /Applications yet, and a bridge that only knows the
  * installed path fails in exactly the situation where it is needed most.
  */
-export function candidates() {
-  const explicit = process.env.NAOBA_APP
-  const devRoot = process.env.NAOBA_DEV_ROOT
+export function candidates(env = process.env) {
+  const explicit = env.NAOBA_APP
+  const devRoot = env.NAOBA_DEV_ROOT
+  const home = env.HOME ?? ''
   return [
     explicit ? { kind: 'explicit', path: explicit } : null,
     { kind: 'bundle-id', path: BUNDLE_ID },
     { kind: 'applications', path: join('/Applications', APP_NAME) },
-    { kind: 'home-applications', path: join(process.env.HOME ?? '', 'Applications', APP_NAME) },
+    { kind: 'home-applications', path: join(home, 'Applications', APP_NAME) },
+    { kind: 'dev-bundle-id', path: DEV_BUNDLE_ID },
+    { kind: 'dev-applications', path: join('/Applications', DEV_APP_NAME) },
+    { kind: 'dev-home-applications', path: join(home, 'Applications', DEV_APP_NAME) },
     devRoot ? { kind: 'dev', path: devRoot } : null,
   ].filter(Boolean)
 }
@@ -29,7 +42,7 @@ export async function launchApp() {
   const tried = []
   for (const candidate of candidates()) {
     tried.push(`${candidate.kind}: ${candidate.path}`)
-    if (candidate.kind === 'bundle-id') {
+    if (candidate.kind === 'bundle-id' || candidate.kind === 'dev-bundle-id') {
       if (await openByBundleId(candidate.path)) return { started: true, how: candidate }
       continue
     }

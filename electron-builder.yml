@@ -2,6 +2,14 @@ appId: dev.korchasa.Naoba
 productName: Naoba
 copyright: © korchasa
 
+# Electron names the state directory after `productName` in the bundled
+# package.json, not after the bundle, so the name is written into it here and
+# ~/Library/Application Support/Naoba is where this copy keeps its sessions.
+# The development copy overrides all three of appId, productName and this one
+# from `deno task dist dev`, and so gets a directory of its own.
+extraMetadata:
+  productName: Naoba
+
 directories:
   output: build
   buildResources: build-resources

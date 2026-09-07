@@ -1,4 +1,5 @@
 import { app, BaseWindow, dialog, screen, WebContentsView } from 'electron'
+import { appName } from './variant.ts'
 
 /**
  * The panel is the window's whole chrome, so it has to hold an address bar and
@@ -75,7 +76,7 @@ export class Shell {
       width: Math.min(1520, Math.max(1000, room.width - 80)),
       height: Math.min(940, Math.max(700, room.height - 80)),
       show: false,
-      title: 'Naoba',
+      title: appName(),
       titleBarStyle: 'hiddenInset',
       // The panel is drawn over the system's sidebar material, the way a native
       // source list is: the desktop shows through it, and the appearance
@@ -95,7 +96,12 @@ export class Shell {
       // Chromium treats as hidden: a throttled panel stops producing frames,
       // so what a snapshot captures — and what the person sees on reveal — is
       // the tree as it was a step ago.
-      webPreferences: { preload: this.#paths.preload, contextIsolation: true, sandbox: true, backgroundThrottling: false },
+      webPreferences: {
+        preload: this.#paths.preload,
+        contextIsolation: true,
+        sandbox: true,
+        backgroundThrottling: false,
+      },
     })
     // Transparent, or the page paints over the material and there is none.
     panel.setBackgroundColor('#00000000')
@@ -238,9 +244,9 @@ export class Shell {
     const window = this.window()
     const { response } = await dialog.showMessageBox(window, {
       type: 'question',
-      message: 'Close the Naoba window?',
+      message: `Close the ${appName()} window?`,
       detail: 'Hide it and the agents keep working in their tabs. Quit and every project closes.',
-      buttons: ['Hide to Menu Bar', 'Quit Naoba', 'Cancel'],
+      buttons: ['Hide to Menu Bar', `Quit ${appName()}`, 'Cancel'],
       defaultId: 0,
       cancelId: 2,
     })

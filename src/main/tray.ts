@@ -1,6 +1,7 @@
 import { BrowserWindow, nativeImage, Tray } from 'electron'
 import { Globe, Hand, type IconNode } from 'lucide'
 import type { Hub } from './hub.ts'
+import { appName } from './variant.ts'
 
 /**
  * The application lives in the menu bar. Agents work in windows nobody has to
@@ -14,7 +15,7 @@ import type { Hub } from './hub.ts'
  */
 export function installTray(hub: Hub): Tray {
   const tray = new Tray(nativeImage.createEmpty())
-  tray.setToolTip('Naoba — click to open')
+  tray.setToolTip(`${appName()} — click to open`)
   const painter = new IconPainter()
 
   const contexts = () => [...hub.contexts.values()]
@@ -56,7 +57,6 @@ export function installTray(hub: Hub): Tray {
   timer.unref?.()
   return tray
 }
-
 
 /** Points across, in the menu bar. */
 const ICON_POINTS = 18

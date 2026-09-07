@@ -4,7 +4,8 @@
     "test": "deno run -A scripts/task.ts test",
     "dev": "deno run -A scripts/task.ts dev",
     "fmt": "deno run -A scripts/task.ts fmt",
-    "dist": "deno run -A scripts/task.ts dist"
+    "dist": "deno run -A scripts/task.ts dist",
+    "install": "deno run -A scripts/task.ts install"
   },
   "fmt": {
     "lineWidth": 120,

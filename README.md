@@ -92,12 +92,39 @@ The bridge takes the agent's working directory, walks up to the repository root,
 and that is the project. The first time a folder appears, the application asks
 whether to let it open a browser; the answer is remembered.
 
-While developing the application itself there is no installed bundle to launch,
-so tell the bridge where the checkout is:
+When nothing is listening, the bridge starts the application itself. It looks
+for the release copy first (bundle id `dev.korchasa.Naoba`, then
+`/Applications/Naoba.app` and `~/Applications/Naoba.app`), then for the
+development copy (`dev.korchasa.Naoba.dev`, `Naoba Dev.app` in the same two
+places), and last at a bare checkout named by `NAOBA_DEV_ROOT`:
 
 ```sh
 export NAOBA_DEV_ROOT=/absolute/path/to/this/checkout
 ```
+
+`NAOBA_APP=/path/to/Some.app` names one bundle explicitly and wins over all of
+them.
+
+## The development copy
+
+The application can be installed twice: the release copy, and a development
+copy under its own bundle id and name — **Naoba Dev**, the way the other
+applications keep a " Dev" copy next to the release one. Each keeps its own
+state under `~/Library/Application Support/<name>`, so trying a build never
+touches the sessions the release copy holds.
+
+```sh
+deno task install dev
+```
+
+builds the development copy, quits the one that is running (its sessions reach
+disk on quit), replaces it in `/Applications` and starts it. `deno task install`
+without the argument does the same for the release copy. Neither signs
+anything.
+
+The first start of the development copy on a machine that has been running the
+checkout copies that state — the logins above all — into its own directory, so
+it is useful from day one; the checkout keeps working on the original.
 
 ## What an agent writes
 
@@ -175,6 +202,7 @@ keep it.
 - `deno task check` — types and build
 - `deno task test` — the whole suite
 - `deno task dev` — build and (re)start the app
-- `deno task dist` — an unsigned application bundle
+- `deno task dist [dev]` — an unsigned application bundle, the development copy with `dev`
+- `deno task install [dev]` — build, replace in `/Applications` and start
 
 Signing, packaging and distribution happen outside this repository.

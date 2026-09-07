@@ -192,7 +192,11 @@ test('a borrowed tab stays in one place, and its history keeps every call in ord
   // the tab under a second name.
   const commands = new Map([[
     'tab-a',
-    [said('agent-2', 'codex', 'click(button.pay)'), said('agent-1', 'claude', 'fill(#coupon)'), said(null, 'you', 'went to /')],
+    [
+      said('agent-2', 'codex', 'click(button.pay)'),
+      said('agent-1', 'claude', 'fill(#coupon)'),
+      said(null, 'you', 'went to /'),
+    ],
   ]])
   const groups = buildTree(
     [tabAt(0, 'tab-a', 'agent-1')],
@@ -203,13 +207,23 @@ test('a borrowed tab stays in one place, and its history keeps every call in ord
     commands,
   )
   assert.deepEqual(groups.map((group) => group.tabs.length), [1, 0])
-  assert.deepEqual(groups[0].tabs[0].commands.map((entry) => entry.text), ['click(button.pay)', 'fill(#coupon)', 'went to /'])
+  assert.deepEqual(groups[0].tabs[0].commands.map((entry) => entry.text), [
+    'click(button.pay)',
+    'fill(#coupon)',
+    'went to /',
+  ])
 })
 
 test('an agent that has gone keeps its row, marked, while its tabs are still here', () => {
   const groups = buildTree(
     [tabAt(0, 'left-behind', 'agent-gone'), tabAt(1, 'theirs', 'agent-1')],
-    [here('agent-1', 'claude', 'claude', 'theirs'), { id: 'agent-gone', label: 'codex', ide: 'codex', tabId: null, gone: true }],
+    [here('agent-1', 'claude', 'claude', 'theirs'), {
+      id: 'agent-gone',
+      label: 'codex',
+      ide: 'codex',
+      tabId: null,
+      gone: true,
+    }],
     new Map(),
   )
   assert.deepEqual(groups.map((group) => [group.id, group.gone]), [['agent-1', false], ['agent-gone', true]])
@@ -234,7 +248,11 @@ test('the agents can be ordered by arrival, by latest activity, or by name', () 
   const at = (when) => ({ at: when, agentId: 'x', agentLabel: 'x', text: 'click(a)' })
   const groups = buildTree(
     [tabAt(0, 'tab-a', 'agent-1'), tabAt(1, 'tab-b', 'agent-2'), tabAt(2, 'tab-c', 'agent-3')],
-    [here('agent-1', 'cursor', 'cursor', 'tab-a'), here('agent-2', 'claude', 'claude', 'tab-b'), here('agent-3', 'bob', 'codex', 'tab-c')],
+    [
+      here('agent-1', 'cursor', 'cursor', 'tab-a'),
+      here('agent-2', 'claude', 'claude', 'tab-b'),
+      here('agent-3', 'bob', 'codex', 'tab-c'),
+    ],
     new Map([['tab-a', [at(10)]], ['tab-b', [at(5), at(30)]]]),
   )
   const names = (list) => list.map((group) => group.label)
@@ -284,4 +302,24 @@ test('a tab keeps its newest calls and drops the oldest', () => {
   const log = new CommandLog(3)
   for (const text of ['one', 'two', 'three', 'four']) log.add(said('agent-1', 'claude', text))
   assert.deepEqual(log.entries.map((entry) => entry.text), ['four', 'three', 'two'])
+})
+
+test('the bridge tries the release copy, then the development copy, then a checkout', async () => {
+  const { candidates } = await import('../packages/bridge/launch.mjs')
+  const kinds = candidates({ HOME: '/Users/x', NAOBA_DEV_ROOT: '/checkout' }).map((c) => c.kind)
+  assert.deepEqual(kinds, [
+    'bundle-id',
+    'applications',
+    'home-applications',
+    'dev-bundle-id',
+    'dev-applications',
+    'dev-home-applications',
+    'dev',
+  ])
+  const paths = candidates({ HOME: '/Users/x' }).map((c) => c.path)
+  assert.ok(paths.includes('/Applications/Naoba Dev.app'))
+  assert.ok(paths.includes('dev.korchasa.Naoba.dev'))
+  // An explicit path wins over everything, and a missing checkout adds nothing.
+  assert.equal(candidates({ HOME: '/Users/x', NAOBA_APP: '/x/Naoba.app' })[0].kind, 'explicit')
+  assert.ok(!candidates({ HOME: '/Users/x' }).some((c) => c.kind === 'dev'))
 })
