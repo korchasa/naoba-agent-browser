@@ -129,12 +129,13 @@ state must go through the project's own session, never through
   shows (`MARK` in `chrome.ts`). The three line drawings share their
   coordinates on purpose; change one and change the others.
   `build-resources/icon.icns` is what electron-builder picks up, and it is
-  generated from three drawings, because an `.icns` holds a picture per size
-  and detail that reads at 512 is mud at 16: `icon.svg` for 128 points and up
-  carries the scale and the meridians, `icon-small.svg` for 32 and 64 carries
-  the dial and the whole prompt, and `icon-tiny.svg` for 16 carries the
-  chevron alone, because the underscore closes up with it in ten pixels. The
-  commands are in the comment at the top of `icon.svg`. Two things about the
+  generated from three drawings that share one geometry and differ only in
+  detail, because an `.icns` holds a picture per size and what reads at 512 is
+  mud at 16: `icon.svg` for 128 points and up carries the meridians,
+  `icon-small.svg` for 32 and 64 drops them and cuts the prompt heavier, and
+  `icon-tiny.svg` for 16 keeps the chevron alone, because the underscore
+  closes up with it in ten pixels. The commands are in the comment at the top
+  of `icon.svg`. Two things about the
   menu bar are not a matter of taste: a template image is black plus alpha and
   nothing else, so white is a hole rather than paint — a filled glyph with a
   lighter mark cut into it arrives as a solid blob — and the stroke is 2.1

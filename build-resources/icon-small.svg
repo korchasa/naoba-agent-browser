@@ -1,8 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <!-- The same instrument at 16, 32 and 64 points: the case, the dark dial and
-       the prompt, and nothing else — the scale, the seam and the meridians are
-       mush at that size. Rendered into the .icns alongside icon.svg; the
-       commands are in the header there. -->
+  <!-- The same instrument at 32 and 64 points: the case, the dial and the
+       prompt. The meridians close up into a grey wash at that size, so this
+       drawing carries none, and the prompt is cut heavier so it survives the
+       shrink. Rendered into the .icns alongside icon.svg; the commands are in
+       the header there. -->
   <defs>
     <linearGradient id="case" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#FBFAF8"/><stop offset="1" stop-color="#E9E6E0"/>
