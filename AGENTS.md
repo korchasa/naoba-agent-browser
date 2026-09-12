@@ -241,11 +241,16 @@ name — `node --test --test-concurrency=1 --test-timeout=90000
 --test-name-pattern='a snapshot ref' test/integration.test.mjs` — and run the
 whole thing before the commit.
 
-One test in the suite is flaky and was before any of this: "pressing Enter in a
-field submits the form" fails about one run in three or four. Measured
-2026-09-12 in a `git worktree` of `9bbb1e2`, where it failed once in four runs
-with nothing changed. A single red on that name is not your change — run it
-again before hunting for one.
+One test in the suite has been seen red with nobody having changed it:
+"pressing Enter in a field submits the form". On 2026-09-12 it failed three
+times out of ten runs — once in a full suite, once in three runs by name, and
+once in four runs by name inside a `git worktree` of `9bbb1e2`, where the code
+was untouched. It then went green eleven consecutive times, four full suites and
+six by name. All three reds fall inside the one session, which ran Electron
+suites back to back for an hour; whether load is the cause is a guess, and no
+rate is worth quoting from this. What the evidence does support: a single red on
+that name is not proof that your change caused it, so run it again before
+hunting for one.
 
 `deno task fmt` formats everything the project owns, and three of those files
 have been unformatted for longer than anyone has looked:
