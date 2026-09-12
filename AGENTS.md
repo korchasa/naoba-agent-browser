@@ -112,7 +112,10 @@ state must go through the project's own session, never through
   can wear `'Map'` and turn `value.entries()` into a TypeError — and a throw
   while serialising loses the whole result, not the one value. Pair the tag
   with the members the branch is about to read, which is what the `isMap`-style
-  tests in `serialize.ts` do.
+  tests in `serialize.ts` do. The boundary reaches the tests as well: a value
+  that walked out of `walk()` can still be the other realm's `Array`, and
+  `assert.deepStrictEqual` compares prototypes, so it rejects a host `[1, 2]`
+  that JSON would render identically. Compare a spread copy, or the JSON.
 - **Input goes through the DevTools protocol, not `sendInputEvent`.** Both look
   trusted to the page, but `sendInputEvent` is delivered through the window and
   does nothing when that window is hidden.
