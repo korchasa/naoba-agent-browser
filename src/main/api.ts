@@ -1,12 +1,12 @@
 import type { AgentHandle, ProjectContext } from './context.ts'
 import type { ProjectIdentity } from './project.ts'
-import { type FileBoundary, resolveUploadPaths, resolveWritePath, within } from './files.ts'
+import { type FileBoundary, resolveUploadPaths, resolveWritePath } from './files.ts'
 import type { Tab } from './tab.ts'
 import { pause } from './tab.ts'
 import type { Holder } from './lease.ts'
 import { describeVisits, VisitLog } from './visits.ts'
 import { fullReference, helpFor } from '../../packages/bridge/reference.mjs'
-import { access, mkdir, writeFile } from 'node:fs/promises'
+import { app } from 'electron'
 import { join } from 'node:path'
 
 export interface ApiOptions {
@@ -403,9 +403,8 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
      */
     async screenshot(path?: string) {
       const target = path === undefined
-        ? defaultShotPath(context.identity.root)
+        ? defaultShotPath(context.identity.name)
         : await resolveWritePath(path, fileBoundary(context.identity))
-      if (within(naobaDir(context.identity.root), target)) await ensureNaobaDir(context.identity.root)
       return guard(`screenshot() to ${target}`, (tab) => tab.screenshot(target))
     },
 
@@ -699,53 +698,34 @@ const SNAPSHOT_FN = `(rootSel) => {
 }`
 
 /**
- * Everything this browser keeps for a project it keeps in the project, under
- * one directory it owns. A picture then sits beside the work it is about, the
- * person can find it without being told where this application hides its state,
- * and two projects photographing the same site cannot overwrite each other
- * because they are not writing to the same place to begin with.
+ * Where a picture goes when the agent named no path: the system's temporary
+ * directory, under one folder of ours.
+ *
+ * A screenshot is working material — an agent takes one, reads it, and is done
+ * with it — and the path comes back from the call, so nothing has to be found
+ * later. Keeping them instead is what the old default did, and what it produced
+ * was 30 forgotten files nobody ever opened. The system clears this directory
+ * on its own, which is the whole point; a picture somebody wants to keep is
+ * copied out by the agent's own tools, where the person is asked.
+ *
+ * The project's name goes in the filename so the path reads as something when
+ * an agent shows it to a person, and a timestamp sorts them.
  */
-function naobaDir(root: string): string {
-  return join(root, '.naoba')
-}
-
-function shotDir(root: string): string {
-  return join(naobaDir(root), 'screenshots')
-}
-
-/**
- * The directory sits inside somebody's repository, so it carries its own
- * `.gitignore`: a browser's pictures are not the project's source, and nobody
- * asked for a `git status` full of them. It is written when the directory is
- * made and never again — an ignore file already there was put there by the
- * person, or by this, and either way it is not ours to rewrite.
- */
-async function ensureNaobaDir(root: string): Promise<void> {
-  const dir = naobaDir(root)
-  await mkdir(dir, { recursive: true })
-  const ignore = join(dir, '.gitignore')
-  try {
-    await access(ignore)
-  } catch {
-    await writeFile(ignore, '# What Naoba keeps for this project. None of it is the project.\n*\n')
-  }
-}
-
-/** Where a screenshot lands when the agent did not say. A name that sorts by time. */
-function defaultShotPath(root: string): string {
+function defaultShotPath(projectName: string): string {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-')
-  return join(shotDir(root), `${stamp}.png`)
+  const name = projectName.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'project'
+  return join(app.getPath('temp'), 'naoba', `${name}-${stamp}.png`)
 }
 
 /**
  * What `setFiles` may read and `screenshot` may write: the project's own
- * directory. This browser's own screenshots live inside it too, in
- * `.naoba/screenshots`, so a picture this agent just took can be attached to a
- * form without a copy and without a second root to keep in step.
+ * directory, and nothing else. The temporary directory above is not in it on
+ * purpose — only the default writes there, and a path an agent names has to be
+ * somewhere the person would look.
  */
 function fileBoundary(identity: ProjectIdentity): FileBoundary {
   return {
     roots: [identity.root],
-    describe: `${identity.root}, this browser's own pictures included (${shotDir(identity.root)})`,
+    describe: identity.root,
   }
 }

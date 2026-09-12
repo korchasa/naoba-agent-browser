@@ -114,7 +114,7 @@ export async function resolveUploadPaths(asked: string[], boundary: FileBoundary
  */
 export async function resolveWritePath(asked: string, boundary: FileBoundary): Promise<string> {
   if (typeof asked !== 'string' || asked.trim() === '') {
-    throw new Error('screenshot takes a path, or nothing at all: screenshot(".naoba/screenshots/page.png")')
+    throw new Error('screenshot takes a path, or nothing at all: screenshot("shot.png")')
   }
   const roots = await Promise.all(boundary.roots.map(canonical))
   const project = roots[0] ?? resolve('.')

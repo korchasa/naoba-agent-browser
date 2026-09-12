@@ -78,11 +78,10 @@ test('a screenshot is written inside the project, and nowhere else', async () =>
 
   assert.equal(await resolveWritePath(join(project, 'page.png'), boundary), join(realpathSync(project), 'page.png'))
   // A path with no root of its own belongs to the project, and the directory it
-  // names need not exist — this browser's own `.naoba/screenshots` does not,
-  // until the first picture lands in it.
+  // names need not exist — a picture usually lands in one that does not.
   assert.equal(
-    await resolveWritePath('.naoba/screenshots/page.png', boundary),
-    join(realpathSync(project), '.naoba', 'screenshots', 'page.png'),
+    await resolveWritePath('pictures/page.png', boundary),
+    join(realpathSync(project), 'pictures', 'page.png'),
   )
   // A root spelled through a symlink — `/tmp` is `/private/tmp`, and a root that
   // does not exist yet is left unresolved by `identify()` — still owns its own

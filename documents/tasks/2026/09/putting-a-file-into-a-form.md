@@ -84,8 +84,9 @@ but whether the write boundary earns a run of its own is the owner's decision,
 not this task's (owner, 2026-09-12: recorded, not scheduled). **Answered the
 same day:** the owner chose the symmetric boundary, and `screenshot(path)` now
 writes only where `setFiles` reads — see `a-screenshot-stays-in-the-project`.
-The second root below went with it: this browser's own pictures moved into
-`<project>/.naoba/screenshots`, so the boundary is the project alone.
+The second root below went with it: a picture taken with no path is now a
+temporary file the system clears on its own, so there is no second location to
+admit and the boundary is the project alone.
 
 Variants weighed, and the one chosen:
 

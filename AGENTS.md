@@ -24,11 +24,6 @@ state must go through the project's own session, never through
 - `src/main/api.ts` — the object an agent's script runs against
 - `src/main/files.ts` — what a scenario may hand a website and where it may
   write, and why both are the project's own directory
-- `<project>/.naoba/` — what this browser keeps for a project, kept in the
-  project: `screenshots/` so far. A picture then sits beside the work it is
-  about rather than in this application's state directory, which nobody
-  thinks to look in. It carries a `.gitignore` of `*`, written once when the
-  directory is made, so it stays out of the repository it lives in
 - `src/main/runner.ts` — runs that script
 - `src/main/trail.ts` — what a scenario had already done when it failed
 - `src/main/lease.ts`, `queue.ts` — who may act on a tab, and in what order

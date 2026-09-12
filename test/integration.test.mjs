@@ -117,37 +117,19 @@ test('a screenshot reaches the agent as a file, even with no window on screen', 
   agent.close()
 })
 
-test('a screenshot with no path lands in the project, under .naoba', async () => {
+test('a screenshot with no path is a temporary file named after the project', async () => {
   const agent = await app.agent(PROJECT_A, 'shot-default')
   const outcome = await agent.run(`
     await api.navigate(${JSON.stringify(origin + '/page.html')})
     return await api.screenshot()
   `)
-  // Everything this browser keeps for a project it keeps in the project: a
-  // picture sits beside the work it is about, not in this application's own
-  // state directory, which nobody thinks to look in.
-  assert.match(outcome.value, /naoba-tests\/project-a\/\.naoba\/screenshots\/[\d-]+T[\d-]+Z\.png$/)
+  // A picture is working material: the path comes back from the call, so
+  // nothing has to be found later, and the system clears the directory itself.
+  // The project's name is in the filename so the path reads as something when
+  // an agent shows it to a person.
+  assert.match(outcome.value, /\/naoba\/project-a-[\d-]+T[\d-]+Z\.png$/)
   const bytes = await readFile(outcome.value)
   assert.equal(bytes.subarray(1, 4).toString(), 'PNG')
-  agent.close()
-})
-
-test('the directory this browser keeps in a project ignores itself', async () => {
-  // A fresh project, because the point is what happens the first time.
-  const project = await mkdtemp(join(tmpdir(), 'naoba-ignore-'))
-  const agent = await app.agent(project, 'ignore')
-  await agent.run(`
-    await api.navigate(${JSON.stringify(origin + '/page.html')})
-    return await api.screenshot()
-  `)
-  const ignore = join(project, '.naoba', '.gitignore')
-  assert.match(await readFile(ignore, 'utf8'), /^\*$/m)
-
-  // Written once. An ignore file already there was put there by the person, and
-  // a second picture must not rewrite it.
-  await writeFile(ignore, '# mine\n*\n')
-  await agent.run('return await api.screenshot()')
-  assert.equal(await readFile(ignore, 'utf8'), '# mine\n*\n')
   agent.close()
 })
 

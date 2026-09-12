@@ -5,12 +5,13 @@ implements: []
 tags: [agent-browser, naoba, screenshot, boundary, agent-experience]
 related_tasks: [putting-a-file-into-a-form, naoba-agent-surface-defects]
 ---
-# A screenshot stays in the project
+# A screenshot is written inside the project, or nowhere lasting
 
 ## Goal
 
-`api.screenshot(path)` writes where `api.setFiles` reads, and nowhere else. The
-question left open by the upload task is answered rather than carried.
+`api.screenshot(path)` writes where `api.setFiles` reads, and nowhere else, and
+a picture nobody named a path for does not pile up. The question left open by
+the upload task is answered rather than carried.
 
 ## Overview
 
@@ -39,20 +40,23 @@ directory, keyed by a hash. It was inside the boundary only because the boundary
 was given a second root to make it so, and a person looking for a picture had to
 know where an Electron app keeps its state and which hash was theirs.
 
-So the default moved into the project (owner, 2026-09-12):
-`<project>/.naoba/screenshots/`. One directory this browser owns inside each
-project, `screenshots/` under it, and room for whatever else has to be kept per
-project later. Three things fall out of it: a picture sits beside the work it is
-about, the boundary is the project alone with no second root to keep in step,
-and two projects photographing the same site cannot collide, because they were
-never writing to one place.
+The first answer was `<project>/.naoba/screenshots/`, and the owner withdrew it
+the same day: a directory in everybody's project, and a new split of where files
+live, is too much to change for the sake of a convenient path. Recorded because
+the reasoning still holds for anything that genuinely is per-project state — it
+just was not this.
 
-The directory is inside somebody's repository, so it carries its own
-`.gitignore` holding `*` (owner, 2026-09-12). It is written when the directory
-is made and never again: a file already there was put there by the person, or by
-this on an earlier run, and either way rewriting it would be taking a decision
-that is not ours. Nothing in `.naoba` is the project's source, so nothing in it
-belongs in anybody's commit.
+What replaced it (owner, 2026-09-12): a temporary file, `<temp>/naoba/<project
+name>-<timestamp>.png`. A screenshot is working material — an agent takes one,
+reads it, and is done — and the path comes back from the call, so nothing has to
+be found later. The system clears the directory on its own, which is the point:
+the old default's legacy is 30 forgotten pictures in a state directory that
+nobody has ever opened. A picture worth keeping is copied out by the agent's own
+tools, where the person is asked.
+
+The temporary directory is deliberately **not** in the boundary. Only the
+default writes there; a path an agent names still has to be inside the project,
+which is where a person would look for it.
 
 ## Definition of Done
 
@@ -62,9 +66,8 @@ belongs in anybody's commit.
       not exist yet — which is where most screenshots go.
 - [x] The boundary is the one `setFiles` reads within, from one place in the
       code, so the two cannot drift apart.
-- [x] A screenshot with no path lands in `<project>/.naoba/screenshots/`.
-- [x] That directory ignores itself, so nobody's `git status` fills with
-      pictures, and an ignore file already there is left alone.
+- [x] A screenshot with no path is a temporary file named after the project, and
+      nothing accumulates anywhere.
 - [x] The manual says the rule where an agent meets the helper.
 - [x] `deno task check` and `deno task test` exit 0, and `deno fmt --check`
       reports only the three files `AGENTS.md` already names.
@@ -79,9 +82,8 @@ belongs in anybody's commit.
    it; an existing directory as the target is refused by name.
 2. **`src/main/api.ts`** — `screenshot` resolves a named path through the
    boundary before `guard`, and `uploadBoundary` is renamed `fileBoundary`.
-   `naobaDir(root)` and `shotDir(root)` replace the `userData` lookup, so the
-   module no longer imports `electron` at all, and the boundary carries one
-   root instead of two.
+   `defaultShotPath(projectName)` writes under `app.getPath('temp')`, and the
+   boundary carries one root instead of two.
 3. **`packages/bridge/reference.mjs`** — the `screenshot` entry says where a
    picture may land and names the same boundary `setFiles` reads within.
 
@@ -104,11 +106,9 @@ from the side it had not been met from: the root, not the file.
   a symlink — then the four refusals (outside, a symlink leading out, a sibling
   whose name merely starts with the project's, and a directory as the target).
 - An integration test for the default: `screenshot()` with no path comes back
-  from `<project>/.naoba/screenshots/<timestamp>.png`, and the file is a PNG.
-- An integration test for the ignore file, in a fresh project because the point
-  is the first time: `*` is there after the first picture, and an edited file
-  survives the second. Proved red by disabling the write — the test failed on
-  the missing file, which is the thing under test.
+  from `<temp>/naoba/<project name>-<timestamp>.png`, and the file is a PNG.
+  Proved red by pointing the default back at the state directory — the test
+  reported the path it got, which is the thing under test.
 - An integration test over the live api: a picture into the project comes back
   at its resolved path and is a real PNG.
 - An integration test for the refusal: the message names the boundary and
@@ -117,5 +117,4 @@ from the side it had not been met from: the root, not the file.
 Proved red before being trusted: with the boundary check disabled, the
 integration test got back a path under `/private/var/folders/…` and the unit
 test reported a missing rejection — both for the reason under test, not for a
-neighbouring one. 109 tests pass with the boundary, the new default and the ignore file in
-place.
+neighbouring one. 108 tests pass with the boundary and the new default in place.
