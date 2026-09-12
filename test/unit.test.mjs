@@ -11,6 +11,7 @@ import { LeaseTable } from '../src/main/lease.ts'
 import { toTransferable } from '../src/main/serialize.ts'
 import { decodeLines } from '../src/main/protocol.ts'
 import { CommandLog } from '../src/main/commands.ts'
+import { describeVisits, VISIT_LIMIT, VisitLog } from '../src/main/visits.ts'
 import { buildTree, expandNew, groupKey, projectKey, sortGroups, tabKey } from '../src/renderer/tree.ts'
 import { documentedNames, fullReference, helpFor, namesIn, TOOL_DESCRIPTION } from '../packages/bridge/reference.mjs'
 import { TOOLS } from '../packages/bridge/tools.mjs'
@@ -656,4 +657,61 @@ test('the reference carries the sections the description leaves out', () => {
   // The opening paragraph is the one part the sections above cannot vouch for.
   assert.ok(reference.startsWith('Write JavaScript'))
   assert.ok(reference.length > TOOL_DESCRIPTION.length)
+})
+
+test('a walk is kept in the order it happened, timed from the hand-over', () => {
+  const walk = new VisitLog(1_000)
+  walk.add('in-page', 'https://shop/form?step=photos', 1_400)
+  walk.add('in-page', 'https://shop/form?step=review', 1_900)
+  walk.add('navigate', 'https://shop/ads/promo/56036876?origin=save', 3_500)
+
+  const report = walk.report(4_000)
+  assert.deepEqual(report.visited.map((visit) => [visit.at, visit.kind]), [
+    [400, 'in-page'],
+    [900, 'in-page'],
+    [2500, 'navigate'],
+  ])
+  assert.equal(report.visitedCount, 3)
+  assert.equal(report.seconds, 3)
+})
+
+test('a step the page takes twice is one move of the page', () => {
+  const walk = new VisitLog(0)
+  walk.add('in-page', 'https://shop/form?step=photos', 100)
+  walk.add('in-page', 'https://shop/form?step=photos', 200)
+  // The same address reached the other way is not the same move: a reload after
+  // a pushState is a real thing the page did.
+  walk.add('navigate', 'https://shop/form?step=photos', 300)
+
+  const report = walk.report(400)
+  assert.equal(report.visitedCount, 2)
+  assert.deepEqual(report.visited.map((visit) => visit.kind), ['in-page', 'navigate'])
+})
+
+test('a long walk keeps its tail and says how much it dropped', () => {
+  const walk = new VisitLog(0)
+  for (let step = 0; step < VISIT_LIMIT + 5; step++) walk.add('in-page', `https://shop/form?step=${step}`, step * 10)
+
+  const report = walk.report(1_000)
+  // The agent knows where it handed the tab over — it navigated there itself —
+  // so the end of the walk is the half worth keeping.
+  assert.equal(report.visited.length, VISIT_LIMIT)
+  assert.equal(report.visitedCount, VISIT_LIMIT + 5)
+  assert.equal(report.visited[0].url, 'https://shop/form?step=5')
+  assert.equal(report.visited.at(-1).url, `https://shop/form?step=${VISIT_LIMIT + 4}`)
+})
+
+test('a walk describes itself for an error message that has room for one line', () => {
+  const still = new VisitLog(0)
+  assert.match(describeVisits(still.report(5_000), 'https://shop/form'), /did not move in 5s/)
+
+  const once = new VisitLog(0)
+  once.add('navigate', 'https://shop/done', 1_000)
+  const line = describeVisits(once.report(2_000), 'https://shop/done')
+  assert.match(line, /moved once/)
+  assert.match(line, /https:\/\/shop\/done/)
+
+  const thrice = new VisitLog(0)
+  for (const step of [1, 2, 3]) thrice.add('in-page', `https://shop/form?step=${step}`, step * 100)
+  assert.match(describeVisits(thrice.report(1_000), 'https://shop/form?step=3'), /moved 3 times/)
 })

@@ -121,6 +121,12 @@ Working next to other agents and next to the person
                                      must not do yourself. The window comes
                                      forward with your reason on it, and your
                                      call resumes when the person marks it done.
+                                     You get back {url, title, seconds, visited,
+                                     visitedCount}: every move the page made
+                                     while they held it, as {at, kind, url},
+                                     newest 20. Read it — a person often does
+                                     more than you asked. A timeout throws, and
+                                     carries the same record on the error.
   api.agents()                       who else is working in this project
   api.project()                      which project this browser belongs to
   api.sleep(ms)                      a pause when nothing else will do; every

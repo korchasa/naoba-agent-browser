@@ -1,0 +1,42 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Walk</title>
+  </head>
+  <body>
+    <h1 id="step">start</h1>
+    <iframe id="inner" src="/walk-frame.html" width="120" height="60"></iframe>
+    <script>
+    // The walk starts when the scenario says so, never on load: the tab is
+    // watched only once the person has it, and a walk begun at parse time
+    // would race the hand-over and record its first steps into nothing.
+    window.__walk = function () {
+      setTimeout(function () {
+        history.pushState({}, '', '?step=photos')
+        document.getElementById('step').textContent = 'photos'
+      }, 400)
+      // The same step again: one move of the page, whatever the site does.
+      setTimeout(function () {
+        history.pushState({}, '', '?step=photos')
+      }, 550)
+      setTimeout(function () {
+        history.pushState({}, '', '?step=review')
+        document.getElementById('step').textContent = 'review'
+      }, 700)
+      setTimeout(function () {
+        location.href = '/second.html'
+      }, 1000)
+      var frame = document.getElementById('inner')
+      if (frame.contentWindow && frame.contentWindow.__walkFrame) {
+        frame.contentWindow.__walkFrame()
+      } else {
+        frame.addEventListener('load', function () {
+          frame.contentWindow.__walkFrame()
+        })
+      }
+      return true
+    }
+    </script>
+  </body>
+</html>

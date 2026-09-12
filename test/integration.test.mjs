@@ -514,6 +514,138 @@ test('an agent can hand a tab to the person and carry on afterwards', async () =
   watcher.close()
 })
 
+/** Where a recorded visit happened, spelled short enough to assert on. */
+function trail(visited) {
+  return visited.map((visit) => {
+    const url = new URL(visit.url)
+    return `${visit.kind} ${url.pathname}${url.search}`
+  })
+}
+
+/** Do the person's part: wait to be asked, let them walk, then press the button. */
+async function handOver(agent, watcher, code, until) {
+  const asked = agent.run(code, 40_000)
+  await waitFor(() => watcher.events.some((event) => event.type === 'human-requested'), 8000)
+  const request = watcher.events.find((event) => event.type === 'human-requested')
+  const arrived = await watcher.run(
+    `
+    for (let i = 0; i < 80; i++) {
+      const tab = (await api.getTabs()).find((tab) => tab.id === ${JSON.stringify(request.tabId)})
+      if (tab && ${until}) return tab.url
+      await api.sleep(150)
+    }
+    return 'the page never got there'
+  `,
+    30_000,
+  )
+  await watcher.client.call('test:human-done', { tabId: request.tabId })
+  return { asked, arrived: arrived.value, tabId: request.tabId }
+}
+
+test('requestHuman says where the person went, not only where they stopped', async () => {
+  const agent = await app.agent(PROJECT_A, 'walker')
+  const watcher = await app.agent(PROJECT_A, 'walk-watcher')
+
+  // The page walks itself, because nothing else may: another agent touching a
+  // tab the person holds is refused, which is the whole point of the lease. A
+  // form moving through its steps under a person's hands looks like this.
+  const { asked, arrived } = await handOver(
+    agent,
+    watcher,
+    `
+    await api.navigate(${JSON.stringify(origin + '/human-walk.html')})
+    await api.eval('window.__walk()')
+    return await api.requestHuman('attach the photos, do not publish', { timeout: 25000 })
+  `,
+    `tab.url.endsWith('/second.html') && tab.title === 'Second'`,
+  )
+  assert.match(arrived, /second\.html$/)
+
+  const record = (await asked).value
+  assert.equal(record.url, origin + '/second.html')
+  assert.equal(record.title, 'Second')
+  assert.deepEqual(trail(record.visited), [
+    'in-page /human-walk.html?step=photos',
+    'in-page /human-walk.html?step=review',
+    'navigate /second.html',
+  ])
+  assert.equal(record.visitedCount, 3)
+  // The sub-frame moved too, and is nothing the person did.
+  assert.equal(record.visited.some((visit) => visit.url.includes('walk-frame')), false)
+  // Offsets are measured from the hand-over, and the hold outlasts the walk.
+  assert.ok(record.visited[0].at >= 0 && record.visited[0].at < record.visited[2].at)
+  assert.ok(record.seconds >= 1)
+  agent.close()
+  watcher.close()
+})
+
+test('a person who touched nothing comes back as an empty walk, not a missing one', async () => {
+  const agent = await app.agent(PROJECT_A, 'still')
+  const watcher = await app.agent(PROJECT_A, 'still-watcher')
+
+  const { asked } = await handOver(
+    agent,
+    watcher,
+    `
+    await api.navigate(${JSON.stringify(origin + '/page.html')})
+    return await api.requestHuman('read this and press the button', { timeout: 20000 })
+  `,
+    `tab.waitingForHuman !== null`,
+  )
+
+  const record = (await asked).value
+  assert.deepEqual(record.visited, [])
+  assert.equal(record.visitedCount, 0)
+  assert.equal(record.title, 'Fixture')
+  agent.close()
+  watcher.close()
+})
+
+test('a request nobody answers still says what the page did while it waited', async () => {
+  const agent = await app.agent(PROJECT_A, 'unanswered')
+  const outcome = await agent.run(
+    `
+    await api.navigate(${JSON.stringify(origin + '/human-walk.html')})
+    await api.eval('window.__walk()')
+    try {
+      await api.requestHuman('nobody is going to press it', { timeout: 3000 })
+      return 'it did not throw'
+    } catch (error) {
+      // A timeout leaves the tab with the person on purpose — they are still
+      // working — and an agent cannot take it back. Left open, the next agent
+      // in this project that loses its own tab inherits this one and is locked
+      // out of it, which is a poisoned test rather than a product defect.
+      await api.closeTab()
+      return {
+        message: error.message,
+        code: error.code,
+        visited: error.visited,
+        visitedCount: error.visitedCount,
+        seconds: error.seconds,
+        url: error.url,
+      }
+    }
+  `,
+    40_000,
+  )
+
+  const failure = outcome.value
+  assert.equal(failure.code, 'timeout')
+  // The message is the only part that survives an uncaught throw, so it carries
+  // the essentials; the list itself is on the error for a scenario that catches.
+  assert.match(failure.message, /nobody is going to press it/)
+  assert.match(failure.message, /moved 3 times/)
+  assert.match(failure.message, /second\.html/)
+  assert.deepEqual(trail(failure.visited), [
+    'in-page /human-walk.html?step=photos',
+    'in-page /human-walk.html?step=review',
+    'navigate /second.html',
+  ])
+  assert.equal(failure.visitedCount, 3)
+  assert.equal(failure.url, origin + '/second.html')
+  agent.close()
+})
+
 test('a FoxCode scenario runs unchanged', async () => {
   const agent = await app.agent(PROJECT_B, 'foxcode')
   const source = await readFile(join(here, 'fixtures/foxcode-reference.js'), 'utf8')

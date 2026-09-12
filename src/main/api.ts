@@ -4,6 +4,7 @@ import { resolveUploadPaths, type UploadBoundary } from './files.ts'
 import type { Tab } from './tab.ts'
 import { pause } from './tab.ts'
 import type { Holder } from './lease.ts'
+import { describeVisits, VisitLog } from './visits.ts'
 import { app } from 'electron'
 import { fullReference, helpFor } from '../../packages/bridge/reference.mjs'
 import { join } from 'node:path'
@@ -500,40 +501,82 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
       // The one call that is allowed to interrupt the person, because it is the
       // one that needs them.
       context.bringToFront()
+
+      // Everything the page does from here until the person is finished is the
+      // account the agent gets back. `did-navigate` is the main frame's alone,
+      // `did-navigate-in-page` is not — an advertisement calling `pushState` is
+      // not something the person did, so the flag is read rather than trusted.
+      const walk = new VisitLog(Date.now())
+      const onNavigate = (_event: unknown, url: string) => walk.add('navigate', url, Date.now())
+      const onInPage = (_event: unknown, url: string, isMainFrame: boolean) => {
+        if (isMainFrame) walk.add('in-page', url, Date.now())
+      }
+      target.wc.on('did-navigate', onNavigate)
+      target.wc.on('did-navigate-in-page', onInPage)
+
       context.leases.takeOver(target.id, { kind: 'human' })
       context.selectTab(target.id)
       log(`requestHuman(${reason})`)
 
-      const outcome = await new Promise<'done' | 'cancelled' | 'timeout'>((resolve) => {
-        const timer = setTimeout(() => {
-          context.pendingHuman.delete(target.id)
-          context.notifyTabs()
-          resolve('timeout')
-        }, options?.timeout ?? 10 * 60_000)
-
-        context.pendingHuman.set(target.id, {
-          tabId: target.id,
-          reason,
-          agentId: agent.id,
-          resolve: (result) => {
-            clearTimeout(timer)
+      let outcome: 'done' | 'cancelled' | 'timeout'
+      try {
+        outcome = await new Promise<'done' | 'cancelled' | 'timeout'>((resolve) => {
+          const timer = setTimeout(() => {
             context.pendingHuman.delete(target.id)
-            resolve(result)
-          },
+            context.notifyTabs()
+            resolve('timeout')
+          }, options?.timeout ?? 10 * 60_000)
+
+          context.pendingHuman.set(target.id, {
+            tabId: target.id,
+            reason,
+            agentId: agent.id,
+            resolve: (result) => {
+              clearTimeout(timer)
+              context.pendingHuman.delete(target.id)
+              resolve(result)
+            },
+          })
+          context.broadcast({ type: 'human-requested', tabId: target.id, reason })
+          context.notifyTabs()
         })
-        context.broadcast({ type: 'human-requested', tabId: target.id, reason })
-        context.notifyTabs()
-      })
+      } finally {
+        // Every exit passes here, including the two that throw; a listener left
+        // on the tab would keep recording for the next person who holds it.
+        if (!target.destroyed) {
+          target.wc.off('did-navigate', onNavigate)
+          target.wc.off('did-navigate-in-page', onInPage)
+        }
+      }
+
+      const account = { url: target.url, title: target.title, ...walk.report(Date.now()) }
 
       if (outcome === 'timeout') {
-        throw Object.assign(new Error(`nobody finished "${reason}" in time`), { code: 'timeout' })
+        // The account matters most here: nobody pressed the button, and the
+        // agent has to decide whether the wait was wasted or the person got
+        // halfway. `runner.ts` rebuilds a thrown error and keeps only the
+        // message, the stack, the logs and `code`, so the one line goes in the
+        // message and the list rides on the object for a scenario that catches.
+        const pointer = account.visitedCount > 0 ? ' — the steps are on this error as .visited' : ''
+        throw Object.assign(
+          new Error(`nobody finished "${reason}" in time; ${describeVisits(account, account.url)}${pointer}`),
+          { code: 'timeout', ...account },
+        )
       }
       if (outcome === 'cancelled') {
-        throw Object.assign(new Error(`the request "${reason}" was cancelled`), { code: 'taken-over' })
+        // Unreachable while anybody is listening: the only producer of this
+        // outcome is `ProjectContext.removeAgent`, which resolves the pending
+        // requests of an agent that has already disconnected. It carries the
+        // account anyway, because the day it gets a second producer the caller
+        // will be alive to read it.
+        throw Object.assign(
+          new Error(`the request "${reason}" was cancelled; ${describeVisits(account, account.url)}`),
+          { code: 'taken-over', ...account },
+        )
       }
       context.leases.release(target.id, { kind: 'human' })
       context.broadcast({ type: 'human-done', tabId: target.id })
-      return { url: target.url, title: target.title }
+      return account
     },
 
     /** Who else is working in this project right now. */
