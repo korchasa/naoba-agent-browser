@@ -155,6 +155,17 @@ state must go through the project's own session, never through
   `src/main/files.ts` resolves through the directories that do exist and leaves
   the missing tail as written; before it did, a missing file inside the project
   was refused for being outside it (caught by its own test, 2026-09-12).
+- **A fixture that answers instantly cannot prove a wait.** The test server
+  hands a whole page back in one write, so an address commits and its document
+  is readable in the same breath — and a test that waits for a page and then
+  reads it passes whether or not the code waited at all. `/drip.html` is the
+  cure: it commits with its first byte and writes the paragraph a scenario reads
+  400 ms later, which is the gap a real page has between `did-navigate` and
+  anything worth reading. Measured 2026-09-12 while adding `Tab.waitForUrl`:
+  against `second.html` the test was green with the load wait removed, against
+  the drip page it reads an empty string instead of the text. Any wait tested
+  here needs a fixture that is slow where the real page is slow, and a red taken
+  by removing the wait — the green on its own says nothing.
 - **A DevTools command that needs a node takes a `Runtime.evaluate` object id.**
   That is how `setFiles` reaches an element the page resolved — `DOM.querySelector`
   cannot, because a `[ref_7]` names an entry in `window.__abRefs` and no CSS
