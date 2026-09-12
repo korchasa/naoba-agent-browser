@@ -35,6 +35,7 @@ import {
   type TreeProject,
   type TreeTab,
 } from './tree.ts'
+import { bridgeCommand, bridgeEntry } from '../main/bridge-path.ts'
 
 interface ProjectSnapshot extends ProjectDescriptor {
   tabs: TabDescriptor[]
@@ -45,6 +46,7 @@ interface ProjectSnapshot extends ProjectDescriptor {
 declare const ab: {
   state(): Promise<{
     port: number
+    bridge: string
     projects: ProjectSnapshot[]
   }>
   openSettings(): Promise<unknown>
@@ -66,6 +68,12 @@ const root = document.getElementById('root')!
 const projects = new Map<string, ProjectState>()
 /** Where agents connect; shown in the foot once the main process has said. */
 let port: number | null = null
+/**
+ * This copy's own bridge. The panel draws before the main process has answered,
+ * so it starts on the checkout path and is corrected the moment the answer
+ * arrives — an installed copy names the file inside its bundle instead.
+ */
+let bridgeFile = bridgeEntry(false, '', '<checkout>')
 
 /** The project's slot, made on first mention so a push about it never has nowhere to land. */
 function project(descriptor: ProjectDescriptor): ProjectState {
@@ -295,7 +303,7 @@ function renderTree(forest: TreeProject[]): HTMLElement {
     empty.append(
       el('p', '', 'Point one at a project and it will show up here, with every tab it opens and every call it makes.'),
     )
-    empty.append(el('code', '', 'claude mcp add naoba -- node <checkout>/packages/bridge/index.mjs'))
+    empty.append(el('code', '', bridgeCommand(bridgeFile)))
     root.append(empty)
   }
 
@@ -586,6 +594,7 @@ ab.on('commands', (payload) => {
 
 void ab.state().then((state) => {
   port = state.port
+  if (state.bridge) bridgeFile = state.bridge
   for (const snapshot of state.projects) {
     const slot = project(snapshot)
     slot.tabs = snapshot.tabs

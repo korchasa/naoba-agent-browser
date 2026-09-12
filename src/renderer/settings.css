@@ -231,14 +231,30 @@ input.number:focus {
   font-weight: 500;
   color: var(--accent);
 }
+/* At an accessibility text size the words need the whole row, so the field
+   drops onto a line of its own rather than squeezing the label into a column
+   one word wide. */
+.setting.licence {
+  flex-wrap: wrap;
+}
+/* The words come first. Without a floor the text column shrinks to fit the
+   field beside it, and at an accessibility size the label breaks into a stack
+   one word wide while the field keeps its full width. */
+.setting.licence .text {
+  min-width: 16rem;
+}
 .entry {
-  flex: none;
+  flex: 1 1 16rem;
   display: flex;
   align-items: center;
   gap: 8px;
+  justify-content: flex-end;
+  min-width: 0;
 }
 input.key {
-  width: 15rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 15rem;
   min-height: 2rem;
   font-family: var(--font-mono);
   font-size: 0.85rem;

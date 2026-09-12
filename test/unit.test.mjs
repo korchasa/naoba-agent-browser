@@ -20,6 +20,7 @@ import { documentedNames, fullReference, helpFor, namesIn, TOOL_DESCRIPTION } fr
 import { TOOLS } from '../packages/bridge/tools.mjs'
 import { stateDirs, tokenForPort } from '../packages/bridge/handshake.mjs'
 import { candidates, owningBundle } from '../packages/bridge/launch.mjs'
+import { bridgeCommand, bridgeEntry } from '../src/main/bridge-path.ts'
 import {
   activateRequest,
   checkRequest,
@@ -1353,4 +1354,15 @@ test('a bridge shipped inside the application starts that application', () => {
 
   // NAOBA_APP still wins: it is the one a person set on purpose.
   assert.equal(candidates({ NAOBA_APP: '/tmp/Other.app' }, owningBundle(inside))[0].kind, 'explicit')
+})
+
+test('the panel tells a person where this copy keeps its bridge', () => {
+  // An installed application carries the bridge; the line the panel prints has
+  // to name that file, because somebody who bought the application has no
+  // checkout to substitute for it.
+  const installed = bridgeEntry(true, '/Applications/Naoba.app/Contents/Resources', '/whatever/app.asar')
+  assert.equal(installed, '/Applications/Naoba.app/Contents/Resources/bridge/index.mjs')
+  assert.equal(bridgeCommand(installed), `claude mcp add naoba -- node ${installed}`)
+
+  assert.equal(bridgeEntry(false, '', '/Users/someone/www/naoba'), '/Users/someone/www/naoba/packages/bridge/index.mjs')
 })

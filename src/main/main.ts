@@ -13,6 +13,7 @@ import { accepted, decideLoginItem, describeLoginItem } from './login.ts'
 import { asPresence, type LoginItemState, type Presence, presenceOf, type SettingsSnapshot } from './preferences.ts'
 import { SettingsWindow } from './settings-window.ts'
 import { clearHandshake, writeHandshake } from './handshake.ts'
+import { bridgeEntry, INSTALLED_BRIDGE } from './bridge-path.ts'
 import {
   activate as activateLicence,
   check as checkLicence,
@@ -53,6 +54,8 @@ const isTestRun = flags.has('--admit-everything')
 // single-instance lock lives inside it: set it later and a test run fights the
 // copy the owner is actually using for a lock neither of them wants to share.
 const userDataDir = stringFlag('--user-data-dir')
+/** A run that exists only to photograph the window. */
+const posingForPictures = stringFlag('--snapshot') !== null
 if (userDataDir) app.setPath('userData', userDataDir)
 else if (isDevVariant()) seedDevStateDirectory()
 else adoptOldStateDirectory()
@@ -441,6 +444,9 @@ function wireChrome(hub: Hub, settings: SettingsAccess): void {
   /** Everything the panel draws, for every project, the moment it starts. */
   ipcMain.handle('ab:state', () => ({
     port: hub.port,
+    // The panel prints the line that connects an agent, and it has to name this
+    // copy's own bridge — the one in the bundle, or the one in the checkout.
+    bridge: posingForPictures ? INSTALLED_BRIDGE : bridgeEntry(app.isPackaged, process.resourcesPath, app.getAppPath()),
     projects: [...hub.contexts.values()].map((context) => ({
       id: context.identity.id,
       name: context.identity.name,

@@ -501,6 +501,10 @@ input.url:focus {
   background: var(--fill);
   padding: 9px 12px;
   user-select: all;
+  /* An absolute path has no spaces and need not have a hyphen either, so
+     without this the line runs off the edge and takes the whole panel with it:
+     the installed copy's path did exactly that. */
+  overflow-wrap: anywhere;
 }
 .empty.note {
   display: block;

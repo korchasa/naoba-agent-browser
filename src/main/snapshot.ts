@@ -1,4 +1,4 @@
-import { app, nativeImage, nativeTheme, screen } from 'electron'
+import { app, nativeImage, nativeTheme, net, screen } from 'electron'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Hub } from './hub.ts'
@@ -25,6 +25,14 @@ export async function writeSnapshots(
   const identity = identify(join(app.getPath('temp'), 'naoba-demo', 'checkout'))
   const context = hub.contextFor({ ...identity, name: 'checkout' })
 
+  // The addresses in the picture have to be the addresses in the call log, and
+  // the demo page is a file on this machine — so without this the tree claims
+  // navigate(https://shop.example/cart) while the address bar shows somebody's
+  // home directory. Serving the fixture under the three names it is pretending
+  // to be settles both at once, and there is nothing else on the network in a
+  // snapshot run for the interception to get in the way of.
+  serveDemoAs(context.session, demoPage, ['shop.example', 'docs.example', 'admin.example'])
+
   // A window with one agent and an empty tree photographs as an empty product.
   // The tree is the picture, so the demo needs what a tree is for: several
   // agents, a tab each, and one tab two of them share.
@@ -45,9 +53,9 @@ export async function writeSnapshots(
   }
   const [claude, codex, cursor] = actors.map(([label]) => ({ id: `demo-${label}`, label }))
 
-  const cart = context.openTab(demoPage, claude!.id)
-  const docs = context.openTab(demoPage, codex!.id)
-  const admin = context.openTab(demoPage, cursor!.id)
+  const cart = context.openTab('https://shop.example/cart', claude!.id)
+  const docs = context.openTab('https://docs.example/api', codex!.id)
+  const admin = context.openTab('https://admin.example/orders', cursor!.id)
   context.selectTab(cart.id)
 
   // Every demo tab shows the same fixture page, so without this they all carry
@@ -170,6 +178,25 @@ async function shootSettings(pane: SettingsPane, directory: string): Promise<voi
   await pause(300)
   await shoot('06-settings-large-text')
   await wc.executeJavaScript("document.documentElement.style.fontSize = '13px'")
+}
+
+/**
+ * Answer for the fixture hosts with the fixture page, and let everything else
+ * go to the network as it would. Scoped to the demo project's own session, so
+ * it exists only for as long as the snapshot run does.
+ */
+function serveDemoAs(session: Electron.Session, page: string, hosts: string[]): void {
+  session.protocol.handle('https', (request) => {
+    const asked = new URL(request.url)
+    if (!hosts.includes(asked.hostname)) return net.fetch(request, { bypassCustomProtocolHandlers: true })
+    // The page asks for its stylesheet by a relative address, which under a
+    // pretended host is a request for a file that host does not have. Anything
+    // with an extension is one of the fixture's own files and comes from beside
+    // it; every other address is the page itself, so each tab's path can read
+    // like the section it is meant to be.
+    const file = asked.pathname.includes('.') ? new URL(asked.pathname.split('/').pop()!, page) : new URL(page)
+    return net.fetch(file.href)
+  })
 }
 
 /** Give a demo tab a title of its own, so the tree reads like four sites. */
