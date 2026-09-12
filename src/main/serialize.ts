@@ -52,29 +52,39 @@ function walk(value: unknown, limits: SerializeLimits, depth: number, seen: Weak
   if (seen.has(object)) return { $type: 'cycle' }
   if (depth >= limits.maxDepth) return { $type: 'max-depth', depth }
 
-  if (value instanceof Error) {
-    return { $type: 'error', name: value.name, message: value.message, stack: value.stack ?? null }
+  if (isError(object)) {
+    const error = value as Error
+    return { $type: 'error', name: error.name, message: error.message, stack: error.stack ?? null }
   }
-  if (value instanceof Date) return { $type: 'date', value: value.toISOString() }
-  if (value instanceof RegExp) return { $type: 'regexp', value: String(value) }
+  if (isDate(object)) {
+    // An Invalid Date answers `toISOString` with a RangeError, and a throw here
+    // costs the whole result rather than this one value.
+    const time = (value as Date).getTime()
+    return Number.isFinite(time)
+      ? { $type: 'date', value: (value as Date).toISOString() }
+      : { $type: 'date', value: null, invalid: true }
+  }
+  if (isRegExp(object)) return { $type: 'regexp', value: String(value) }
   if (isThenable(object)) {
     return { $type: 'promise', hint: 'not awaited: write `await` before the call that produced this value' }
   }
 
   seen.add(object)
   try {
-    if (value instanceof Map) {
+    if (isMap(object)) {
       return {
         $type: 'map',
-        entries: [...value.entries()]
+        entries: [...(value as Map<unknown, unknown>)]
           .slice(0, limits.maxArrayLength)
           .map(([k, v]) => [walk(k, limits, depth + 1, seen), walk(v, limits, depth + 1, seen)]),
       }
     }
-    if (value instanceof Set) {
+    if (isSet(object)) {
       return {
         $type: 'set',
-        values: [...value].slice(0, limits.maxArrayLength).map((v) => walk(v, limits, depth + 1, seen)),
+        values: [...(value as Set<unknown>)].slice(0, limits.maxArrayLength).map((v) =>
+          walk(v, limits, depth + 1, seen)
+        ),
       }
     }
     if (Array.isArray(value)) {
@@ -100,17 +110,61 @@ function walk(value: unknown, limits: SerializeLimits, depth: number, seen: Weak
 }
 
 /**
+ * Why every builtin below is recognised by its tag and not by `instanceof`.
+ *
+ * An agent's scenario runs in its own `node:vm` context (`runner.ts`), so every
+ * value it builds itself belongs to another realm and fails `instanceof` here —
+ * and an Error, Date, RegExp, Map, Set or Promise carries no own enumerable
+ * keys, so it used to fall through to key enumeration and walk out as `{}`, the
+ * one answer this file exists to prevent. The `Object.prototype.toString` tag
+ * crosses the realm boundary. `Array.isArray` is cross-realm by design and
+ * needs none of this.
+ *
+ * The tag alone cannot be acted on: `Symbol.toStringTag` is writable, so a plain
+ * object can wear `'Map'` and turn `value.entries()` into a TypeError — and a
+ * throw inside `walk` loses the whole result, not one value. Each test below
+ * therefore pairs the tag with the members its branch is about to use; an object
+ * that only wears the tag misses them and is enumerated as the data it is.
+ */
+function tagIs(value: object, tag: string): boolean {
+  return Object.prototype.toString.call(value) === `[object ${tag}]`
+}
+
+function callable(value: object, member: PropertyKey): boolean {
+  return typeof (value as Record<PropertyKey, unknown>)[member] === 'function'
+}
+
+function isError(value: object): boolean {
+  return value instanceof Error || (tagIs(value, 'Error') && typeof (value as Error).message === 'string')
+}
+
+function isDate(value: object): boolean {
+  return value instanceof Date || (tagIs(value, 'Date') && callable(value, 'getTime') && callable(value, 'toISOString'))
+}
+
+function isRegExp(value: object): boolean {
+  return value instanceof RegExp || (tagIs(value, 'RegExp') && typeof (value as RegExp).source === 'string')
+}
+
+function isMap(value: object): boolean {
+  return value instanceof Map ||
+    (tagIs(value, 'Map') && callable(value, 'entries') && callable(value, Symbol.iterator))
+}
+
+function isSet(value: object): boolean {
+  return value instanceof Set || (tagIs(value, 'Set') && callable(value, 'values') && callable(value, Symbol.iterator))
+}
+
+/**
  * Anything `await` would unwrap, whichever realm built it.
  *
- * An agent's scenario runs in its own vm context, so a promise it creates is
- * not this realm's `Promise` and fails `instanceof` — and it has no own keys to
- * enumerate either, which is exactly how a forgotten `await` used to walk out
- * of here as `{}`. The `[object Promise]` tag crosses the realm boundary; the
- * `then` test catches a thenable that is not a promise, which `await` unwraps
- * the same way.
+ * The tag rule above, plus a `then` test that catches a thenable which is not a
+ * promise at all — `await` unwraps that the same way, so returning one without
+ * `await` is the same mistake and deserves the same answer. This branch reads no
+ * member of the value, so a borrowed tag costs nothing here.
  */
 function isThenable(value: object): boolean {
-  if (Object.prototype.toString.call(value) === '[object Promise]') return true
+  if (tagIs(value, 'Promise')) return true
   return typeof (value as { then?: unknown }).then === 'function'
 }
 

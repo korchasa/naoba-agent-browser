@@ -174,6 +174,71 @@ test('a promise the scenario forgot to await is named, not an empty object', () 
   assert.deepEqual(toTransferable({ then: 'later' }), { then: 'later' })
 })
 
+test('a builtin the scenario built itself keeps its marker across the realm boundary', () => {
+  // Everything a scenario builds comes from its own vm realm, where `instanceof`
+  // answers false — and none of these five carries own enumerable keys, so each
+  // used to fall out of key enumeration as `{}`.
+  const source = `({
+    err: new Error('boom'),
+    when: new Date(0),
+    re: /x/g,
+    map: new Map([['k', 1]]),
+    set: new Set([1, 2]),
+    list: [1, 2],
+  })`
+  const built = new Script(source).runInContext(createContext({}))
+  assert.equal(built.err instanceof Error, false)
+  assert.equal(built.map instanceof Map, false)
+
+  const there = toTransferable(built)
+  assert.equal(there.err.$type, 'error')
+  assert.equal(there.err.message, 'boom')
+  assert.equal(there.when.$type, 'date')
+  assert.equal(there.when.value, '1970-01-01T00:00:00.000Z')
+  assert.deepEqual(there.re, { $type: 'regexp', value: '/x/g' })
+  assert.deepEqual(there.map, { $type: 'map', entries: [['k', 1]] })
+  assert.deepEqual(there.set, { $type: 'set', values: [1, 2] })
+  // `Array.isArray` crosses realms by design, so arrays were never affected.
+  // The walked copy is still that realm's Array, which `deepStrictEqual` counts
+  // as a different type and `JSON.stringify` does not care about at all.
+  assert.equal(Array.isArray(there.list), true)
+  assert.deepEqual([...there.list], [1, 2])
+
+  // The same five built here answer exactly as they always did.
+  const here = toTransferable({
+    err: new Error('boom'),
+    when: new Date(0),
+    re: /x/g,
+    map: new Map([['k', 1]]),
+    set: new Set([1, 2]),
+  })
+  assert.equal(here.err.$type, 'error')
+  assert.equal(here.when.value, there.when.value)
+  assert.deepEqual(here.re, there.re)
+  assert.deepEqual(here.map, there.map)
+  assert.deepEqual(here.set, there.set)
+})
+
+test('a borrowed toStringTag is data, not a builtin', () => {
+  // `Symbol.toStringTag` is writable, so the tag alone cannot be acted on: a
+  // Map branch that trusted it would call `entries()` on this and throw, and a
+  // throw in `walk` costs the whole result rather than one value.
+  const borrowed = toTransferable({
+    map: { [Symbol.toStringTag]: 'Map', size: 3 },
+    set: { [Symbol.toStringTag]: 'Set', size: 3 },
+    when: { [Symbol.toStringTag]: 'Date', at: 'noon' },
+    re: { [Symbol.toStringTag]: 'RegExp', pattern: 'x' },
+  })
+  assert.deepEqual(borrowed.map, { size: 3 })
+  assert.deepEqual(borrowed.set, { size: 3 })
+  assert.deepEqual(borrowed.when, { at: 'noon' })
+  assert.deepEqual(borrowed.re, { pattern: 'x' })
+
+  // An Invalid Date is the same hazard from the other side: `toISOString`
+  // answers it with a RangeError.
+  assert.deepEqual(toTransferable(new Date('nonsense')), { $type: 'date', value: null, invalid: true })
+})
+
 test('the wire splits on lines and keeps the unfinished tail', () => {
   const first = decodeLines('{"type":"a"}\n{"type":"b"}\n{"ty')
   assert.deepEqual(first.messages, [{ type: 'a' }, { type: 'b' }])

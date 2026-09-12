@@ -104,10 +104,15 @@ state must go through the project's own session, never through
   `instanceof` test in the main process — and the builtins it would build carry
   no own enumerable keys, so they serialise as `{}`, the one answer
   `serialize.ts` exists to prevent. Test the `Object.prototype.toString` tag
-  instead, the way the Promise branch does; `Array.isArray` is cross-realm by
-  design and needs nothing. The `instanceof` branches for Error, Date, RegExp,
-  Map and Set still have the hole — a scenario returning one of each comes back
-  as `{err:{}, when:{}, re:{}, m:{}, s:{}}` (measured 2026-09-12).
+  instead; `Array.isArray` is cross-realm by design and needs nothing. Error,
+  Date, RegExp, Map, Set and Promise all read their tag now — before that,
+  a scenario returning one of each came back as
+  `{err:{}, when:{}, re:{}, m:{}, s:{}}` (measured 2026-09-12). The tag alone
+  is not enough to act on: `Symbol.toStringTag` is writable, so a plain object
+  can wear `'Map'` and turn `value.entries()` into a TypeError — and a throw
+  while serialising loses the whole result, not the one value. Pair the tag
+  with the members the branch is about to read, which is what the `isMap`-style
+  tests in `serialize.ts` do.
 - **Input goes through the DevTools protocol, not `sendInputEvent`.** Both look
   trusted to the page, but `sendInputEvent` is delivered through the window and
   does nothing when that window is hidden.
