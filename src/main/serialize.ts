@@ -57,6 +57,9 @@ function walk(value: unknown, limits: SerializeLimits, depth: number, seen: Weak
   }
   if (value instanceof Date) return { $type: 'date', value: value.toISOString() }
   if (value instanceof RegExp) return { $type: 'regexp', value: String(value) }
+  if (isThenable(object)) {
+    return { $type: 'promise', hint: 'not awaited: write `await` before the call that produced this value' }
+  }
 
   seen.add(object)
   try {
@@ -94,6 +97,21 @@ function walk(value: unknown, limits: SerializeLimits, depth: number, seen: Weak
   } finally {
     seen.delete(object)
   }
+}
+
+/**
+ * Anything `await` would unwrap, whichever realm built it.
+ *
+ * An agent's scenario runs in its own vm context, so a promise it creates is
+ * not this realm's `Promise` and fails `instanceof` — and it has no own keys to
+ * enumerate either, which is exactly how a forgotten `await` used to walk out
+ * of here as `{}`. The `[object Promise]` tag crosses the realm boundary; the
+ * `then` test catches a thenable that is not a promise, which `await` unwraps
+ * the same way.
+ */
+function isThenable(value: object): boolean {
+  if (Object.prototype.toString.call(value) === '[object Promise]') return true
+  return typeof (value as { then?: unknown }).then === 'function'
 }
 
 /** JSON with the markers already applied — what actually goes on the wire. */

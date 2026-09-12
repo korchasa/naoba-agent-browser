@@ -1,5 +1,6 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
+import { createContext, Script } from 'node:vm'
 import { mkdirSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -146,6 +147,31 @@ test('a value that cannot be JSON says what it was instead of vanishing', () => 
   const long = toTransferable('x'.repeat(20), { maxDepth: 4, maxStringLength: 5, maxArrayLength: 5, maxKeys: 5 })
   assert.equal(long.$type, 'truncated-string')
   assert.equal(long.length, 20)
+})
+
+test('a promise the scenario forgot to await is named, not an empty object', () => {
+  // The shape a recorded session got wrong 18 times: a helper's promise,
+  // returned without `await`, read back as `{}` and taken for "there was no URL".
+  const fromHelper = toTransferable({ url: Promise.resolve('https://example.test') })
+  assert.equal(fromHelper.url.$type, 'promise')
+  assert.match(fromHelper.url.hint, /await/)
+
+  // A scenario runs in a vm context with its own intrinsics, so a promise it
+  // builds itself is not this realm's Promise — and has no own keys either.
+  const ownRealm = new Script('(async () => 1)()').runInContext(createContext({}))
+  assert.equal(ownRealm instanceof Promise, false)
+  assert.equal(toTransferable(ownRealm).$type, 'promise')
+
+  // `await` unwraps anything with a callable `then`, so a thenable is the same
+  // mistake and gets the same answer.
+  const thenable = {
+    then(resolve) {
+      resolve(1)
+    },
+  }
+  assert.equal(toTransferable(thenable).$type, 'promise')
+  // A `then` that is not callable is ordinary data and stays that way.
+  assert.deepEqual(toTransferable({ then: 'later' }), { then: 'later' })
 })
 
 test('the wire splits on lines and keeps the unfinished tail', () => {
