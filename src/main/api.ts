@@ -295,6 +295,17 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
       }, options)
     },
 
+    /**
+     * Wait for where the page ends up, rather than for a pause long enough to
+     * cover it. The pattern is a substring or a regular expression, and an
+     * in-page move counts — a single-page form never loads again.
+     */
+    async waitForUrl(pattern: string | RegExp, options?: ApiOptions) {
+      // A regular expression prints as it was written, a substring as itself:
+      // the activity log shows what the agent asked for, not a sentence about it.
+      return guard(`waitForUrl(${String(pattern)})`, (tab) => tab.waitForUrl(pattern, options?.timeout ?? 30_000))
+    },
+
     // ------------------------------------------------------------------- tabs
 
     async getTabs() {

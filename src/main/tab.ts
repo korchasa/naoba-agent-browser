@@ -4,6 +4,8 @@ import { randomUUID } from 'node:crypto'
 import { toTransferable } from './serialize.ts'
 import { CommandLog } from './commands.ts'
 import { userAgentFor } from './disguise.ts'
+import { describePattern, matcherFor, type UrlPattern } from './urls.ts'
+import { describeVisits, VisitLog } from './visits.ts'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
@@ -265,6 +267,69 @@ export class Tab {
       this.wc.on('did-stop-loading', onStop)
       this.wc.on('did-fail-load', onFail)
     })
+  }
+
+  /**
+   * Wait until the page is at an address this pattern matches.
+   *
+   * A form submit ends at a URL, and nothing here waited for one: the session
+   * this helper comes from spent 281 s — 48% of its machine time — in 79
+   * pauses it made up, most of them sitting after a submit. `waitForLoad` is
+   * not the same wait. A single-page form moves with `pushState` and never
+   * loads again, which is exactly how the Bazar.bg listing ended, so both
+   * events are watched — and `did-navigate-in-page` fires for sub-frames too,
+   * so its `isMainFrame` flag is read rather than trusted. An advertisement
+   * calling `pushState` is not the form arriving.
+   */
+  async waitForUrl(pattern: UrlPattern, timeoutMs: number): Promise<string> {
+    const matches = matcherFor(pattern)
+    const startedAt = Date.now()
+    const deadline = startedAt + timeoutMs
+    const walk = new VisitLog(startedAt)
+    let arrived: (() => void) | null = null
+    const onNavigate = (_event: unknown, url: string) => {
+      walk.add('navigate', url, Date.now())
+      if (matches(url)) arrived?.()
+    }
+    const onInPage = (_event: unknown, url: string, isMainFrame: boolean) => {
+      if (!isMainFrame) return
+      walk.add('in-page', url, Date.now())
+      if (matches(url)) arrived?.()
+    }
+    // The listeners go on before the current address is tested: between the two
+    // there is nothing to await, so an arrival cannot fall between them.
+    this.wc.on('did-navigate', onNavigate)
+    this.wc.on('did-navigate-in-page', onInPage)
+    try {
+      if (!matches(this.url)) {
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(() => {
+            const report = walk.report(Date.now())
+            reject(Object.assign(
+              new Error(
+                `waited ${timeoutMs}ms for ${describePattern(pattern)}; ${describeVisits(report, this.url)}`,
+              ),
+              { code: 'timeout', ...report },
+            ))
+          }, timeoutMs)
+          arrived = () => {
+            clearTimeout(timer)
+            resolve()
+          }
+        })
+      }
+    } finally {
+      if (!this.destroyed) {
+        this.wc.off('did-navigate', onNavigate)
+        this.wc.off('did-navigate-in-page', onInPage)
+      }
+    }
+    // An address commits before its document arrives, so a navigation is waited
+    // out and an in-page move has nothing to wait for. The budget is the
+    // caller's: a page that never stops loading — a long poll, a tracker — must
+    // not turn an address that did arrive into a failure.
+    while (this.wc.isLoading() && Date.now() < deadline) await pause(50)
+    return this.url
   }
 
   // ------------------------------------------------------------------ scripting

@@ -22,6 +22,16 @@ export async function startFixtureServer(port = 0) {
       response.end('<!doctype html><title>cookie set</title><h1>cookie set</h1>')
       return
     }
+    // A page that commits early and finishes late: the address is the final one
+    // from the first byte, and the part a scenario reads arrives half a second
+    // later. That gap is what a wait for a URL has to cover and a wait for the
+    // address alone does not.
+    if (url.pathname === '/drip.html') {
+      response.writeHead(200, { 'content-type': 'text/html' })
+      response.write('<!doctype html><title>Drip</title><h1>still arriving</h1>')
+      setTimeout(() => response.end('<p id="where">arrived</p>'), 400)
+      return
+    }
     if (url.pathname === '/dialog') {
       response.writeHead(200, { 'content-type': 'text/html' })
       response.end(

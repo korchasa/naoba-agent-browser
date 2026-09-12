@@ -646,6 +646,95 @@ test('a request nobody answers still says what the page did while it waited', as
   agent.close()
 })
 
+test('a page that moves without loading is waited for, not slept through', async () => {
+  const agent = await app.agent(PROJECT_A, 'url-in-page')
+  const outcome = await agent.run(`
+    await api.navigate(${JSON.stringify(origin + '/page.html')})
+    // A single-page form moves between its steps like this and never loads
+    // again, which is how the Bazar.bg listing ended — waitForLoad would wait
+    // for something that is never going to happen.
+    await api.eval("setTimeout(() => history.pushState({}, '', '?step=review'), 300); true")
+    const arrived = await api.waitForUrl('step=review')
+    return { arrived, heading: await api.getText('#heading') }
+  `)
+  assert.match(outcome.value.arrived, /\/page\.html\?step=review$/)
+  assert.equal(outcome.value.heading, 'Fixture page')
+  agent.close()
+})
+
+test('a navigation is waited out, so the page it ended at can be read straight away', async () => {
+  const agent = await app.agent(PROJECT_A, 'url-navigation')
+  const outcome = await agent.run(`
+    await api.navigate(${JSON.stringify(origin + '/page.html')})
+    await api.click('#drip')
+    // A regular expression the scenario built itself, which fails instanceof in
+    // the main process; and an anchor, which a substring cannot express.
+    const arrived = await api.waitForUrl(/drip\\.html$/)
+    // Read with no pause of its own. The page commits its address with the
+    // first byte and writes this paragraph 400ms later, so an address that has
+    // arrived is not yet a document — which is the assertion the wait is about.
+    return { arrived, where: await api.getText('#where') }
+  `)
+  assert.equal(outcome.value.arrived, origin + '/drip.html')
+  assert.equal(outcome.value.where, 'arrived')
+  agent.close()
+})
+
+test('a page already at the address does not wait at all', async () => {
+  const agent = await app.agent(PROJECT_A, 'url-already')
+  const outcome = await agent.run(`
+    await api.navigate(${JSON.stringify(origin + '/second.html')})
+    // Short enough that anything but an immediate answer throws.
+    return await api.waitForUrl('second.html', { timeout: 300 })
+  `)
+  assert.equal(outcome.value, origin + '/second.html')
+  agent.close()
+})
+
+test('a frame moving on its own is not the page arriving, and the wait says so', async () => {
+  const agent = await app.agent(PROJECT_A, 'url-subframe')
+  const outcome = await agent.run(`
+    await api.navigate(${JSON.stringify(origin + '/human-walk.html')})
+    await api.eval('document.getElementById("inner").contentWindow.__walkFrame()')
+    try {
+      await api.waitForUrl('frame=moved', { timeout: 2000 })
+      return 'it did not throw'
+    } catch (error) {
+      return { message: error.message, code: error.code, visitedCount: error.visitedCount }
+    }
+  `)
+  const failure = outcome.value
+  assert.equal(failure.code, 'timeout')
+  // What was waited for, where the page is, and whether it moved at all: the
+  // three things that tell a wrong pattern from a page that never arrived.
+  assert.match(failure.message, /frame=moved/)
+  assert.match(failure.message, /human-walk\.html/)
+  assert.match(failure.message, /did not move/)
+  assert.equal(failure.visitedCount, 0)
+  agent.close()
+})
+
+test('a wait that runs out says where the page went instead', async () => {
+  const agent = await app.agent(PROJECT_A, 'url-elsewhere')
+  const outcome = await agent.run(`
+    await api.navigate(${JSON.stringify(origin + '/page.html')})
+    await api.eval("setTimeout(() => history.pushState({}, '', '?step=photos'), 200); true")
+    try {
+      await api.waitForUrl('/checkout/', { timeout: 2000 })
+      return 'it did not throw'
+    } catch (error) {
+      return { message: error.message, visited: error.visited, visitedCount: error.visitedCount }
+    }
+  `)
+  const failure = outcome.value
+  assert.match(failure.message, /\/checkout\//)
+  assert.match(failure.message, /moved once/)
+  assert.match(failure.message, /step=photos/)
+  assert.equal(failure.visitedCount, 1)
+  assert.equal(failure.visited[0].kind, 'in-page')
+  agent.close()
+})
+
 test('a FoxCode scenario runs unchanged', async () => {
   const agent = await app.agent(PROJECT_B, 'foxcode')
   const source = await readFile(join(here, 'fixtures/foxcode-reference.js'), 'utf8')

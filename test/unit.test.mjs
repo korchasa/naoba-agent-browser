@@ -12,6 +12,7 @@ import { toTransferable } from '../src/main/serialize.ts'
 import { decodeLines } from '../src/main/protocol.ts'
 import { CommandLog } from '../src/main/commands.ts'
 import { describeVisits, VISIT_LIMIT, VisitLog } from '../src/main/visits.ts'
+import { describePattern, matcherFor } from '../src/main/urls.ts'
 import { buildTree, expandNew, groupKey, projectKey, sortGroups, tabKey } from '../src/renderer/tree.ts'
 import { documentedNames, fullReference, helpFor, namesIn, TOOL_DESCRIPTION } from '../packages/bridge/reference.mjs'
 import { TOOLS } from '../packages/bridge/tools.mjs'
@@ -714,4 +715,41 @@ test('a walk describes itself for an error message that has room for one line', 
   const thrice = new VisitLog(0)
   for (const step of [1, 2, 3]) thrice.add('in-page', `https://shop/form?step=${step}`, step * 100)
   assert.match(describeVisits(thrice.report(1_000), 'https://shop/form?step=3'), /moved 3 times/)
+})
+
+test('a URL pattern is a substring or a regular expression, and nothing else', () => {
+  const contains = matcherFor('/ads/promo/')
+  assert.equal(contains('https://bazar.bg/ads/promo/56036876?origin=save'), true)
+  assert.equal(contains('https://bazar.bg/ads/new'), false)
+
+  // The thing a substring cannot say: that the address ends there.
+  const anchored = matcherFor(/second\.html$/)
+  assert.equal(anchored('http://x/second.html'), true)
+  assert.equal(anchored('http://x/second.html?q=1'), false)
+
+  // An empty string matches every page, so it would return at once and read as
+  // "the page arrived". The usual way to write one is from a variable that
+  // held nothing, which is exactly when a false arrival is worst.
+  assert.throws(() => matcherFor(''), /something to match/)
+  assert.throws(() => matcherFor(undefined), /substring or a regular expression/)
+  assert.throws(() => matcherFor(7), /substring or a regular expression/)
+})
+
+test('a pattern the scenario built itself is still a pattern, and a borrowed tag is not', () => {
+  const theirs = new Script('/step=review/').runInContext(createContext({}))
+  // The boundary this test is about: a scenario's own values come from the vm's
+  // realm and fail instanceof in the main process.
+  assert.equal(theirs instanceof RegExp, false)
+  assert.equal(matcherFor(theirs)('http://x/form?step=review'), true)
+
+  // Symbol.toStringTag is writable, so the tag alone is not something to act
+  // on: pair it with the member the branch is about to call.
+  assert.throws(() => matcherFor({ [Symbol.toStringTag]: 'RegExp' }), /substring or a regular expression/)
+})
+
+test('a pattern describes itself for a message that has room for one line', () => {
+  assert.match(describePattern('/ads/promo/'), /containing/)
+  assert.match(describePattern('/ads/promo/'), /\/ads\/promo\//)
+  assert.match(describePattern(/second\.html$/), /matching/)
+  assert.match(describePattern(/second\.html$/), /second/)
 })

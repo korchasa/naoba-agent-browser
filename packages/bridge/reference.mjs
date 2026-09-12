@@ -36,6 +36,7 @@ Enough to start
   api.click(sel) / api.fill(sel, value) / api.type(sel, text)
                                      real input events: the page sees isTrusted
   api.waitFor(sel, {timeout, visible}) / api.waitForLoad({timeout})
+  api.waitForUrl('/checkout/')       where a submit ends up, rather than a guess
   api.sleep(ms)                      rather than a setTimeout you guessed at
   api.requestHuman(reason)           hand the tab to the person and wait — a
                                      login, a payment, a captcha, anything you
@@ -96,6 +97,13 @@ Moving around
   api.goBack() / api.goForward() / api.reload()
   api.waitForLoad({timeout})         the load something else started, a form
                                      submit or a link, rather than a guessed pause
+  api.waitForUrl(pattern, {timeout}) where the page ends up, and gives that URL
+                                     back. A substring or a regular expression —
+                                     waitForUrl('/checkout/'),
+                                     waitForUrl(/orders\\/\\d+$/). A move that
+                                     loads nothing counts, which is how a
+                                     single-page form ends; a frame moving on its
+                                     own does not
   api.getTabs() / api.newTab(url) / api.selectTab(indexOrId) / api.closeTab(indexOrId?)
   api.currentTab()                   the tab your calls act on; each agent gets
                                      its own, so this is the id to pass another
