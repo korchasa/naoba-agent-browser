@@ -3,6 +3,7 @@ import { createInterface } from 'node:readline'
 import { AppClient, DEFAULT_PORT, PORT_RANGE } from './client.mjs'
 import { launchApp } from './launch.mjs'
 import { TOOLS } from './tools.mjs'
+import { renderError, renderOutcome } from './render.mjs'
 
 /**
  * The bridge an IDE launches as its MCP server.
@@ -148,25 +149,6 @@ async function callTool(id, name, args) {
       content: [{ type: 'text', text: renderError(error) }],
     })
   }
-}
-
-function renderOutcome(outcome) {
-  const parts = []
-  if (outcome?.logs?.length) parts.push(outcome.logs.join('\n'))
-  const value = outcome?.value
-  if (value === undefined || (value && value.$type === 'undefined')) parts.push('(the script returned nothing)')
-  else parts.push(typeof value === 'string' ? value : JSON.stringify(value, null, 2))
-  return parts.join('\n\n')
-}
-
-function renderError(error) {
-  const lines = [error.message ?? String(error)]
-  if (error.code) lines.unshift(`[${error.code}]`)
-  const stack = error.details?.stack
-  if (stack) lines.push('', stack)
-  const logs = error.details?.logs
-  if (logs?.length) lines.push('', 'console before the failure:', ...logs)
-  return lines.join('\n')
 }
 
 /**

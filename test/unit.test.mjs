@@ -12,6 +12,8 @@ import { toTransferable } from '../src/main/serialize.ts'
 import { decodeLines } from '../src/main/protocol.ts'
 import { CommandLog } from '../src/main/commands.ts'
 import { describeVisits, VISIT_LIMIT, VisitLog } from '../src/main/visits.ts'
+import { CallTrail, recordCalls, TRAIL_LIMIT, TRAIL_LIMITS } from '../src/main/trail.ts'
+import { renderError, renderOutcome } from '../packages/bridge/render.mjs'
 import { describePattern, matcherFor } from '../src/main/urls.ts'
 import { buildTree, expandNew, groupKey, projectKey, sortGroups, tabKey } from '../src/renderer/tree.ts'
 import { documentedNames, fullReference, helpFor, namesIn, TOOL_DESCRIPTION } from '../packages/bridge/reference.mjs'
@@ -752,4 +754,166 @@ test('a pattern describes itself for a message that has room for one line', () =
   assert.match(describePattern('/ads/promo/'), /\/ads\/promo\//)
   assert.match(describePattern(/second\.html$/), /matching/)
   assert.match(describePattern(/second\.html$/), /second/)
+})
+
+test('a trail keeps the calls nearest the failure, and says how many it dropped', () => {
+  const trail = new CallTrail()
+  for (let i = 1; i <= 25; i++) trail.returned(trail.begin(`click(#b${i})`), true)
+  const report = trail.report()
+
+  assert.equal(report.callCount, 25)
+  assert.equal(report.calls.length, TRAIL_LIMIT)
+  // The tail is the half worth keeping: the failure is at the end, and the
+  // steps nearest it are the ones whose answers the agent has just lost.
+  assert.equal(report.calls[0].step, 6)
+  assert.equal(report.calls.at(-1).step, 25)
+  assert.equal(report.callCount - report.calls.length, 5)
+})
+
+test('a recorded answer is a summary, and says when it was cut', () => {
+  const trail = new CallTrail()
+  trail.returned(trail.begin('getText(body)'), 'x'.repeat(5_000))
+  const [call] = trail.report().calls
+
+  assert.equal(call.value.$type, 'truncated-string')
+  assert.equal(call.value.length, 5_000)
+  assert.equal(call.value.value.length, TRAIL_LIMITS.maxStringLength)
+})
+
+test('a call that threw is recorded as one, with the reason', () => {
+  const trail = new CallTrail()
+  trail.returned(trail.begin('fill(#a)'), true)
+  trail.failed(trail.begin('click(#gone)'), new Error('no element matched #gone'))
+  const report = trail.report()
+
+  assert.equal(report.calls[0].ok, true)
+  assert.equal(report.calls[1].ok, false)
+  assert.equal(report.calls[1].error, 'no element matched #gone')
+  assert.equal(report.calls[1].value, undefined)
+})
+
+test('recording cannot throw, whatever the call answered', () => {
+  const trail = new CallTrail()
+  const hostile = {
+    get boom() {
+      throw new Error('this getter is not ready')
+    },
+  }
+  // The lesson from `fbb746b`, one layer up: a failure inside the machinery
+  // that reports a failure would replace the message the agent needed.
+  assert.doesNotThrow(() => trail.returned(trail.begin('eval()'), hostile))
+  assert.doesNotThrow(() =>
+    trail.failed(trail.begin('eval()'), {
+      get message() {
+        throw new Error('nor this')
+      },
+    })
+  )
+  assert.equal(trail.report().callCount, 2)
+})
+
+test('the wrapper leaves the surface an agent sees exactly as it found it', async () => {
+  const trail = new CallTrail()
+  const api = {
+    // `help` is synchronous, and a wrapper that awaits everything would hand
+    // back a Promise to a scenario that never writes `await`.
+    help: () => 'the manual',
+    click: async (selector) => `clicked ${selector}`,
+    sleep: (ms) => Promise.resolve(ms),
+  }
+  const recorded = recordCalls(api, trail)
+
+  assert.deepEqual(Object.keys(recorded), Object.keys(api))
+  assert.equal(recorded.help(), 'the manual')
+  assert.equal(await recorded.click('#pay'), 'clicked #pay')
+
+  const report = trail.report()
+  assert.equal(report.callCount, 2)
+  assert.equal(report.calls[0].call, 'help()')
+  assert.equal(report.calls[0].value, 'the manual')
+  assert.equal(report.calls[1].call, "click('#pay')")
+  assert.equal(report.calls[1].value, 'clicked #pay')
+})
+
+test('a throw out of a helper is recorded and still reaches the scenario', async () => {
+  const trail = new CallTrail()
+  const recorded = recordCalls({
+    click: async () => {
+      throw Object.assign(new Error('no element matched #gone'), { code: 'not-found' })
+    },
+  }, trail)
+
+  await assert.rejects(() => recorded.click('#gone'), (error) => {
+    assert.equal(error.code, 'not-found')
+    return true
+  })
+  const [call] = trail.report().calls
+  assert.equal(call.ok, false)
+  assert.equal(call.call, "click('#gone')")
+  assert.equal(call.error, 'no element matched #gone')
+})
+
+test('a call names its arguments without carrying them whole', () => {
+  const trail = new CallTrail()
+  const recorded = recordCalls({
+    eval: (expression) => expression.length,
+    setFiles: (selector, paths, options) => [selector, paths, options].length,
+  }, trail)
+
+  recorded.eval('x'.repeat(400))
+  recorded.setFiles('#hidden-file', ['a.png', 'b.png'], { timeout: 300 })
+  const [first, second] = trail.report().calls
+
+  assert.ok(first.call.length < 200, first.call)
+  assert.match(first.call, /^eval\('x+…'\)$/)
+  assert.equal(second.call, "setFiles('#hidden-file', ['a.png','b.png'], {timeout:300})")
+})
+
+test('the text an agent reads names the steps and says they already happened', () => {
+  const text = renderError({
+    message: 'no element matched #gone',
+    code: 'not-found',
+    details: {
+      stack: 'Error: no element matched #gone',
+      logs: ['log: halfway'],
+      trail: {
+        callCount: 25,
+        calls: [
+          { step: 24, call: "fill('#field', 'sk3j2h')", ok: true, value: true },
+          { step: 25, call: "click('#gone')", ok: false, error: 'no element matched #gone' },
+        ],
+      },
+    },
+  })
+
+  // The warning sits where the trail is read, not in a manual nobody re-reads
+  // at the moment of failure: a step that bought something is not un-bought by
+  // being listed, and an agent re-running from the top buys it twice.
+  assert.match(text, /already happened/)
+  assert.match(text, /not a checkpoint/)
+  assert.match(text, /the first 23 are not listed/)
+  assert.match(text, /24 fill\('#field', 'sk3j2h'\) → true/)
+  assert.match(text, /25 click\('#gone'\) ✗ no element matched #gone/)
+})
+
+test('a scenario that succeeded reads exactly as it did before', () => {
+  assert.equal(renderOutcome({ value: 'the page says hello', logs: [] }), 'the page says hello')
+  assert.equal(renderOutcome({ value: { $type: 'undefined' }, logs: [] }), '(the script returned nothing)')
+  // Silence on success is the whole point: nothing was lost, so nothing is said.
+  assert.equal(renderError({ message: 'timed out', details: { logs: [] } }).includes('api call'), false)
+})
+
+test('a call that has not come back is in the trail, marked as running', () => {
+  const trail = new CallTrail()
+  trail.returned(trail.begin('fill(#a)'), true)
+  trail.begin('sleep(5000)')
+  const [done, running] = trail.report().calls
+
+  // A scenario killed by its deadline dies inside a call. Writing the call down
+  // when it starts is what puts the hung one in the list at all: it never
+  // settles, so a trail written on settle would end one step early and leave the
+  // agent to guess which step it was.
+  assert.equal(done.pending, undefined)
+  assert.equal(running.pending, true)
+  assert.equal(running.ok, false)
 })

@@ -882,6 +882,81 @@ test('a failing script explains itself instead of returning nothing', async () =
   agent.close()
 })
 
+test('a scenario that fails hands back what the steps before it did', async () => {
+  const agent = await app.agent(PROJECT_B, 'partial')
+  let trail = null
+  await assert.rejects(
+    agent.run(`
+      await api.navigate(${JSON.stringify(origin + '/page.html')})
+      const stamp = await api.eval('"s" + Math.random().toString(36).slice(2, 10)')
+      await api.fill('#field', stamp)
+      await api.check('#check')
+      await api.click('#nothing-matches-this', { timeout: 300 })
+    `),
+    (error) => {
+      trail = error.details.trail
+      return true
+    },
+  )
+
+  assert.equal(trail.callCount, 5)
+  const [navigate, read, fill, check, failed] = trail.calls
+  assert.match(navigate.call, /^navigate\('http/)
+  assert.match(read.call, /^eval\(/)
+  assert.match(read.value, /^s[a-z0-9]+$/)
+  assert.ok(fill.call.includes(read.value), fill.call)
+  assert.equal(check.value, true)
+  assert.equal(failed.step, 5)
+  assert.equal(failed.ok, false)
+  assert.match(failed.call, /^click\('#nothing-matches-this'/)
+  assert.match(failed.error, /#nothing-matches-this/)
+
+  // The trail has to be a record of what happened, not of what was written. The
+  // stamp was built in the page, so nothing in the scenario's own text predicts
+  // it — and the page is asked afterwards whether it really holds what step 2
+  // read and step 3 wrote.
+  const after = await agent.run(`
+    return {
+      field: await api.eval('document.getElementById("field").value'),
+      checked: await api.eval('document.getElementById("check").checked'),
+    }
+  `)
+  assert.equal(after.value.field, read.value)
+  assert.equal(after.value.checked, check.value)
+  agent.close()
+})
+
+test('a scenario that runs out of time keeps what it did, and names what it was doing', async () => {
+  const agent = await app.agent(PROJECT_B, 'timed-out')
+  let trail = null
+  await assert.rejects(
+    agent.run(
+      `
+        await api.navigate(${JSON.stringify(origin + '/page.html')})
+        await api.fill('#field', 'typed before the deadline')
+        await api.sleep(8_000)
+      `,
+      2_500,
+    ),
+    (error) => {
+      trail = error.details.trail
+      return /longer than/.test(error.message)
+    },
+  )
+
+  assert.equal(trail.callCount, 3)
+  assert.equal(trail.calls[1].value, true)
+  // The deadline lands inside `sleep`, which therefore never settles. A trail
+  // written when a call comes back would stop at the fill and leave the agent to
+  // work out which step was hung; this one names it.
+  assert.match(trail.calls[2].call, /^sleep\(/)
+  assert.equal(trail.calls[2].pending, true)
+
+  const after = await agent.run(`return await api.eval('document.getElementById("field").value')`)
+  assert.equal(after.value, 'typed before the deadline')
+  agent.close()
+})
+
 test('a login made by hand survives the tab being closed', async () => {
   const agent = await app.agent(PROJECT_A, 'session')
   await agent.run(`
@@ -1007,6 +1082,20 @@ test('an element that is not a file input says what it is instead', async () => 
   assert.match(outcome.value.text, /type=text/)
   assert.match(outcome.value.tooMany, /multiple/)
   assert.match(outcome.value.inFrame, /frame/)
+  agent.close()
+})
+
+test('the manual answers without an await', async () => {
+  const agent = await app.agent(PROJECT_A, 'sync-help')
+  // Everything else on the surface is async, so a recording wrapper that
+  // awaited its way through would hand this one a Promise and the scenario
+  // would print `[object Promise]` at the one moment it asked for help.
+  const outcome = await agent.run(`
+    const answer = api.help('click')
+    return { type: typeof answer, mentions: String(answer).includes('click') }
+  `)
+  assert.equal(outcome.value.type, 'string')
+  assert.equal(outcome.value.mentions, true)
   agent.close()
 })
 
