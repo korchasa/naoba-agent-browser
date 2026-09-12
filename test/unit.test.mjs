@@ -587,15 +587,24 @@ test('the login item is registered once, by an installed copy, and never by a te
 test("the settings window describes the login item in the person's terms", async () => {
   const { describeLoginItem } = await import('../src/main/login.ts')
   assert.equal(describeLoginItem({ packaged: true, status: 'enabled' }), 'Starts when you log in.')
+  // What to do about it, not what state it is in: a person who reads "waiting
+  // for approval" still has to work out where to go and approve it.
   assert.equal(
     describeLoginItem({ packaged: true, status: 'requires-approval' }),
-    'Waiting for your approval in System Settings › Login Items.',
+    'Approve it in System Settings › Login Items.',
   )
-  assert.equal(describeLoginItem({ packaged: true, status: 'not-registered' }), 'Off.')
-  assert.equal(describeLoginItem({ packaged: true, status: 'not-found' }), 'Off.')
+  // The switch beside it already says "off"; the sentence says what off means.
+  assert.equal(
+    describeLoginItem({ packaged: true, status: 'not-registered' }),
+    'Starts only when you open it yourself.',
+  )
+  assert.equal(
+    describeLoginItem({ packaged: true, status: 'not-found' }),
+    'Starts only when you open it yourself.',
+  )
   assert.equal(
     describeLoginItem({ packaged: false, status: 'not-registered' }),
-    'Not available from a checkout — install the application first.',
+    'Only an installed copy can start at login. Install the application first.',
   )
 })
 
@@ -604,7 +613,7 @@ test("the settings window describes the login item in the person's terms", async
  * the both-ways check below has something real to compare the rows against.
  */
 const SAMPLE_VALUES = {
-  loginItem: { on: false, status: 'not-registered', sentence: 'Off.' },
+  loginItem: { on: false, status: 'not-registered', sentence: 'Starts only when you open it yourself.' },
   announceAutomation: false,
   panelWidth: 340,
   orphanCloseMs: 5 * 60_000,
@@ -625,7 +634,7 @@ test('every preference the window draws is a value the application sends, and ba
   // The login item's sentence is the OS's answer, passed through rather than
   // written here: the window must not say "Off." while System Settings says on.
   const login = rows.find((row) => row.key === 'loginItem')
-  assert.equal(login.hint, 'Off.')
+  assert.equal(login.hint, 'Starts only when you open it yourself.')
 })
 
 test("a preference is written in the person's unit and kept in the application's", async () => {

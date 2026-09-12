@@ -94,7 +94,7 @@ export const PREFERENCES: { [K in PreferenceKey]: Entry } = {
     draw: (values) => ({
       kind: 'switch',
       hint: values.announceAutomation
-        ? 'Pages are told a program drives this browser.'
+        ? 'This browser tells pages that a program drives it.'
         : 'Pages see an ordinary Chromium.',
       on: values.announceAutomation,
     }),
@@ -104,7 +104,7 @@ export const PREFERENCES: { [K in PreferenceKey]: Entry } = {
     scale: { per: 1, floor: PANEL_MIN_WIDTH, unit: 'points' },
     draw: (values) => ({
       kind: 'number',
-      hint: "The handle on the panel's right edge does the same by dragging.",
+      hint: "Dragging the panel's right edge sets the same width.",
       value: asShown('panelWidth', values.panelWidth),
       floor: PANEL_MIN_WIDTH,
       unit: 'points',
@@ -115,7 +115,7 @@ export const PREFERENCES: { [K in PreferenceKey]: Entry } = {
     scale: { per: 60_000, floor: 0, unit: 'minutes' },
     draw: (values) => ({
       kind: 'number',
-      hint: 'A session that restarts comes back for the page it was on; its tabs wait this long.',
+      hint: 'An agent that reconnects still wants the page it was on, so its tabs wait this long.',
       value: asShown('orphanCloseMs', values.orphanCloseMs),
       floor: 0,
       unit: 'minutes',

@@ -48,8 +48,9 @@ function render(): void {
     el(
       'p',
       'note hint',
-      'A project is asked about the first time an agent working there wants a browser. ' +
-        'Forgetting one asks again next time; a project that is already open keeps its tabs and its logins.',
+      'Naoba asks you about a project the first time an agent working there wants a browser. ' +
+        'Forget one and Naoba asks about it again next time. ' +
+        'A project that already has a browser keeps its tabs and its logins.',
     ),
   )
 }
@@ -78,7 +79,7 @@ function renderProjects(values: SettingsSnapshot): HTMLElement {
   const group = el('div', 'group')
   const rows = projectRows(values.projects)
   if (rows.length === 0) {
-    group.append(el('p', 'empty hint', 'No project has asked for a browser yet.'))
+    group.append(el('p', 'empty hint', 'No agent has asked for a browser yet.'))
     return group
   }
   for (const project of rows) {

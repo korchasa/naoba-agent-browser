@@ -38,8 +38,8 @@ export function accepted(status: LoginStatus | string): boolean {
 
 /** The sentence under the switch in the settings window. */
 export function describeLoginItem({ packaged, status }: { packaged: boolean; status: LoginStatus | string }): string {
-  if (!packaged) return 'Not available from a checkout — install the application first.'
+  if (!packaged) return 'Only an installed copy can start at login. Install the application first.'
   if (status === 'enabled') return 'Starts when you log in.'
-  if (status === 'requires-approval') return 'Waiting for your approval in System Settings › Login Items.'
-  return 'Off.'
+  if (status === 'requires-approval') return 'Approve it in System Settings › Login Items.'
+  return 'Starts only when you open it yourself.'
 }
