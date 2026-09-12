@@ -124,8 +124,8 @@ export async function resolveWritePath(asked: string, boundary: FileBoundary): P
     const link = real === wanted ? '' : ` (it leads to ${real})`
     throw new Error(
       `${asked} is outside this project${link}, so screenshot will not write there. It writes under ` +
-        `${boundary.describe}. Call screenshot() with no path and one is chosen for you inside the project, ` +
-        `or name a path inside it.`,
+        `${boundary.describe}. Call screenshot() with no path for a temporary file the system clears itself, ` +
+        `or name a path inside the project.`,
     )
   }
   const info = await stat(real).catch(() => null)
