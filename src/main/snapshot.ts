@@ -14,7 +14,12 @@ import { pause, type Tab } from './tab.ts'
  * in both appearances before a release — a build that compiles proves nothing
  * about a screen nobody has seen.
  */
-export async function writeSnapshots(hub: Hub, directory: string, demoPage: string): Promise<void> {
+export async function writeSnapshots(
+  hub: Hub,
+  directory: string,
+  demoPage: string,
+  settings?: SettingsPane,
+): Promise<void> {
   mkdirSync(directory, { recursive: true })
 
   const identity = identify(join(app.getPath('temp'), 'naoba-demo', 'checkout'))
@@ -116,6 +121,55 @@ export async function writeSnapshots(hub: Hub, directory: string, demoPage: stri
   for (const tab of [...context.tabs.values()]) context.closeTab(tab.id)
   refresh(context)
   await shoot('04-first-run')
+
+  if (settings) await shootSettings(settings, directory)
+}
+
+/** As much of the settings window as a picture of it needs. */
+interface SettingsPane {
+  open(): void
+  current(): Electron.BrowserWindow | null
+}
+
+/**
+ * The one screen that is about the application rather than about a project, and
+ * the only one a person opens on purpose. It is a window of its own, so nothing
+ * has to be laid out by hand — but a freshly opened, unfocused window is
+ * exactly the case `capturePage` gets wrong, so it goes through the same
+ * settling as everything else here.
+ */
+async function shootSettings(pane: SettingsPane, directory: string): Promise<void> {
+  pane.open()
+  // The window is created hidden and shows itself once it has something to
+  // draw; a picture taken before that is of nothing.
+  for (let wait = 0; wait < 40 && !pane.current()?.isVisible(); wait++) await pause(100)
+  const window = pane.current()
+  if (!window) {
+    process.stdout.write('snapshot: the settings window did not open\n')
+    return
+  }
+  const wc = window.webContents
+
+  const shoot = async (name: string): Promise<void> => {
+    for (const appearance of ['light', 'dark'] as const) {
+      nativeTheme.themeSource = appearance
+      await pause(500)
+      const image = await settled(wc)
+      if (!image) return
+      const file = join(directory, `${name}-${appearance}.png`)
+      writeFileSync(file, image.toPNG())
+      process.stdout.write(`snapshot: ${file}\n`)
+    }
+  }
+
+  await shoot('05-settings')
+  // Someone reading at an accessibility text size sees every string a third
+  // larger. Nothing may fall out of the rows, and the switches must still line
+  // up with the words they answer for.
+  await wc.executeJavaScript("document.documentElement.style.fontSize = '18px'")
+  await pause(300)
+  await shoot('06-settings-large-text')
+  await wc.executeJavaScript("document.documentElement.style.fontSize = '13px'")
 }
 
 /** Give a demo tab a title of its own, so the tree reads like four sites. */
@@ -141,6 +195,44 @@ function refresh(context: ReturnType<Hub['contextFor']>): void {
 }
 
 /**
+ * A picture that matches the state, rather than the state of a moment ago.
+ *
+ * A view the person is not looking at is drawn lazily, so the first capture
+ * after a change — a new appearance, a larger text size — hands back the frame
+ * from before it. Nudging the view and waiting two animation frames is what
+ * makes its own pixels exist; the wait is bounded, because a view the
+ * compositor has throttled may never run the frame callback at all.
+ *
+ * Two frames in the renderer are not two frames on screen: the window is shown
+ * transparent and unfocused, so its compositor commits lazily and `capturePage`
+ * hands back whatever was last committed. Measured on the waiting screen: one
+ * warm-up capture and 200 ms still photographed the tree as it had been a step
+ * earlier. A translucent view over the window's material commits later still,
+ * and a capture taken mid-commit is half a frame — the previous picture with
+ * the new one bleeding through. So the picture is taken until two in a row
+ * agree byte for byte; that, and nothing shorter, is a settled frame.
+ */
+async function settled(wc: Electron.WebContents): Promise<Electron.NativeImage | null> {
+  if (wc.isDestroyed()) return null
+  wc.invalidate()
+  await Promise.race([
+    wc.executeJavaScript(
+      'new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(1))))',
+    ),
+    pause(1500),
+  ])
+  let image = await wc.capturePage()
+  for (let attempt = 0; attempt < 10; attempt++) {
+    await pause(300)
+    const next = await wc.capturePage()
+    const agrees = next.toBitmap().equals(image.toBitmap())
+    image = next
+    if (agrees && attempt > 0) break
+  }
+  return image
+}
+
+/**
  * A window is two views side by side, and Electron can photograph a view but
  * not a window. So each one is captured and the pixels are laid out by hand.
  */
@@ -156,38 +248,9 @@ async function composeWindow(context: {
   // frame from before it. Nudging each view and taking the picture twice is
   // what makes the photograph match the state.
   const capture = async (view: Electron.WebContentsView | null) => {
-    if (!view || view.webContents.isDestroyed()) return null
-    view.webContents.invalidate()
-    // Wait for the renderer to have actually painted: two frames after the
-    // change is the first moment its own pixels exist.
-    // Bounded: a view the compositor has throttled may never run the frame
-    // callback at all, and a walk that stops there photographs nothing. The
-    // captures below re-check the pixels anyway.
-    await Promise.race([
-      view.webContents.executeJavaScript(
-        'new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(1))))',
-      ),
-      pause(1500),
-    ])
-    // Two frames in the renderer are not two frames on screen: the window is
-    // shown transparent and unfocused, so its compositor commits lazily and
-    // `capturePage` hands back whatever was last committed. Measured on the
-    // waiting screen: one warm-up capture and 200 ms still photographed the
-    // tree as it had been a step earlier, while the page it was drawn from
-    // already held the new rows. Three captures with a pause between them is
-    // what makes the picture match the state.
-    // A translucent view over the window's material commits even later, and a
-    // capture taken mid-commit is half a frame: the previous picture with the
-    // new one bleeding through. So the picture is taken until two in a row
-    // agree byte for byte — that, and nothing shorter, is a settled frame.
-    let image = await view.webContents.capturePage()
-    for (let attempt = 0; attempt < 10; attempt++) {
-      await pause(300)
-      const next = await view.webContents.capturePage()
-      const settled = next.toBitmap().equals(image.toBitmap())
-      image = next
-      if (settled && attempt > 0) break
-    }
+    if (!view) return null
+    const image = await settled(view.webContents)
+    if (!image) return null
     const size = image.getSize()
     return { bitmap: image.toBitmap(), width: size.width, height: size.height }
   }

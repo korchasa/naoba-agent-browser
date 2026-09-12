@@ -5,14 +5,12 @@
  */
 import type { AgentCommand, ProjectDescriptor, TabDescriptor } from '../main/protocol.ts'
 import {
-  Bot,
   Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   createElement,
   Folder,
-  Ghost,
   Globe,
   Hand,
   type IconNode,
@@ -45,30 +43,17 @@ interface ProjectSnapshot extends ProjectDescriptor {
   commands: Record<string, AgentCommand[]>
 }
 
-/** What the settings view draws; the main process is the source of every value. */
-interface SettingsSnapshot {
-  loginItem: { on: boolean; status: string; sentence: string }
-  announceAutomation: boolean
-  panelWidth: number
-  orphanCloseMs: number
-}
-
 declare const ab: {
   state(): Promise<{
     port: number
-    announceAutomation: boolean
-    settings: SettingsSnapshot
     projects: ProjectSnapshot[]
   }>
-  settings(): Promise<SettingsSnapshot>
-  openAtLogin(on: boolean): Promise<SettingsSnapshot['loginItem']>
-  orphanCloseMs(ms: number): Promise<number>
+  openSettings(): Promise<unknown>
   newTab(projectId: string, url?: string): Promise<unknown>
   selectTab(projectId: string, tabId: string): Promise<boolean>
   closeTab(projectId: string, tabId: string): Promise<boolean>
   navigate(projectId: string, tabId: string, url: string): Promise<boolean>
   panelWidth(width: number): Promise<number>
-  announceAutomation(on: boolean): Promise<boolean>
   tabMenu(projectId: string, tabId: string): Promise<void>
   takeOver(projectId: string, tabId: string): Promise<boolean>
   release(projectId: string, tabId: string): Promise<boolean>
@@ -82,12 +67,6 @@ const root = document.getElementById('root')!
 const projects = new Map<string, ProjectState>()
 /** Where agents connect; shown in the foot once the main process has said. */
 let port: number | null = null
-/** Whether pages are being told that a program drives the browser. */
-let announced = false
-/** The tree, or the settings in its place. */
-let view: 'tree' | 'settings' = 'tree'
-/** The last answer the main process gave about the settings; `null` until asked. */
-let settings: SettingsSnapshot | null = null
 
 /** The project's slot, made on first mention so a push about it never has nowhere to land. */
 function project(descriptor: ProjectDescriptor): ProjectState {
@@ -193,7 +172,7 @@ function renderPanel(forest: TreeProject[]): HTMLElement {
     wrap.append(held)
   }
 
-  wrap.append(view === 'settings' ? renderSettings() : renderTree(forest))
+  wrap.append(renderTree(forest))
   wrap.append(renderFoot())
   return wrap
 }
@@ -206,146 +185,12 @@ function renderFoot(): HTMLElement {
   // The address an agent connects to sits with the counts: the one line of
   // the panel about the application rather than the project.
   foot.append(el('span', 'status', port === null ? counts : `${counts} · 127.0.0.1:${port}`))
-  // The disguise switch: a ghost while pages see plain Chromium, a robot while
-  // they are told the truth. Somebody building a bot check flips it to watch
-  // the check fire, then flips it back.
-  const disguise = iconButton(
-    announced ? 'bot' : 'ghost',
-    () =>
-      void ab.announceAutomation(!announced).then((kept) => {
-        announced = kept
-        render()
-      }),
-    announced
-      ? 'Pages are told a program drives this browser. Click to hide it.'
-      : 'Pages see an ordinary Chromium. Click to announce the automation.',
-  )
-  disguise.classList.add('disguise')
-  if (announced) disguise.classList.add('on')
-  foot.append(disguise)
-  const gear = iconButton('gear', () => void openSettings(view === 'tree'), 'Settings')
-  gear.classList.add('disguise')
-  if (view === 'settings') gear.classList.add('on')
+  // Everything the person sets by hand is one window away, including the
+  // disguise that used to be a ghost here. The panel is the tree again.
+  const gear = iconButton('gear', () => void ab.openSettings(), 'Settings')
+  gear.classList.add('quiet')
   foot.append(gear)
   return foot
-}
-
-/**
- * The settings are read again every time the view opens: the login item can
- * change in System Settings while the window is closed, and a stale answer
- * would draw a switch the OS no longer agrees with.
- */
-async function openSettings(open: boolean): Promise<void> {
-  if (open) settings = await ab.settings()
-  view = open ? 'settings' : 'tree'
-  render()
-}
-
-/**
- * Every preference the person sets by hand, in one place. The main process
- * owns each value: the view sends a request and draws whatever comes back,
- * which for the login item is the OS's answer rather than the request.
- */
-function renderSettings(): HTMLElement {
-  const wrap = el('div', 'tree settings')
-  wrap.append(el('h6', '', 'Settings'))
-  const current = settings
-  if (!current) {
-    wrap.append(el('p', 'hint', 'Reading the settings…'))
-    return wrap
-  }
-
-  wrap.append(
-    settingRow(
-      'Open at login',
-      current.loginItem.sentence,
-      switchControl(current.loginItem.on, (on) =>
-        void ab.openAtLogin(on).then((item) => {
-          if (settings) settings.loginItem = item
-          render()
-        })),
-    ),
-  )
-
-  wrap.append(
-    settingRow(
-      'Announce automation',
-      current.announceAutomation ? 'Pages are told a program drives this browser.' : 'Pages see an ordinary Chromium.',
-      switchControl(current.announceAutomation, (on) =>
-        void ab.announceAutomation(on).then((kept) => {
-          announced = kept
-          if (settings) settings.announceAutomation = kept
-          render()
-        })),
-    ),
-  )
-
-  wrap.append(
-    settingRow(
-      'Panel width',
-      "Points. The handle on the panel's right edge does the same by dragging.",
-      numberField(current.panelWidth, 1, (width) =>
-        void ab.panelWidth(width).then((kept) => {
-          if (settings) settings.panelWidth = kept
-          render()
-        })),
-    ),
-  )
-
-  wrap.append(
-    settingRow(
-      "Close a departed agent's tabs after",
-      'Minutes. A session that restarts comes back for the page it was on; its tabs wait this long.',
-      numberField(
-        Math.round(current.orphanCloseMs / 60_000),
-        0,
-        (minutes) =>
-          void ab.orphanCloseMs(minutes * 60_000).then((kept) => {
-            if (settings) settings.orphanCloseMs = kept
-            render()
-          }),
-      ),
-    ),
-  )
-  return wrap
-}
-
-function settingRow(label: string, hint: string, control: HTMLElement): HTMLElement {
-  const row = el('div', 'setting')
-  const text = el('div', 'text')
-  text.append(el('span', 'label', label), el('span', 'hint', hint))
-  row.append(text, control)
-  return row
-}
-
-/** A macOS-style switch: a button that carries its state, so the keyboard reaches it too. */
-function switchControl(on: boolean, onChange: (on: boolean) => void): HTMLElement {
-  const node = document.createElement('button')
-  node.className = on ? 'switch on' : 'switch'
-  node.setAttribute('role', 'switch')
-  node.setAttribute('aria-checked', String(on))
-  node.append(el('span', 'knob'))
-  node.onclick = () => onChange(!on)
-  return node
-}
-
-/** A number the person types and commits with Enter or by leaving the field. */
-function numberField(value: number, min: number, onCommit: (value: number) => void): HTMLElement {
-  const input = document.createElement('input')
-  input.type = 'number'
-  input.className = 'number'
-  input.min = String(min)
-  input.value = String(value)
-  const commit = () => {
-    const next = Number(input.value)
-    if (!Number.isFinite(next) || next < min || next === value) return
-    onCommit(next)
-  }
-  input.onblur = commit
-  input.onkeydown = (event) => {
-    if (event.key === 'Enter') input.blur()
-  }
-  return input
 }
 
 function renderBar(): HTMLElement {
@@ -635,8 +480,6 @@ const ICONS: Record<string, IconNode> = {
   sliders: SlidersHorizontal,
   check: Check,
   'chevron-down': ChevronDown,
-  ghost: Ghost,
-  bot: Bot,
   gear: Settings,
 }
 
@@ -648,8 +491,6 @@ const ICON_SIZE: Record<string, number> = {
   lock: 12,
   hand: 12,
   check: 13,
-  ghost: 13,
-  bot: 13,
   gear: 13,
 }
 
@@ -735,8 +576,6 @@ ab.on('commands', (payload) => {
 
 void ab.state().then((state) => {
   port = state.port
-  announced = state.announceAutomation
-  settings = state.settings
   for (const snapshot of state.projects) {
     const slot = project(snapshot)
     slot.tabs = snapshot.tabs

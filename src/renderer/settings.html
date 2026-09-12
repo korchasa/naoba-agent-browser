@@ -1,0 +1,17 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <!-- 'self' covers palette.css, settings.css and settings.js; without it the
+         stylesheets are blocked and the window renders as unstyled serif text. -->
+    <meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+    <title>Settings</title>
+    <link rel="stylesheet" href="palette.css" />
+    <link rel="stylesheet" href="settings.css" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script src="settings.js"></script>
+  </body>
+</html>

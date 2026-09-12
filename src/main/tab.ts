@@ -125,11 +125,16 @@ export class Tab {
   #destroyed = false
   readonly dialogs: { type: string; message: string; at: number; handled: 'accept' | 'dismiss' }[] = []
 
-  constructor(session: Session, preload: string) {
+  // No preload. The one this application has carries the window's own controls,
+  // and `contextBridge.exposeInMainWorld` puts them in the page's world by
+  // design — so a tab that loaded it handed every site `window.ab`, and with it
+  // the register of admitted projects, their absolute paths, and the login
+  // item. Nothing a page needs comes from a preload anyway: `__abRefs` and the
+  // rest are installed per call, because a single-page application drops them.
+  constructor(session: Session) {
     this.view = new WebContentsView({
       webPreferences: {
         session,
-        preload,
         contextIsolation: true,
         sandbox: true,
         nodeIntegration: false,

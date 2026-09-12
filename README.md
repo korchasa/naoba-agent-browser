@@ -42,11 +42,11 @@ bottom. The address bar for whichever tab is in front is above the tree, and
 a strip along the bottom says how many agents and tabs the project has.
 
 Pages see an ordinary Chromium: the user agent does not mention Electron or
-Naoba, and `navigator.webdriver` is false. The ghost in that bottom strip
-switches this off for the whole browser — the Electron user agent comes back
-and `navigator.webdriver` turns true — so a bot check you are building can be
-watched firing. The choice is kept across restarts; `--announce-automation`
-starts the browser that way.
+Naoba, and `navigator.webdriver` is false. **Announce automation**, in the
+settings window, switches this off for the whole browser — the Electron user
+agent comes back and `navigator.webdriver` turns true — so a bot check you are
+building can be watched firing. The choice is kept across restarts;
+`--announce-automation` starts the browser that way.
 
 ## Requirements
 
@@ -128,11 +128,21 @@ it is useful from day one; the checkout keeps working on the original.
 
 ## Settings
 
-The gear in the panel's foot opens the settings, in place of the tree. Four
-things live there: whether the application opens when you log in, whether
-pages are told a program drives the browser (the ghost in the foot is the same
-switch), the panel's width in points, and how many minutes a departed agent's
-tabs wait before they close. Each applies at once and is kept across restarts.
+Everything you set by hand is in one window. It opens with ⌘, from the
+application menu, from the gear in the panel's foot, or from the menu-bar icon —
+and asking for it twice brings the one that is open forward.
+
+Four things live there: whether the application opens when you log in, whether
+pages are told a program drives the browser, the panel's width in points, and
+how many minutes a departed agent's tabs wait before they close. Each applies at
+once and is kept across restarts. A width typed below the narrowest the panel
+can be comes back as that width, which is what dragging the panel's edge does
+too.
+
+Under them is the register of projects: every directory you have been asked
+about, allowed and refused alike, with the answer you gave. Forget one and the
+question is asked again the next time an agent works there; a project that is
+already open keeps its tabs and its logins.
 
 An installed copy registers itself as a login item on its first start, once. The
 switch in the settings reads the OS's answer, and so does System Settings ›

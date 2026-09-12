@@ -36,7 +36,7 @@ export function accepted(status: LoginStatus | string): boolean {
   return status === 'enabled' || status === 'requires-approval'
 }
 
-/** The sentence under the switch in the settings view. */
+/** The sentence under the switch in the settings window. */
 export function describeLoginItem({ packaged, status }: { packaged: boolean; status: LoginStatus | string }): string {
   if (!packaged) return 'Not available from a checkout — install the application first.'
   if (status === 'enabled') return 'Starts when you log in.'

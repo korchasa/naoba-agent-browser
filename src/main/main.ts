@@ -1,4 +1,4 @@
-import { app, clipboard, dialog, ipcMain, Menu } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu } from 'electron'
 import { dirname, join } from 'node:path'
 import { cpSync, existsSync } from 'node:fs'
 import { Hub } from './hub.ts'
@@ -9,6 +9,8 @@ import { normalizeUrl } from './tab.ts'
 import { userAgentFor } from './disguise.ts'
 import { appName, isDevVariant } from './variant.ts'
 import { accepted, decideLoginItem, describeLoginItem } from './login.ts'
+import type { LoginItemState, SettingsSnapshot } from './preferences.ts'
+import { SettingsWindow } from './settings-window.ts'
 
 // Every page an agent visits is somebody else's, and Electron's warning about
 // their content security policy would drown the console an agent reads.
@@ -16,7 +18,7 @@ process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true'
 
 // The default user agent announces both this application and Electron, and a
 // bot check reads that as an automated client. Hidden is the rule; the switch
-// in the panel's foot (or `--announce-automation`) puts the truth back for
+// in the settings window (or `--announce-automation`) puts the truth back for
 // somebody building such a check.
 app.userAgentFallback = userAgentFor(false)
 
@@ -62,13 +64,15 @@ async function start(): Promise<void> {
     announceAutomation: flags.has('--announce-automation') || readSettings().announceAutomation === true,
   })
 
-  wireChrome(hub)
+  const settings = installSettingsWindow(hub)
+  hub.onAdmissions(settings.push)
+  wireChrome(hub, settings)
 
   const snapshotDir = stringFlag('--snapshot')
   if (snapshotDir) {
     await hub.start(numberFlag('--port', DEFAULT_PORT + 40))
     const { writeSnapshots } = await import('./snapshot.ts')
-    await writeSnapshots(hub, snapshotDir, `file://${join(__dirname, 'demo.html')}`)
+    await writeSnapshots(hub, snapshotDir, `file://${join(__dirname, 'demo.html')}`, settings)
     app.exit(0)
     return
   }
@@ -89,13 +93,13 @@ async function start(): Promise<void> {
   const revealAll = () => hub.shell.reveal(true)
   app.on('second-instance', revealAll)
   app.on('activate', revealAll)
-  buildMenu(hub)
+  buildMenu(hub, settings)
 
   if (!isTestRun) {
     // The application belongs in the menu bar, not in the Dock: it runs all day
     // for agents that need it, and it should cost the person nothing to have
     // running.
-    trayHandle = installTray(hub)
+    trayHandle = installTray(hub, settings)
     app.dock?.hide()
     offerLoginItem()
   }
@@ -176,7 +180,7 @@ function seedStateDirectory(names: string[]): void {
  * An installed copy starts with the person's login, and says so once by
  * registering itself. Once: the OS keeps the item and the person keeps the
  * right to remove it in System Settings, so every later start leaves the
- * registration alone and only reads it back for the settings view.
+ * registration alone and only reads it back for the settings window.
  */
 function offerLoginItem(): void {
   const decision = decideLoginItem({ packaged: app.isPackaged, offered: readSettings().loginItemOffered })
@@ -199,13 +203,7 @@ function setLoginItem(on: boolean): LoginItemState {
   return state
 }
 
-interface LoginItemState {
-  on: boolean
-  status: string
-  sentence: string
-}
-
-/** The OS's answer, in the two forms the settings view draws: a switch and a sentence. */
+/** The OS's answer, in the two forms the settings window draws: a switch and a sentence. */
 function loginItem(): LoginItemState {
   const packaged = app.isPackaged
   const { openAtLogin, status } = packaged
@@ -214,18 +212,95 @@ function loginItem(): LoginItemState {
   return { on: packaged && openAtLogin, status, sentence: describeLoginItem({ packaged, status }) }
 }
 
-/** Everything the settings view shows, in one shape. */
-function settingsFor(hub: Hub): {
-  loginItem: LoginItemState
-  announceAutomation: boolean
-  panelWidth: number
-  orphanCloseMs: number
-} {
+/** Everything the settings window shows, in one shape. */
+function settingsFor(hub: Hub): SettingsSnapshot {
   return {
     loginItem: loginItem(),
     announceAutomation: hub.announceAutomation,
     panelWidth: hub.shell.panelWidth(),
     orphanCloseMs: hub.orphanCloseMs,
+    projects: hub.admissions(),
+  }
+}
+
+/** How the rest of the application reaches the settings window. */
+export interface SettingsAccess {
+  /** Make it, or bring the one that is open forward. */
+  open(): void
+  /** Something changed elsewhere; redraw it if anybody is looking. */
+  push(): void
+  /** The window itself, for the snapshot run that photographs it. */
+  current(): BrowserWindow | null
+}
+
+/**
+ * The settings window, and everything done to it from outside. It is one
+ * `BrowserWindow` — not a view in the browser's own window, because it is about
+ * the application rather than about any project, and because a person reading
+ * it must not lose the tree they were looking at.
+ */
+function installSettingsWindow(hub: Hub): SettingsAccess {
+  // The real window, beside the policy that owns it: the snapshot run
+  // photographs it, and `WindowLike` deliberately knows nothing about Electron.
+  let real: BrowserWindow | null = null
+  const settings = new SettingsWindow(() => {
+    const window = new BrowserWindow({
+      width: 540,
+      height: 620,
+      minWidth: 460,
+      minHeight: 360,
+      title: 'Settings',
+      // Shown once it has something to draw, or the person watches an empty
+      // window fill itself in.
+      show: false,
+      webPreferences: {
+        preload: join(__dirname, 'preload.js'),
+        contextIsolation: true,
+        sandbox: true,
+      },
+    })
+    real = window
+    window.on('closed', () => {
+      if (real === window) real = null
+    })
+    void window.loadFile(join(__dirname, 'settings.html'))
+    window.once('ready-to-show', () => {
+      // A menu-bar application has no dock icon and is not "active", so without
+      // this the window opens behind whatever the person is in.
+      app.focus({ steal: true })
+      window.show()
+    })
+    // The login item can be turned off in System Settings while this window
+    // sits open, and the OS is the only source of truth for it. Its next focus
+    // is the moment to ask again.
+    window.on('focus', () => {
+      if (settings.isOpen) settings.push(settingsFor(hub))
+    })
+    return {
+      isDestroyed: () => window.isDestroyed(),
+      focus: () => window.focus(),
+      show: () => window.show(),
+      send: (channel, payload) => {
+        if (!window.isDestroyed()) window.webContents.send(channel, payload)
+      },
+      onClosed: (handler) => void window.on('closed', handler),
+    }
+  })
+
+  let pending: NodeJS.Timeout | null = null
+  return {
+    open: () => void settings.open(),
+    current: () => (real && !real.isDestroyed() ? real : null),
+    push: () => {
+      // Dragging the panel's grip sends a width on every animation frame, and
+      // building the answer asks the OS about the login item — so the window is
+      // redrawn about ten times a second rather than sixty.
+      if (!settings.isOpen || pending) return
+      pending = setTimeout(() => {
+        pending = null
+        if (settings.isOpen) settings.push(settingsFor(hub))
+      }, 100)
+    },
   }
 }
 
@@ -236,17 +311,36 @@ function stringFlag(name: string): string | null {
 }
 
 /** A minimal menu, whose real job is the list of project windows. */
-function buildMenu(hub: Hub): void {
+function buildMenu(hub: Hub, settings: SettingsAccess): void {
   const projects = () =>
     [...hub.contexts.values()].map((context) => ({
       label: context.identity.name,
       click: () => context.reveal(true),
     }))
 
+  // Rebuilt whole every few seconds for the list of projects, so the first
+  // submenu is spelled out rather than taken from `role: 'appMenu'` — that role
+  // has no place for Settings, and every item it used to supply has to be
+  // re-listed here or it is simply gone.
   const rebuild = () => {
     Menu.setApplicationMenu(
       Menu.buildFromTemplate([
-        { role: 'appMenu' },
+        {
+          label: appName(),
+          submenu: [
+            { role: 'about' },
+            { type: 'separator' },
+            { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => settings.open() },
+            { type: 'separator' },
+            { role: 'services' },
+            { type: 'separator' },
+            { role: 'hide' },
+            { role: 'hideOthers' },
+            { role: 'unhide' },
+            { type: 'separator' },
+            { role: 'quit' },
+          ],
+        },
         {
           label: 'Projects',
           submenu: projects().length > 0 ? projects() : [{ label: 'No project has connected yet', enabled: false }],
@@ -271,14 +365,12 @@ function numberFlag(name: string, fallback: number): number {
 const YOU = { id: null, label: 'you' }
 
 /** What the window's own interface can ask the main process to do. */
-function wireChrome(hub: Hub): void {
+function wireChrome(hub: Hub, settings: SettingsAccess): void {
   const contextOf = (projectId: string) => hub.contexts.get(projectId) ?? null
 
   /** Everything the panel draws, for every project, the moment it starts. */
   ipcMain.handle('ab:state', () => ({
     port: hub.port,
-    announceAutomation: hub.announceAutomation,
-    settings: settingsFor(hub),
     projects: [...hub.contexts.values()].map((context) => ({
       id: context.identity.id,
       name: context.identity.name,
@@ -374,6 +466,9 @@ function wireChrome(hub: Hub): void {
     if (!Number.isFinite(width)) return null
     const kept = hub.shell.setPanelWidth(width)
     writeSettings({ panelWidth: kept })
+    // The grip and the settings window set the same value; whichever was used,
+    // the other has to show what was kept.
+    settings.push()
     return kept
   })
 
@@ -381,20 +476,32 @@ function wireChrome(hub: Hub): void {
   ipcMain.handle('ab:announce-automation', async (_event, on: boolean) => {
     await hub.setAnnounceAutomation(on === true)
     writeSettings({ announceAutomation: hub.announceAutomation })
+    settings.push()
     return hub.announceAutomation
   })
 
-  /** The settings view, read fresh: the OS may have changed the login item behind our back. */
+  /** The gear in the panel's foot. The menu and the menu-bar icon call the same thing. */
+  ipcMain.handle('ab:open-settings', () => settings.open())
+
+  /** Read fresh: the OS may have changed the login item behind our back. */
   ipcMain.handle('ab:settings', () => settingsFor(hub))
 
-  /** The switch in the settings view; the result is the OS's answer, not the request. */
-  ipcMain.handle('ab:open-at-login', (_event, on: boolean) => setLoginItem(on === true))
+  /** The switch in the settings window; the result is the OS's answer, not the request. */
+  ipcMain.handle('ab:open-at-login', (_event, on: boolean) => {
+    const item = setLoginItem(on === true)
+    settings.push()
+    return item
+  })
 
   ipcMain.handle('ab:orphan-close-ms', (_event, ms: number) => {
-    if (!Number.isFinite(ms) || ms < 0) return hub.orphanCloseMs
-    const kept = Math.round(ms)
+    if (!Number.isFinite(ms)) return hub.orphanCloseMs
+    // Clamped, like the panel's width: a number out of range comes back as the
+    // nearest one that is in it, rather than leaving the field saying something
+    // the application is not doing.
+    const kept = Math.max(0, Math.round(ms))
     hub.setOrphanCloseMs(kept)
     writeSettings({ orphanCloseMs: kept })
+    settings.push()
     return kept
   })
 
@@ -429,4 +536,7 @@ function wireChrome(hub: Hub): void {
     hub.forget(root)
     return true
   })
+  // The push after a forget comes from `hub.onAdmissions`, which every change to
+  // the register goes through — an admission the person granted in the dialog
+  // included.
 }

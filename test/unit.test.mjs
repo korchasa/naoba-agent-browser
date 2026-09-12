@@ -584,7 +584,7 @@ test('the login item is registered once, by an installed copy, and never by a te
   assert.equal(accepted('not-found'), false)
 })
 
-test("the settings view describes the login item in the person's terms", async () => {
+test("the settings window describes the login item in the person's terms", async () => {
   const { describeLoginItem } = await import('../src/main/login.ts')
   assert.equal(describeLoginItem({ packaged: true, status: 'enabled' }), 'Starts when you log in.')
   assert.equal(
@@ -597,6 +597,146 @@ test("the settings view describes the login item in the person's terms", async (
     describeLoginItem({ packaged: false, status: 'not-registered' }),
     'Not available from a checkout — install the application first.',
   )
+})
+
+/**
+ * What the person sets by hand: one sample of what the main process sends, so
+ * the both-ways check below has something real to compare the rows against.
+ */
+const SAMPLE_VALUES = {
+  loginItem: { on: false, status: 'not-registered', sentence: 'Off.' },
+  announceAutomation: false,
+  panelWidth: 340,
+  orphanCloseMs: 5 * 60_000,
+}
+
+test('every preference the window draws is a value the application sends, and back', async () => {
+  const { rowsFor } = await import('../src/main/preferences.ts')
+  const rows = rowsFor(SAMPLE_VALUES)
+  // Both ways. A value the main process starts sending with no row for it does
+  // not compile — `PREFERENCES` is mapped over the keys — and this is the same
+  // promise at run time, for the half a type cannot hold: that the window
+  // actually draws each one.
+  assert.deepEqual([...rows.map((row) => row.key)].sort(), Object.keys(SAMPLE_VALUES).sort())
+  for (const row of rows) {
+    assert.ok(row.label.length > 0, `${row.key} has no label`)
+    assert.ok(row.hint.length > 0, `${row.key} has no sentence under it`)
+  }
+  // The login item's sentence is the OS's answer, passed through rather than
+  // written here: the window must not say "Off." while System Settings says on.
+  const login = rows.find((row) => row.key === 'loginItem')
+  assert.equal(login.hint, 'Off.')
+})
+
+test("a preference is written in the person's unit and kept in the application's", async () => {
+  const { asKept, asShown, PANEL_MIN_WIDTH, rowsFor } = await import('../src/main/preferences.ts')
+  // Minutes are what a person thinks in; milliseconds are what the application
+  // counts in.
+  assert.equal(asKept('orphanCloseMs', 5), 5 * 60_000)
+  assert.equal(asShown('orphanCloseMs', 5 * 60_000), 5)
+  assert.equal(asKept('orphanCloseMs', 0), 0)
+
+  // Clamped, never refused. The grip on the panel's edge answers a drag below
+  // the floor with the floor, and a number typed into the window has to answer
+  // the same way — one preference with two behaviours is the defect this whole
+  // task is about.
+  assert.equal(asKept('panelWidth', 100), PANEL_MIN_WIDTH)
+  assert.equal(asKept('panelWidth', 420), 420)
+  assert.equal(asKept('orphanCloseMs', -3), 0)
+  // An empty field is not a value at all, which is a different answer from a
+  // value out of range.
+  assert.equal(asKept('panelWidth', Number.NaN), null)
+
+  // The floor the window shows is the floor the main process holds: `shell.ts`
+  // imports this very constant.
+  const width = rowsFor(SAMPLE_VALUES).find((row) => row.key === 'panelWidth')
+  assert.equal(width.floor, PANEL_MIN_WIDTH)
+})
+
+test('the projects the person has answered about read as allowed or refused', async () => {
+  const { projectRows } = await import('../src/main/preferences.ts')
+  const rows = projectRows([
+    { name: 'factory', root: '/Users/someone/www/factory', decision: 'allowed', at: 10 },
+    { name: 'blogs', root: '/Users/someone/www/blogs', decision: 'denied', at: 20 },
+    // A record written before the name was kept: the directory still names it.
+    { name: '', root: '/Users/someone/www/homelab', decision: 'allowed', at: 30 },
+  ])
+  // By name, because that is what the person scans for — not by when they
+  // happened to be asked.
+  assert.deepEqual(rows.map((row) => row.name), ['blogs', 'factory', 'homelab'])
+  assert.deepEqual(rows.map((row) => row.allowed), [false, true, true])
+  // A refusal is why an agent in that directory gets nothing, and forgetting
+  // the record is the cure — so the row has to say which it is.
+  assert.match(rows[0].hint, /refused/i)
+  assert.match(rows[1].hint, /allowed/i)
+  // The root is what `forgetProject` is called with, so it is carried whole.
+  assert.equal(rows[2].root, '/Users/someone/www/homelab')
+})
+
+/** A window that records what was done to it, in place of an Electron one. */
+function fakeWindow() {
+  const window = {
+    focused: 0,
+    shown: 0,
+    sent: [],
+    destroyed: false,
+    isDestroyed: () => window.destroyed,
+    focus: () => window.focused++,
+    show: () => window.shown++,
+    send: (channel, payload) => window.sent.push([channel, payload]),
+    onClosed: (handler) => (window.close = () => {
+      window.destroyed = true
+      handler()
+    }),
+  }
+  return window
+}
+
+test('the settings window is one window, opened again and again', async () => {
+  const { SettingsWindow } = await import('../src/main/settings-window.ts')
+  const made = []
+  const settings = new SettingsWindow(() => {
+    const window = fakeWindow()
+    made.push(window)
+    return window
+  })
+
+  const first = settings.open()
+  assert.equal(made.length, 1)
+  // Asking again brings the one that is open forward. A second window would be
+  // two answers to one question, and the person would edit whichever they
+  // happened to be looking at.
+  const again = settings.open()
+  assert.equal(made.length, 1)
+  assert.equal(again, first)
+  assert.equal(first.focused, 1)
+
+  // Closed and asked for again, it is made afresh — the window is not kept
+  // alive in the background for the next time.
+  first.close()
+  settings.open()
+  assert.equal(made.length, 2)
+})
+
+test('nothing is pushed at a settings window that is not there', async () => {
+  const { SettingsWindow } = await import('../src/main/settings-window.ts')
+  let made = null
+  const settings = new SettingsWindow(() => (made = fakeWindow()))
+
+  // A value changes while nobody is looking at the settings: the push has
+  // nowhere to land, and that is ordinary, not a failure.
+  settings.push({ panelWidth: 340 })
+  assert.equal(made, null)
+
+  const window = settings.open()
+  settings.push({ panelWidth: 420 })
+  assert.deepEqual(window.sent, [['settings', { panelWidth: 420 }]])
+
+  // The window a person closed is gone, and Electron throws at a destroyed
+  // one — so a push after the close reaches nothing and says nothing.
+  window.close()
+  settings.push({ panelWidth: 500 })
+  assert.equal(window.sent.length, 1)
 })
 
 /**

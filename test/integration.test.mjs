@@ -58,6 +58,20 @@ test('input reaches the page as a real event, not a synthetic one', async () => 
   agent.close()
 })
 
+test("a page an agent visits cannot reach the window's own controls", async () => {
+  const agent = await app.agent(PROJECT_A, 'trust')
+  const outcome = await agent.run(`
+    await api.navigate(${JSON.stringify(origin + '/page.html')})
+    return await api.eval('typeof window.ab')
+  `)
+  // The preload that carries the panel's controls used to be handed to every
+  // tab as well, so any site could read the register of admitted projects —
+  // names and absolute paths — or turn the login item on. A page gets no
+  // preload at all now; everything the page side needs is installed per call.
+  assert.equal(outcome.value, 'undefined')
+  agent.close()
+})
+
 test('the browser does not announce itself as an automated client', async () => {
   const agent = await app.agent(PROJECT_A, 'ua')
   const outcome = await agent.run(`

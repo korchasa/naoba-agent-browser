@@ -1,4 +1,4 @@
-import { BrowserWindow, nativeImage, Tray } from 'electron'
+import { BrowserWindow, Menu, nativeImage, Tray } from 'electron'
 import { Globe, Hand, type IconNode } from 'lucide'
 import type { Hub } from './hub.ts'
 import { appName } from './variant.ts'
@@ -8,12 +8,15 @@ import { appName } from './variant.ts'
  * look at, and a window comes to the screen only when the person clicks for it
  * here — or when an agent needs them.
  *
- * The icon does one thing: a click brings the application forward — the
- * project that is waiting for the person if there is one, otherwise the one
- * worked in most recently. Everything else — switching project, the port,
- * quitting — is inside the window, under the project's name.
+ * A click brings the application forward — the project that is waiting for the
+ * person if there is one, otherwise the one worked in most recently. The right
+ * click offers the same thing by name, plus the settings, which are the one
+ * screen that is about the application rather than about a project. Quitting is
+ * deliberately not here: the window's close button asks whether to hide or to
+ * quit, because the two answers differ by every tab the agents are working in,
+ * and a quieter second way out would answer that for the person.
  */
-export function installTray(hub: Hub): Tray {
+export function installTray(hub: Hub, settings: { open(): void }): Tray {
   const tray = new Tray(nativeImage.createEmpty())
   tray.setToolTip(`${appName()} — click to open`)
   const painter = new IconPainter()
@@ -36,7 +39,12 @@ export function installTray(hub: Hub): Tray {
     else hub.shell.reveal(true)
   }
   tray.on('click', open)
-  tray.on('right-click', open)
+  tray.on('right-click', () => {
+    tray.popUpContextMenu(Menu.buildFromTemplate([
+      { label: `Open ${appName()}`, click: open },
+      { label: 'Settings…', click: () => settings.open() },
+    ]))
+  })
 
   let shown = ''
   const refresh = () => {

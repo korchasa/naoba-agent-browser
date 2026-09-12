@@ -24,6 +24,10 @@ state must go through the project's own session, never through
 - `src/main/api.ts` — the object an agent's script runs against
 - `src/main/files.ts` — what a scenario may hand a website and where it may
   write, and why both are the project's own directory
+- `src/main/preferences.ts` — what the person sets by hand, described once for
+  the main process and the settings window alike
+- `src/main/settings-window.ts` — one settings window, however often it is asked
+  for; the Electron call that makes it stays in `main.ts`
 - `src/main/runner.ts` — runs that script
 - `src/main/trail.ts` — what a scenario had already done when it failed
 - `src/main/lease.ts`, `queue.ts` — who may act on a tab, and in what order
@@ -34,6 +38,8 @@ state must go through the project's own session, never through
   place both sides can reach it
 - `src/renderer/chrome.ts` — the window's chrome: the address bar and the tree
   of agents, their tabs and the calls made in them
+- `src/renderer/settings.ts` — the settings window's page: the preferences, and
+  the register of projects the person has been asked about
 - `src/renderer/tree.ts` — how that tree is built, and the only part of the
   chrome a test can reach
 
@@ -81,12 +87,27 @@ state must go through the project's own session, never through
   project a window of its own again: the person asked for the projects in one
   list, and the sessions stay apart without separate windows.
 - **What the person sets by hand goes through `src/main/settings.ts`** — one
-  `settings.json` in the user-data directory, and one settings view in the
-  panel (the gear in the foot) that shows every value in it. Today that is the
-  panel width, which the person also drags on the panel's right edge, the
-  disguise switch, and how long a departed agent's tabs wait; the main process
-  owns each value, clamps it, applies it live and writes it down. The renderer
-  draws what comes back, never what was asked for.
+  `settings.json` in the user-data directory — and is shown in one window of its
+  own, opened by ⌘, in the application menu, the gear in the panel's foot, or the
+  menu-bar icon. The main process owns each value: it clamps it, applies it live
+  and writes it down, and the window draws what came back, never what it asked
+  for. A number typed under its floor comes back as the floor, the same answer
+  the grip on the panel's edge gives a drag — one preference with two behaviours
+  is a defect, not a convenience.
+
+  The preferences themselves are described in `src/main/preferences.ts`, which
+  both sides read, and `PREFERENCES` there is mapped over `keyof
+  PreferenceValues`: a value the main process starts sending with no row for it
+  does not compile. That is the only place the promise can be made — `Settings`
+  is an interface and is gone by run time, so no test in this repository could
+  make it.
+
+  It is a window rather than a view in the panel because it is about the
+  application and not about any project, and because reading it must not cost
+  the person the tree they were looking at. The settings window is also where
+  the register of admitted projects is shown and forgotten; the panel keeps only
+  what is about the window in front of you — the grip, and the order of the
+  agents.
 - **The login item is offered once, and then the OS decides.** An installed
   copy (`app.isPackaged`) registers itself with `app.setLoginItemSettings` on
   its first start and writes `loginItemOffered` — only after
@@ -103,8 +124,8 @@ state must go through the project's own session, never through
   literal anywhere else in the renderer is a defect: the demo page kept a
   blue button through two accent changes because it carried its own hex.
 - **The disguise is one switch, and it flips live.** Pages see plain Chromium
-  by default (`src/main/disguise.ts` owns the user agent); the ghost in the
-  panel's foot, or `--announce-automation`, puts the Electron user agent back
+  by default (`src/main/disguise.ts` owns the user agent); the switch in the
+  settings window, or `--announce-automation`, puts the Electron user agent back
   and sets `navigator.webdriver` through `Emulation.setAutomationOverride`,
   which changes the document already open. `session.setUserAgent` reaches only
   tabs created afterwards, so a flip walks the open tabs with
@@ -144,6 +165,21 @@ state must go through the project's own session, never through
   that walked out of `walk()` can still be the other realm's `Array`, and
   `assert.deepStrictEqual` compares prototypes, so it rejects a host `[1, 2]`
   that JSON would render identically. Compare a spread copy, or the JSON.
+- **A preload is not private to the view that uses it.** `contextIsolation`
+  keeps the preload's own world apart from the page's; `contextBridge
+  .exposeInMainWorld` crosses that line on purpose, which is the whole point of
+  it. So a preload handed to a tab is handed to every site that tab visits.
+  Every tab was built with the panel's preload until 2026-09-12, and a page on
+  example.com could therefore read the register of admitted projects — names and
+  absolute paths — and call `openAtLogin`, `forgetProject`, `newTab` and
+  `takeOver`. Measured on the installed copy, not read out of the code; the
+  comment at the top of `preload.ts` had claimed the opposite for months, which
+  is why nobody looked. A tab is built with no preload at all now, and an
+  integration test holds it there by asking a page for `typeof window.ab`.
+  Nothing a page needs comes from a preload anyway: the `__abRefs` helpers are
+  installed per call, because a single-page application drops anything installed
+  once.
+
 - **A path boundary compares realpaths, and a path that is not there has to be
   resolved as far as it goes.** `identify()` runs the project root through
   `realpathSync.native`, so a project the agent calls `/tmp/work` is really

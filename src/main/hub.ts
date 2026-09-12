@@ -6,6 +6,7 @@ import { buildApi } from './api.ts'
 import { type AgentHandle, ProjectContext } from './context.ts'
 import { Shell, type ShellPaths } from './shell.ts'
 import { identify, normalizeRoot, type ProjectIdentity } from './project.ts'
+import type { AdmissionRecord } from './preferences.ts'
 import {
   type ClientMessage,
   type ErrorCode,
@@ -34,13 +35,6 @@ export interface HubOptions extends ShellPaths {
 
 type Decision = 'allowed' | 'denied'
 
-interface AdmissionRecord {
-  decision: Decision
-  name: string
-  root: string
-  at: number
-}
-
 /**
  * Holds every project, admits the agents that ask to join one, and routes their
  * calls. This is where the product's central promise is enforced: a connection
@@ -52,6 +46,8 @@ export class Hub {
   /** The one window, shared by every project. */
   readonly shell: Shell
   readonly #admissions = new Map<string, AdmissionRecord>()
+  /** Told whenever the register changes, so an open settings window redraws it. */
+  #onAdmissions: (() => void) | null = null
   readonly #server: BridgeServer
   readonly #agentsByConnection = new Map<number, { agentId: string; projectId: string }>()
   #idleTimer: NodeJS.Timeout | null = null
@@ -139,6 +135,7 @@ export class Hub {
   }
 
   #saveAdmissions(): void {
+    this.#onAdmissions?.()
     const out: Record<string, AdmissionRecord> = {}
     for (const [key, record] of this.#admissions) out[key] = record
     try {
@@ -152,6 +149,16 @@ export class Hub {
     return [...this.#admissions.values()]
   }
 
+  /** The settings window lists this register; a new answer has to reach it. */
+  onAdmissions(handler: () => void): void {
+    this.#onAdmissions = handler
+  }
+
+  /**
+   * Drop the answer, not the browser. A project already open keeps its tabs and
+   * its session; what goes is the record, so the next agent working in that
+   * directory is asked about again.
+   */
   forget(root: string): void {
     this.#admissions.delete(normalizeRoot(root))
     this.#saveAdmissions()
@@ -200,7 +207,6 @@ export class Hub {
     const existing = this.contexts.get(identity.id)
     if (existing) return existing
     const created = new ProjectContext(identity, {
-      preload: this.#options.preload,
       shell: this.shell,
       orphanCloseMs: this.#options.orphanCloseMs,
       announceAutomation: this.#announceAutomation,

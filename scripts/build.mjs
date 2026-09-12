@@ -46,9 +46,20 @@ await build({
   target: 'chrome130',
 })
 
+await build({
+  ...common,
+  entryPoints: [join(root, 'src/renderer/settings.ts')],
+  outfile: join(out, 'settings.js'),
+  platform: 'browser',
+  format: 'iife',
+  target: 'chrome130',
+})
+
 await cp(join(root, 'src/renderer/chrome.html'), join(out, 'chrome.html'))
 await cp(join(root, 'src/renderer/palette.css'), join(out, 'palette.css'))
 await cp(join(root, 'src/renderer/chrome.css'), join(out, 'chrome.css'))
+await cp(join(root, 'src/renderer/settings.html'), join(out, 'settings.html'))
+await cp(join(root, 'src/renderer/settings.css'), join(out, 'settings.css'))
 await cp(join(root, 'src/renderer/demo.html'), join(out, 'demo.html'))
 
 console.log(`built into ${out}${watch ? ' (watch is not wired yet)' : ''}`)

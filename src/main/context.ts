@@ -24,7 +24,6 @@ export interface PendingHuman {
 }
 
 export interface ContextPaths {
-  preload: string
   /** The window every project's tabs live in. */
   shell: Shell
   /** How long a departed agent's tabs stay open before they are closed. */
@@ -158,7 +157,7 @@ export class ProjectContext {
   // --------------------------------------------------------------------- tabs
 
   openTab(url?: string, openedBy: string | null = null): Tab {
-    const tab = new Tab(this.session, this.#paths.preload)
+    const tab = new Tab(this.session)
     tab.openedBy = openedBy
     this.#tabs.push(tab)
     this.#activeTabId = tab.id

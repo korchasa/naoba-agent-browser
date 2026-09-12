@@ -1,13 +1,8 @@
 import { app, BaseWindow, dialog, screen, WebContentsView } from 'electron'
 import { appName } from './variant.ts'
-
-/**
- * The panel is the window's whole chrome, so it has to hold an address bar and
- * a four-level tree without either one being unreadable.
- */
-export const PANEL_WIDTH = 340
-/** Narrower than this and the address bar has no room for an address. */
-export const PANEL_MIN_WIDTH = 240
+// One floor for the panel's width, wherever it is set: the grip clamps a drag
+// to it, and the settings window clamps a typed number to the same one.
+import { PANEL_MIN_WIDTH, PANEL_WIDTH } from './preferences.ts'
 
 export interface ShellPaths {
   preload: string
