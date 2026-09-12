@@ -141,7 +141,23 @@ comment that records a constraint, a trap or a decision is the reason the next
 person does not repeat a wasted afternoon.
 
 Run `deno task check` before calling anything done, and `deno task test` before
-calling it correct.
+calling it correct. The suite drives a real Electron window and takes about 20
+seconds, where a single test by name takes about 1.5, so while a change is
+still red, build once with `deno task check` and then loop on the tests by
+name — `node --test --test-concurrency=1 --test-timeout=90000
+--test-name-pattern='a snapshot ref' test/integration.test.mjs` — and run the
+whole thing before the commit.
+
+`deno task fmt` formats everything the project owns, and three of those files
+have been unformatted for longer than anyone has looked:
+`packages/bridge/index.mjs`, `src/main/snapshot.ts`, and one line of
+`test/integration.test.mjs`. Running it to tidy up after an edit therefore
+rewrites two files nobody asked about and carries them into the commit. Check
+your own work with `deno fmt --check` and read past those three. Checking it
+anywhere else does not work: a copy of a file in a scratch directory is
+formatted without this project's `deno.json`, so it comes back with every line
+wrong about quotes and semicolons. A baseline from before the edits is a
+`git worktree` of `HEAD`, not a copy.
 
 ## Documents
 
