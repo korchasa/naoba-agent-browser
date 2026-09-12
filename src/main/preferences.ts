@@ -14,7 +14,10 @@
 
 /**
  * The panel is the window's whole chrome, so it has to hold an address bar and
- * a four-level tree without either one being unreadable.
+ * a four-level tree without either one being unreadable. The person sets this
+ * by dragging the panel's edge, which is the whole of it — there is no row in
+ * the settings window, because a number typed in points says nothing a drag
+ * does not say better.
  */
 export const PANEL_WIDTH = 340
 /** Narrower than this and the address bar has no room for an address. */
@@ -41,7 +44,6 @@ export interface PreferenceValues {
   loginItem: LoginItemState
   presence: Presence
   announceAutomation: boolean
-  panelWidth: number
   orphanCloseMs: number
 }
 
@@ -73,9 +75,8 @@ export type Row = Drawn & { key: PreferenceKey; label: string }
 
 /**
  * A number the person types in one unit and the application keeps in another,
- * with the floor it may not go below. There is no ceiling here: the panel's
- * upper bound is half the window, which only the window knows, so the shell
- * clamps again on its side.
+ * with the floor it may not go below. There is no ceiling: nothing the person
+ * types here has an upper bound worth refusing.
  */
 interface Scale {
   /** How many of the application's units one of the person's is worth. */
@@ -129,17 +130,6 @@ export const PREFERENCES: { [K in PreferenceKey]: Entry } = {
       on: values.announceAutomation,
     }),
   },
-  panelWidth: {
-    label: 'Panel width',
-    scale: { per: 1, floor: PANEL_MIN_WIDTH, unit: 'points' },
-    draw: (values) => ({
-      kind: 'number',
-      hint: "Dragging the panel's right edge sets the same width.",
-      value: asShown('panelWidth', values.panelWidth),
-      floor: PANEL_MIN_WIDTH,
-      unit: 'points',
-    }),
-  },
   orphanCloseMs: {
     label: "Close a departed agent's tabs after",
     scale: { per: 60_000, floor: 0, unit: 'minutes' },
@@ -189,9 +179,8 @@ export function rowsFor(values: PreferenceValues): Row[] {
 
 /**
  * The number the person typed, in the unit the application keeps — clamped to
- * the floor, never refused for being under it. The grip on the panel's edge
- * answers a drag below the floor with the floor, and a field that refused
- * instead would be one preference with two behaviours.
+ * the floor, never refused for being under it. A field that refused would make
+ * the person work out the floor by trial; one that clamps shows it.
  *
  * `null` means something else entirely: what was typed is not a number, so
  * there is nothing to keep.

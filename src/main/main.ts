@@ -256,7 +256,6 @@ function settingsFor(hub: Hub): SettingsSnapshot {
     loginItem: loginItem(),
     presence,
     announceAutomation: hub.announceAutomation,
-    panelWidth: hub.shell.panelWidth(),
     orphanCloseMs: hub.orphanCloseMs,
     projects: hub.admissions(),
   }
@@ -501,13 +500,12 @@ function wireChrome(hub: Hub, settings: SettingsAccess): void {
     menu.popup({ window: hub.shell.window() })
   })
 
+  // The grip on the panel's edge is the only thing that sets this width, so
+  // nothing has to be told what it landed on — the panel is already that wide.
   ipcMain.handle('ab:panel-width', (_event, width: number) => {
     if (!Number.isFinite(width)) return null
     const kept = hub.shell.setPanelWidth(width)
     writeSettings({ panelWidth: kept })
-    // The grip and the settings window set the same value; whichever was used,
-    // the other has to show what was kept.
-    settings.push()
     return kept
   })
 

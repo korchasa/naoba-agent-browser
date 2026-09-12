@@ -91,9 +91,15 @@ state must go through the project's own session, never through
   own, opened by ⌘, in the application menu, the gear in the panel's foot, or the
   menu-bar icon. The main process owns each value: it clamps it, applies it live
   and writes it down, and the window draws what came back, never what it asked
-  for. A number typed under its floor comes back as the floor, the same answer
-  the grip on the panel's edge gives a drag — one preference with two behaviours
-  is a defect, not a convenience.
+  for. A number typed under its floor comes back as the floor rather than being
+  refused: a field that refused would make the person find the floor by trial.
+
+  Not everything the application remembers belongs in that window. The panel's
+  width is kept in the same `settings.json` and has no row, because the grip on
+  the panel's edge sets it directly and a number typed in points says nothing
+  the drag does not say better; it was drawn as a row once and taken out on
+  2026-09-12. The test is whether the person could do the thing more directly
+  somewhere else.
 
   The preferences themselves are described in `src/main/preferences.ts`, which
   both sides read, and `PREFERENCES` there is mapped over `keyof

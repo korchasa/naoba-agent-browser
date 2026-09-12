@@ -616,7 +616,6 @@ const SAMPLE_VALUES = {
   loginItem: { on: false, status: 'not-registered', sentence: 'Starts only when you open it yourself.' },
   presence: 'menu-bar',
   announceAutomation: false,
-  panelWidth: 340,
   orphanCloseMs: 5 * 60_000,
 }
 
@@ -721,28 +720,23 @@ test('the choice of where to appear is drawn as the three places, the current on
 })
 
 test("a preference is written in the person's unit and kept in the application's", async () => {
-  const { asKept, asShown, PANEL_MIN_WIDTH, rowsFor } = await import('../src/main/preferences.ts')
+  const { asKept, asShown, rowsFor } = await import('../src/main/preferences.ts')
   // Minutes are what a person thinks in; milliseconds are what the application
   // counts in.
   assert.equal(asKept('orphanCloseMs', 5), 5 * 60_000)
   assert.equal(asShown('orphanCloseMs', 5 * 60_000), 5)
   assert.equal(asKept('orphanCloseMs', 0), 0)
 
-  // Clamped, never refused. The grip on the panel's edge answers a drag below
-  // the floor with the floor, and a number typed into the window has to answer
-  // the same way — one preference with two behaviours is the defect this whole
-  // task is about.
-  assert.equal(asKept('panelWidth', 100), PANEL_MIN_WIDTH)
-  assert.equal(asKept('panelWidth', 420), 420)
+  // Clamped, never refused: a field that refused would make the person work
+  // out the floor by trial, and one that clamps shows it.
   assert.equal(asKept('orphanCloseMs', -3), 0)
   // An empty field is not a value at all, which is a different answer from a
   // value out of range.
-  assert.equal(asKept('panelWidth', Number.NaN), null)
+  assert.equal(asKept('orphanCloseMs', Number.NaN), null)
 
-  // The floor the window shows is the floor the main process holds: `shell.ts`
-  // imports this very constant.
-  const width = rowsFor(SAMPLE_VALUES).find((row) => row.key === 'panelWidth')
-  assert.equal(width.floor, PANEL_MIN_WIDTH)
+  // The floor the window shows is the floor the conversion holds to.
+  const wait = rowsFor(SAMPLE_VALUES).find((row) => row.key === 'orphanCloseMs')
+  assert.equal(wait.floor, 0)
 })
 
 test('the projects the person has answered about read as allowed or refused', async () => {
@@ -817,17 +811,17 @@ test('nothing is pushed at a settings window that is not there', async () => {
 
   // A value changes while nobody is looking at the settings: the push has
   // nowhere to land, and that is ordinary, not a failure.
-  settings.push({ panelWidth: 340 })
+  settings.push({ orphanCloseMs: 340 })
   assert.equal(made, null)
 
   const window = settings.open()
-  settings.push({ panelWidth: 420 })
-  assert.deepEqual(window.sent, [['settings', { panelWidth: 420 }]])
+  settings.push({ orphanCloseMs: 420 })
+  assert.deepEqual(window.sent, [['settings', { orphanCloseMs: 420 }]])
 
   // The window a person closed is gone, and Electron throws at a destroyed
   // one — so a push after the close reaches nothing and says nothing.
   window.close()
-  settings.push({ panelWidth: 500 })
+  settings.push({ orphanCloseMs: 500 })
   assert.equal(window.sent.length, 1)
 })
 

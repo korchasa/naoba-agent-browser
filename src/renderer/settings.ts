@@ -20,7 +20,6 @@ declare const ab: {
   settings(): Promise<SettingsSnapshot>
   openAtLogin(on: boolean): Promise<unknown>
   announceAutomation(on: boolean): Promise<unknown>
-  panelWidth(width: number): Promise<unknown>
   orphanCloseMs(ms: number): Promise<unknown>
   presence(value: string): Promise<unknown>
   forgetProject(root: string): Promise<unknown>
@@ -149,11 +148,6 @@ async function commit(key: PreferenceKey, value: boolean | number | string): Pro
     case 'announceAutomation':
       await ab.announceAutomation(value as boolean)
       return
-    case 'panelWidth': {
-      const kept = asKept(key, value as number)
-      if (kept !== null) await ab.panelWidth(kept)
-      return
-    }
     case 'orphanCloseMs': {
       const kept = asKept(key, value as number)
       if (kept !== null) await ab.orphanCloseMs(kept)
