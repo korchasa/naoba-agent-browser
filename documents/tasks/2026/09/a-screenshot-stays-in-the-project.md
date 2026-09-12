@@ -47,6 +47,13 @@ about, the boundary is the project alone with no second root to keep in step,
 and two projects photographing the same site cannot collide, because they were
 never writing to one place.
 
+The directory is inside somebody's repository, so it carries its own
+`.gitignore` holding `*` (owner, 2026-09-12). It is written when the directory
+is made and never again: a file already there was put there by the person, or by
+this on an earlier run, and either way rewriting it would be taking a decision
+that is not ours. Nothing in `.naoba` is the project's source, so nothing in it
+belongs in anybody's commit.
+
 ## Definition of Done
 
 - [x] A path outside the project is refused before anything is written, and the
@@ -56,6 +63,8 @@ never writing to one place.
 - [x] The boundary is the one `setFiles` reads within, from one place in the
       code, so the two cannot drift apart.
 - [x] A screenshot with no path lands in `<project>/.naoba/screenshots/`.
+- [x] That directory ignores itself, so nobody's `git status` fills with
+      pictures, and an ignore file already there is left alone.
 - [x] The manual says the rule where an agent meets the helper.
 - [x] `deno task check` and `deno task test` exit 0, and `deno fmt --check`
       reports only the three files `AGENTS.md` already names.
@@ -96,6 +105,10 @@ from the side it had not been met from: the root, not the file.
   whose name merely starts with the project's, and a directory as the target).
 - An integration test for the default: `screenshot()` with no path comes back
   from `<project>/.naoba/screenshots/<timestamp>.png`, and the file is a PNG.
+- An integration test for the ignore file, in a fresh project because the point
+  is the first time: `*` is there after the first picture, and an edited file
+  survives the second. Proved red by disabling the write — the test failed on
+  the missing file, which is the thing under test.
 - An integration test over the live api: a picture into the project comes back
   at its resolved path and is a real PNG.
 - An integration test for the refusal: the message names the boundary and
@@ -104,5 +117,5 @@ from the side it had not been met from: the root, not the file.
 Proved red before being trusted: with the boundary check disabled, the
 integration test got back a path under `/private/var/folders/…` and the unit
 test reported a missing rejection — both for the reason under test, not for a
-neighbouring one. 108 tests pass with the boundary and the new default in
+neighbouring one. 109 tests pass with the boundary, the new default and the ignore file in
 place.

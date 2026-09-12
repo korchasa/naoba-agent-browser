@@ -132,6 +132,25 @@ test('a screenshot with no path lands in the project, under .naoba', async () =>
   agent.close()
 })
 
+test('the directory this browser keeps in a project ignores itself', async () => {
+  // A fresh project, because the point is what happens the first time.
+  const project = await mkdtemp(join(tmpdir(), 'naoba-ignore-'))
+  const agent = await app.agent(project, 'ignore')
+  await agent.run(`
+    await api.navigate(${JSON.stringify(origin + '/page.html')})
+    return await api.screenshot()
+  `)
+  const ignore = join(project, '.naoba', '.gitignore')
+  assert.match(await readFile(ignore, 'utf8'), /^\*$/m)
+
+  // Written once. An ignore file already there was put there by the person, and
+  // a second picture must not rewrite it.
+  await writeFile(ignore, '# mine\n*\n')
+  await agent.run('return await api.screenshot()')
+  assert.equal(await readFile(ignore, 'utf8'), '# mine\n*\n')
+  agent.close()
+})
+
 test('a screenshot outside the project is refused, and says where it may go', async () => {
   const agent = await app.agent(PROJECT_A, 'shot-out')
   const outside = join(await mkdtemp(join(tmpdir(), 'naoba-shot-out-')), 'page.png')

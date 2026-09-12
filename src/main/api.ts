@@ -1,11 +1,12 @@
 import type { AgentHandle, ProjectContext } from './context.ts'
 import type { ProjectIdentity } from './project.ts'
-import { type FileBoundary, resolveUploadPaths, resolveWritePath } from './files.ts'
+import { type FileBoundary, resolveUploadPaths, resolveWritePath, within } from './files.ts'
 import type { Tab } from './tab.ts'
 import { pause } from './tab.ts'
 import type { Holder } from './lease.ts'
 import { describeVisits, VisitLog } from './visits.ts'
 import { fullReference, helpFor } from '../../packages/bridge/reference.mjs'
+import { access, mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 export interface ApiOptions {
@@ -404,6 +405,7 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
       const target = path === undefined
         ? defaultShotPath(context.identity.root)
         : await resolveWritePath(path, fileBoundary(context.identity))
+      if (within(naobaDir(context.identity.root), target)) await ensureNaobaDir(context.identity.root)
       return guard(`screenshot() to ${target}`, (tab) => tab.screenshot(target))
     },
 
@@ -709,6 +711,24 @@ function naobaDir(root: string): string {
 
 function shotDir(root: string): string {
   return join(naobaDir(root), 'screenshots')
+}
+
+/**
+ * The directory sits inside somebody's repository, so it carries its own
+ * `.gitignore`: a browser's pictures are not the project's source, and nobody
+ * asked for a `git status` full of them. It is written when the directory is
+ * made and never again — an ignore file already there was put there by the
+ * person, or by this, and either way it is not ours to rewrite.
+ */
+async function ensureNaobaDir(root: string): Promise<void> {
+  const dir = naobaDir(root)
+  await mkdir(dir, { recursive: true })
+  const ignore = join(dir, '.gitignore')
+  try {
+    await access(ignore)
+  } catch {
+    await writeFile(ignore, '# What Naoba keeps for this project. None of it is the project.\n*\n')
+  }
 }
 
 /** Where a screenshot lands when the agent did not say. A name that sorts by time. */
