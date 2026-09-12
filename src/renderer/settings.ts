@@ -118,10 +118,12 @@ function renderProjects(values: SettingsSnapshot): HTMLElement {
     return group
   }
   for (const project of rows) {
-    const node = el('div', 'setting project')
+    // The state goes on the row, not on the lamp alone: a refused directory
+    // reads quieter as a whole, the way a record that is not in force should.
+    const node = el('div', project.allowed ? 'setting project' : 'setting project refused')
     const text = el('div', 'text')
     const name = el('div', 'name')
-    name.append(el('span', project.allowed ? 'dot' : 'dot refused'), el('span', '', project.name))
+    name.append(el('span', 'dot'), el('span', '', project.name))
     text.append(name, el('span', 'path', project.root), el('span', 'hint', project.hint))
     node.append(text)
     node.append(

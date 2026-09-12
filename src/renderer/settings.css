@@ -227,8 +227,15 @@ input.number:focus {
   border-radius: 50%;
   background: var(--ok);
 }
-.project .dot.refused {
-  background: var(--text-faint);
+/* A refused directory is still a record — it is why an agent working there
+   gets nothing — so it stays on the list and steps back rather than going:
+   the lamp goes grey and the row goes pale. The button keeps its strength,
+   because forgetting the refusal is the one thing to do with the row. */
+.project.refused .dot {
+  background: var(--tick);
+}
+.project.refused .text {
+  opacity: 0.55;
 }
 .project button {
   min-height: 2rem;
