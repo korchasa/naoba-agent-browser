@@ -58,5 +58,5 @@ decision is held by a unit test and the call is one line.
 
 ## Follow-ups
 
-- The badge sits on Electron's own logo until the application has an icon of
+- ~~Closed 2026-09-12 by `a-face-of-its-own`.~~ The badge sits on Electron's own logo until the application has an icon of
   its own — the same follow-up the presence task carries.

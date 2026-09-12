@@ -1,5 +1,5 @@
 import { BrowserWindow, Menu, nativeImage, Tray } from 'electron'
-import { Globe, Hand, type IconNode } from 'lucide'
+import { Hand, type IconNode } from 'lucide'
 import type { Hub } from './hub.ts'
 import { appName } from './variant.ts'
 
@@ -64,7 +64,7 @@ export function installTray(hub: Hub, settings: { open(): void }): Tray {
     // worth a glance at the menu bar.
     const connected = contexts().reduce((sum, context) => sum + context.agents.size, 0)
     const asking = waitingForPerson(hub) > 0
-    const key = `${asking ? 'hand' : 'globe'}:${connected}`
+    const key = `${asking ? 'hand' : 'world'}:${connected}`
     if (key === shown) return
     shown = key
     void painter.paint(asking, connected).then((image) => {
@@ -78,6 +78,19 @@ export function installTray(hub: Hub, settings: { open(): void }): Tray {
   return tray
 }
 
+/**
+ * The resting glyph: a world with a command prompt on it, the same figure the
+ * application icon carries, drawn as a line. Written out here rather than taken
+ * from lucide because it is this application's mark and not a stock symbol.
+ *
+ * The stroke is 2.1 rather than lucide's 2.4: at eighteen points the chevron
+ * and the underscore close up at the heavier weight. Looked at, at that size,
+ * before it was chosen.
+ */
+const WORLD = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#000" ' +
+  'stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">' +
+  '<circle cx="12" cy="12" r="9"/><path d="M8.6 9 L11.4 12 L8.6 15"/><path d="M13.2 15 H16.4"/></svg>'
+
 /** Points across, in the menu bar. */
 const ICON_POINTS = 18
 /** The retina factor the icon is painted at. */
@@ -86,8 +99,12 @@ const ICON_SCALE = 2
 /**
  * The icon is painted by a canvas in an offscreen renderer rather than pixel
  * by pixel here: a hand and a number both need anti-aliasing to read at
- * eighteen points, and Chromium already knows how to draw both. A template
- * image is black plus alpha; macOS inverts it for the menu bar on its own.
+ * eighteen points, and Chromium already knows how to draw both.
+ *
+ * A template image is black plus alpha, and the alpha is all of it: macOS
+ * paints the shape black on the light bar and white on the dark one, so white
+ * is not a colour here but a hole. A glyph drawn as a fill with a lighter mark
+ * inside arrives in the menu bar as a solid blob.
  */
 class IconPainter {
   #window: BrowserWindow | null = null
@@ -95,7 +112,7 @@ class IconPainter {
   async paint(hand: boolean, count: number): Promise<Electron.NativeImage> {
     const window = this.#window ?? (this.#window = await this.#open())
     const dataUrl: string = await window.webContents.executeJavaScript(
-      `draw(${JSON.stringify(hand ? svg(Hand) : svg(Globe))}, ${count})`,
+      `draw(${JSON.stringify(hand ? svg(Hand) : WORLD)}, ${count})`,
     )
     const png = Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64')
     const image = nativeImage.createFromBuffer(png, { scaleFactor: ICON_SCALE })

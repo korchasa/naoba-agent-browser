@@ -76,7 +76,7 @@ start-up and again whenever the row is touched.
 
 ## Follow-ups
 
-- The bundle ships Electron's own `electron.icns`, so the Dock shows the
+- ~~Closed 2026-09-12 by `a-face-of-its-own`.~~ The bundle ships Electron's own `electron.icns`, so the Dock shows the
   Electron logo to whoever turns it on. An icon of its own is a task of its
   own.
 - `LSUIElement` is not set in the bundle's `Info.plist`, so a start in

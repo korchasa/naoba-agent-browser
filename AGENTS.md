@@ -121,6 +121,20 @@ state must go through the project's own session, never through
   application (2026-09-12): `background only` of the process and `number of menu
   bars` in System Events follow each of the three, a restart comes back where it
   was left, and a hand-edited value in `settings.json` starts in the menu bar.
+- **The application's face is one figure in two media.** The Dock icon is a
+  world with a command prompt on it — the browser, and the fact that a program
+  is what walks it — and the menu-bar icon is that same circle and prompt drawn
+  as a line (`WORLD` in `tray.ts`; the hand still replaces it while an agent
+  waits). `build-resources/icon.icns` is what electron-builder picks up, and it
+  is generated from two drawings: `icon.svg` for 128 points and up, and
+  `icon-small.svg` for 16 and 32, because an `.icns` holds a picture per size
+  and the full grid turns to mud when it is shrunk that far. The commands are
+  in the comment at the top of `icon.svg`. Two things about the menu bar are
+  not a matter of taste: a template image is black plus alpha and nothing else,
+  so white is a hole rather than paint — a filled glyph with a lighter mark cut
+  into it arrives as a solid blob — and the stroke is 2.1 rather than lucide's
+  2.4, because at eighteen points the chevron and the underscore close up at
+  the heavier weight.
 - **The two icons carry different things, and the Dock badge is not a
   counter.** A badge on macOS means "this many things want you", so it holds
   the number of calls waiting for the person (`waitingForPerson`), and nothing
