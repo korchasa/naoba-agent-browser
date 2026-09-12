@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 export const BUNDLE_ID = 'dev.korchasa.Naoba'
 export const APP_NAME = 'Naoba.app'
@@ -14,19 +15,36 @@ export const DEV_BUNDLE_ID = 'dev.korchasa.Naoba.dev'
 export const DEV_APP_NAME = 'Naoba Dev.app'
 
 /**
- * Where the application might be, in the order worth trying: the release copy
- * first, then the development copy, then a bare checkout.
+ * The bundle this file was shipped inside, if it was.
+ *
+ * A bought copy carries its bridge at `Naoba.app/Contents/Resources/bridge`,
+ * so the bridge can name the exact application it belongs to — which beats
+ * asking the system for a bundle id when two copies are installed, or when the
+ * one a person is pointing at does not live in /Applications at all.
+ */
+export function owningBundle(url = import.meta.url) {
+  const here = dirname(fileURLToPath(url))
+  // …/Naoba.app/Contents/Resources/bridge -> …/Naoba.app
+  const bundle = dirname(dirname(dirname(here)))
+  return bundle.endsWith('.app') ? bundle : null
+}
+
+/**
+ * Where the application might be, in the order worth trying: the copy this
+ * bridge was shipped inside, then the release copy, then the development copy,
+ * then a bare checkout.
  *
  * The last entry is the one that matters while the app itself is being built:
  * there is no bundle in /Applications yet, and a bridge that only knows the
  * installed path fails in exactly the situation where it is needed most.
  */
-export function candidates(env = process.env) {
+export function candidates(env = process.env, own = owningBundle()) {
   const explicit = env.NAOBA_APP
   const devRoot = env.NAOBA_DEV_ROOT
   const home = env.HOME ?? ''
   return [
     explicit ? { kind: 'explicit', path: explicit } : null,
+    own ? { kind: 'own-bundle', path: own } : null,
     { kind: 'bundle-id', path: BUNDLE_ID },
     { kind: 'applications', path: join('/Applications', APP_NAME) },
     { kind: 'home-applications', path: join(home, 'Applications', APP_NAME) },

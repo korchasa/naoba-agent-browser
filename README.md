@@ -67,7 +67,10 @@ npm start
 
 ## Connect an agent
 
-The bridge is an MCP server. Point your IDE at `packages/bridge/index.mjs`.
+The bridge is an MCP server. An installed application carries it, so point your
+IDE at `/Applications/Naoba.app/Contents/Resources/bridge/index.mjs`; working
+from this checkout, point it at `packages/bridge/index.mjs` instead. Either way
+it is one file and needs nothing installed beyond Node.
 
 Claude Code:
 

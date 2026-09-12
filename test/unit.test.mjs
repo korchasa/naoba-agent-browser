@@ -19,6 +19,7 @@ import { buildTree, expandNew, groupKey, projectKey, sortGroups, tabKey } from '
 import { documentedNames, fullReference, helpFor, namesIn, TOOL_DESCRIPTION } from '../packages/bridge/reference.mjs'
 import { TOOLS } from '../packages/bridge/tools.mjs'
 import { stateDirs, tokenForPort } from '../packages/bridge/handshake.mjs'
+import { candidates, owningBundle } from '../packages/bridge/launch.mjs'
 import {
   activateRequest,
   checkRequest,
@@ -1332,4 +1333,24 @@ test('the settings window is told what happened, not only that something did', (
   // A key the person can still recognise stays on the row even once it is no
   // good, so they can tell the dead key from one they have not tried yet.
   assert.equal(describe(stored({ cancelled: true }), NOW).tail, '1234')
+})
+
+test('a bridge shipped inside the application starts that application', () => {
+  // The path a bought copy carries. Somebody who downloaded the DMG points
+  // their IDE at this file and has nothing else to install, so the bridge must
+  // recognise the bundle it is sitting in rather than asking the system which
+  // Naoba it prefers.
+  const inside = 'file:///Applications/Naoba.app/Contents/Resources/bridge/launch.mjs'
+  assert.equal(owningBundle(inside), '/Applications/Naoba.app')
+
+  const kinds = candidates({}, owningBundle(inside)).map((c) => c.kind)
+  assert.equal(kinds[0], 'own-bundle')
+  assert.equal(candidates({}, owningBundle(inside))[0].path, '/Applications/Naoba.app')
+
+  // A checkout is not inside a bundle, and must not invent one.
+  assert.equal(owningBundle('file:///Users/someone/www/naoba/packages/bridge/launch.mjs'), null)
+  assert.equal(candidates({}, null)[0].kind, 'bundle-id')
+
+  // NAOBA_APP still wins: it is the one a person set on purpose.
+  assert.equal(candidates({ NAOBA_APP: '/tmp/Other.app' }, owningBundle(inside))[0].kind, 'explicit')
 })

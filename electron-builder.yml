@@ -14,11 +14,20 @@ directories:
   output: build
   buildResources: build-resources
 
-# Only what the application actually runs. The bridge is a separate package an
-# IDE launches on its own, so it is not part of the bundle.
+# Only what the application actually runs.
 files:
   - dist/**/*
   - package.json
+
+# The bridge rides along, outside the asar, because an IDE launches it with
+# `node` and cannot read an archive. Somebody who downloads the application has
+# it already: `Naoba.app/Contents/Resources/bridge/index.mjs` is the path their
+# MCP configuration points at, and there is nothing else to install or clone.
+# It imports node builtins and nothing else, so copying the directory is all it
+# takes.
+extraResources:
+  - from: packages/bridge
+    to: bridge
 
 mac:
   category: public.app-category.developer-tools
