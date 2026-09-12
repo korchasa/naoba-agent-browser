@@ -62,7 +62,10 @@ not, because it calls no method on the value.
 - [x] Same-realm values keep exactly the markers they had.
 - [x] A plain object wearing a borrowed `Symbol.toStringTag` does not make
       `walk()` throw, and keeps its own keys.
-- [x] Tests cover all five cross-realm, the spoofed tag, and the Invalid Date.
+- [x] No read `walk()` makes can cost the result: a value that throws while
+      being read is marked, and its siblings survive.
+- [x] Tests cover all five cross-realm, the spoofed tag, the Invalid Date, and
+      each of the four reads that could throw.
 - [x] `deno task check` and `deno task test` exit 0.
 
 ## Solution
@@ -124,3 +127,41 @@ rewrites, it is one term, and a test pins it.
 
 Out of scope: the parent task's Phases 2-5, and whether a scenario that throws
 should return its partial results.
+
+## Follow-up: the guard narrowed the hole, it did not close it (review, 2026-09-12)
+
+The review found an object that passes every member test and still throws:
+`{ [Symbol.toStringTag]: 'Map', entries() {}, *[Symbol.iterator]() { yield 1 } }`
+is accepted by `isMap`, and the branch then destructures a `1`. Measured, and
+three more reads throw the same way — two of them without any adversary:
+
+- a lazy getter that is not ready: `{ get bad() { throw new Error('boom') } }`
+- an `Error` whose `stack` is a getter the page replaced
+- an iterator that stops half way through a Set
+- `Symbol.toStringTag` itself as a getter that throws, which `tagIs` reads
+
+So the answer was neither of the two offered. Not a catch around the Map and
+Set iteration (A): that closes one of four paths and leaves the ordinary one
+open. Not a recorded limit (B): a getter that is not ready is not adversarial,
+and losing a scenario to one is exactly what defect 7 of the parent series
+already costs an agent.
+
+**C — one guard per value read.** `walk` splits: the guards and primitives stay,
+and the object path moves into `walkObject`, called inside a `try`. A throw
+there returns `{ $type: 'unserialisable', tag, reason }` — the marker the file's
+header argues for, not the empty object the rejected `try/catch` variant would
+have produced. Reading a property during key enumeration is guarded separately,
+so a getter that cannot answer loses its own key and not its siblings. `tagName`
+and the reason are read behind their own catches, because both can throw too.
+
+Two things fell out of it:
+
+- `isMap` probed `entries` while the branch spread the map directly, so the
+  member checked was not the member used. Both branches now call what they
+  probe (`entries()`, `values()`), and the `Symbol.iterator` probes are gone —
+  with the catch in place, a probe's job is to keep data from being misread, not
+  to prevent a throw.
+- The reason string had the same realm bug this task is about: a scenario's
+  `Error` is not `instanceof Error` here, so `String(failure)` read
+  `Error: boom` where the message was wanted. It asks `isError` now, and a test
+  builds the throwing getter inside a vm context to pin it.

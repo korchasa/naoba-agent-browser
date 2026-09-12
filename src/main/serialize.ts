@@ -52,37 +52,52 @@ function walk(value: unknown, limits: SerializeLimits, depth: number, seen: Weak
   if (seen.has(object)) return { $type: 'cycle' }
   if (depth >= limits.maxDepth) return { $type: 'max-depth', depth }
 
-  if (isError(object)) {
+  try {
+    return walkObject(object, limits, depth, seen)
+  } catch (failure) {
+    // Reading a value is all this file does, so a read that throws must cost
+    // that value and nothing around it. Every way of reading one can throw: a
+    // lazy getter that is not ready, a `stack` the page replaced, an iterator
+    // that stops half way, a borrowed `Map` tag over something the map branch
+    // cannot destructure. Unguarded, any of them loses the whole result — the
+    // serialiser destroying the answer instead of carrying it.
+    return unserialisable(failure, tagName(object))
+  }
+}
+
+function walkObject(value: object, limits: SerializeLimits, depth: number, seen: WeakSet<object>): unknown {
+  if (isError(value)) {
     const error = value as Error
     return { $type: 'error', name: error.name, message: error.message, stack: error.stack ?? null }
   }
-  if (isDate(object)) {
-    // An Invalid Date answers `toISOString` with a RangeError, and a throw here
-    // costs the whole result rather than this one value.
+  if (isDate(value)) {
+    // An Invalid Date answers `toISOString` with a RangeError. The catch in
+    // `walk` would hold it, but a date that says it is invalid tells the agent
+    // more than a value that says it could not be read.
     const time = (value as Date).getTime()
     return Number.isFinite(time)
       ? { $type: 'date', value: (value as Date).toISOString() }
       : { $type: 'date', value: null, invalid: true }
   }
-  if (isRegExp(object)) return { $type: 'regexp', value: String(value) }
-  if (isThenable(object)) {
+  if (isRegExp(value)) return { $type: 'regexp', value: String(value) }
+  if (isThenable(value)) {
     return { $type: 'promise', hint: 'not awaited: write `await` before the call that produced this value' }
   }
 
-  seen.add(object)
+  seen.add(value)
   try {
-    if (isMap(object)) {
+    if (isMap(value)) {
       return {
         $type: 'map',
-        entries: [...(value as Map<unknown, unknown>)]
+        entries: [...(value as Map<unknown, unknown>).entries()]
           .slice(0, limits.maxArrayLength)
           .map(([k, v]) => [walk(k, limits, depth + 1, seen), walk(v, limits, depth + 1, seen)]),
       }
     }
-    if (isSet(object)) {
+    if (isSet(value)) {
       return {
         $type: 'set',
-        values: [...(value as Set<unknown>)].slice(0, limits.maxArrayLength).map((v) =>
+        values: [...(value as Set<unknown>).values()].slice(0, limits.maxArrayLength).map((v) =>
           walk(v, limits, depth + 1, seen)
         ),
       }
@@ -100,12 +115,20 @@ function walk(value: unknown, limits: SerializeLimits, depth: number, seen: Weak
     const out: Record<string, unknown> = {}
     const keys = Object.keys(value as Record<string, unknown>)
     for (const key of keys.slice(0, limits.maxKeys)) {
-      out[key] = walk((value as Record<string, unknown>)[key], limits, depth + 1, seen)
+      let item: unknown
+      try {
+        item = (value as Record<string, unknown>)[key]
+      } catch (failure) {
+        // A getter that cannot answer loses its own key, not its siblings.
+        out[key] = unserialisable(failure)
+        continue
+      }
+      out[key] = walk(item, limits, depth + 1, seen)
     }
     if (keys.length > limits.maxKeys) out.$truncatedKeys = keys.length - limits.maxKeys
     return out
   } finally {
-    seen.delete(object)
+    seen.delete(value)
   }
 }
 
@@ -121,13 +144,39 @@ function walk(value: unknown, limits: SerializeLimits, depth: number, seen: Weak
  * needs none of this.
  *
  * The tag alone cannot be acted on: `Symbol.toStringTag` is writable, so a plain
- * object can wear `'Map'` and turn `value.entries()` into a TypeError — and a
- * throw inside `walk` loses the whole result, not one value. Each test below
- * therefore pairs the tag with the members its branch is about to use; an object
- * that only wears the tag misses them and is enumerated as the data it is.
+ * object can wear `'Map'` over data of its own. Each test below therefore pairs
+ * the tag with the member its branch calls — `entries` for a Map, `values` for
+ * a Set — and an object that only wears the tag is enumerated as the data it
+ * is. That narrows the hole rather than closing it: the member can be there and
+ * still answer with something unusable, which is why `walk` catches the throw
+ * and marks the value rather than letting it cost the result.
  */
 function tagIs(value: object, tag: string): boolean {
-  return Object.prototype.toString.call(value) === `[object ${tag}]`
+  return tagName(value) === tag
+}
+
+/** `Map` for a Map. `Symbol.toStringTag` can be a getter, and a getter can throw. */
+function tagName(value: object): string {
+  try {
+    return Object.prototype.toString.call(value).slice('[object '.length, -1)
+  } catch {
+    return 'Unknown'
+  }
+}
+
+/** What was there, and why it could not be read — never an empty object. */
+function unserialisable(failure: unknown, tag?: string): Record<string, unknown> {
+  let reason = 'unknown'
+  try {
+    // The thrown value comes from the scenario's realm as often as not, so this
+    // asks `isError`, not `instanceof` — otherwise the reason reads
+    // `Error: boom` where the message alone was wanted.
+    const thrown = typeof failure === 'object' && failure !== null && isError(failure)
+    reason = thrown ? (failure as Error).message : String(failure)
+  } catch {
+    // Even the reason can refuse to be read; the marker matters more than it.
+  }
+  return tag === undefined ? { $type: 'unserialisable', reason } : { $type: 'unserialisable', tag, reason }
 }
 
 function callable(value: object, member: PropertyKey): boolean {
@@ -147,12 +196,11 @@ function isRegExp(value: object): boolean {
 }
 
 function isMap(value: object): boolean {
-  return value instanceof Map ||
-    (tagIs(value, 'Map') && callable(value, 'entries') && callable(value, Symbol.iterator))
+  return value instanceof Map || (tagIs(value, 'Map') && callable(value, 'entries'))
 }
 
 function isSet(value: object): boolean {
-  return value instanceof Set || (tagIs(value, 'Set') && callable(value, 'values') && callable(value, Symbol.iterator))
+  return value instanceof Set || (tagIs(value, 'Set') && callable(value, 'values'))
 }
 
 /**

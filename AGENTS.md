@@ -112,7 +112,13 @@ state must go through the project's own session, never through
   can wear `'Map'` and turn `value.entries()` into a TypeError — and a throw
   while serialising loses the whole result, not the one value. Pair the tag
   with the members the branch is about to read, which is what the `isMap`-style
-  tests in `serialize.ts` do. The boundary reaches the tests as well: a value
+  tests in `serialize.ts` do — and pair that with a catch, because a member can
+  be present and still answer with something unusable. Reading a value is all a
+  serialiser does, so every read is guarded and a read that throws returns an
+  `unserialisable` marker: one bad value costs its own key, never the result.
+  Two of the four reads that used to throw needed no adversary at all — a lazy
+  getter that is not ready, and an `Error` whose `stack` the page replaced. The
+  boundary reaches the tests as well: a value
   that walked out of `walk()` can still be the other realm's `Array`, and
   `assert.deepStrictEqual` compares prototypes, so it rejects a host `[1, 2]`
   that JSON would render identically. Compare a spread copy, or the JSON.

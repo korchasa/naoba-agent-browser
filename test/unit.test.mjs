@@ -239,6 +239,78 @@ test('a borrowed toStringTag is data, not a builtin', () => {
   assert.deepEqual(toTransferable(new Date('nonsense')), { $type: 'date', value: null, invalid: true })
 })
 
+test('a value that cannot be read costs its own key, never the result', () => {
+  // Reading a value is the one thing this file does, and it must not be the
+  // thing that destroys the answer. Four reads can throw; each is marked, and
+  // every sibling in the same result survives.
+  const halfWay = {
+    [Symbol.toStringTag]: 'Set',
+    values() {
+      let sent = 0
+      return {
+        [Symbol.iterator]() {
+          return this
+        },
+        next() {
+          if (sent++) throw new Error('half way')
+          return { value: 1, done: false }
+        },
+      }
+    },
+  }
+  const out = toTransferable({
+    // Tag and members all present, and the iteration still yields something the
+    // map branch cannot destructure.
+    map: {
+      [Symbol.toStringTag]: 'Map',
+      entries() {},
+      *[Symbol.iterator]() {
+        yield 1
+      },
+    },
+    set: halfWay,
+    // Not adversarial at all: an ordinary lazy getter that is not ready.
+    lazy: {
+      ok: 1,
+      get bad() {
+        throw new Error('boom')
+      },
+    },
+    error: Object.defineProperty(new Error('x'), 'stack', {
+      get() {
+        throw new Error('no stack')
+      },
+    }),
+    survivor: 'still here',
+  })
+
+  assert.equal(out.map.$type, 'unserialisable')
+  assert.equal(out.map.tag, 'Map')
+  assert.match(out.map.reason, /iterable/)
+  assert.equal(out.set.$type, 'unserialisable')
+  assert.equal(out.set.reason, 'half way')
+  assert.deepEqual(out.lazy, { ok: 1, bad: { $type: 'unserialisable', reason: 'boom' } })
+  assert.equal(out.error.$type, 'unserialisable')
+  assert.equal(out.error.reason, 'no stack')
+  assert.equal(out.survivor, 'still here')
+
+  // Even the tag can be a getter that throws. Nothing may be read unguarded.
+  assert.deepEqual(
+    toTransferable({
+      get [Symbol.toStringTag]() {
+        throw new Error('nope')
+      },
+    }),
+    {},
+  )
+
+  // And the thrown value itself usually comes from the scenario's realm, where
+  // `instanceof Error` is false — the reason is the message, not `Error: boom`.
+  const source = `({ ok: 1, get bad() { throw new Error('boom') } })`
+  const fromScenario = toTransferable(new Script(source).runInContext(createContext({})))
+  assert.deepEqual(fromScenario, { ok: 1, bad: { $type: 'unserialisable', reason: 'boom' } })
+})
+
 test('the wire splits on lines and keeps the unfinished tail', () => {
   const first = decodeLines('{"type":"a"}\n{"type":"b"}\n{"ty')
   assert.deepEqual(first.messages, [{ type: 'a' }, { type: 'b' }])
