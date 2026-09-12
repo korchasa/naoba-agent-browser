@@ -127,10 +127,14 @@ new test fail, because a test that has never been red proves nothing.
   unchanged on purpose — the person is still working, and the panel has their
   own way to hand it back.
 - **One failure in the suite is older than this change.** "pressing Enter in a
-  field submits the form" fails about one run in three or four, on this branch
-  and on `9bbb1e2` alike — measured in a `git worktree` of HEAD, 1 failure in 4
-  runs there, 1 in 3 here. Nothing in this change touches that path. Not fixed
-  here, and worth its own look.
+  field submits the form" went red three times out of ten runs here — once in a
+  full suite, once in three runs by name, and once in four runs by name inside a
+  `git worktree` of `9bbb1e2`, where the code was untouched. It then went green
+  eleven consecutive times when the owner re-measured it, so the "one in three
+  or four" this file first claimed was an overstatement drawn from one failure:
+  all three reds fall inside this one session, and no rate is quotable from
+  that. Nothing in this change touches that path. Not fixed here, and worth its
+  own look.
 
 ## Definition of Done
 
