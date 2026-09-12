@@ -270,6 +270,16 @@ input.key:focus {
   outline: none;
   border-bottom-color: var(--color-accent);
 }
+/* Three fields where the key row has one, so they wrap instead of squeezing
+   each other into a column one word wide at an accessibility text size. */
+.entry.who {
+  flex-wrap: wrap;
+}
+input.key.who {
+  flex: 1 1 7rem;
+  max-width: 9rem;
+  font-family: inherit;
+}
 
 /* The register of projects: the same rows, with the path under the name and a
    dot saying whether agents working there get a browser. */

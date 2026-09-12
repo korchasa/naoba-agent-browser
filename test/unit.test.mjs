@@ -23,6 +23,7 @@ import { candidates, owningBundle } from '../packages/bridge/launch.mjs'
 import { bridgeCommand, bridgeEntry } from '../src/main/bridge-path.ts'
 import {
   activateRequest,
+  asksWhoYouAre,
   checkRequest,
   deactivateRequest,
   describe,
@@ -1313,6 +1314,36 @@ test('each licence call goes to the address the service documents', () => {
   assert.match(check.url, /\/installs\/55\/license\.json\?uid=f{32}&license_key=sk_abcdefgh1234$/)
 
   assert.match(deactivateRequest(record).url, /\/licenses\/deactivate\.json$/)
+})
+
+test('a key nobody bought carries the person activating it, and a bought one does not', () => {
+  const bare = activateRequest('sk_key', 'a'.repeat(32), 'somebodys-mac')
+  assert.equal('first_name' in bare.body, false)
+  assert.equal('user_email' in bare.body, false)
+
+  const named = activateRequest('sk_key', 'a'.repeat(32), 'somebodys-mac', {
+    firstName: 'Ada',
+    lastName: 'Lovelace',
+    email: 'ada@example.com',
+  })
+  assert.deepEqual(named.body, {
+    uid: 'a'.repeat(32),
+    license_key: 'sk_key',
+    title: 'somebodys-mac',
+    first_name: 'Ada',
+    last_name: 'Lovelace',
+    user_email: 'ada@example.com',
+  })
+})
+
+test('the service asking who you are is three complaints meaning one thing', () => {
+  assert.equal(asksWhoYouAre('first_name_required'), true)
+  assert.equal(asksWhoYouAre('last_name_required'), true)
+  assert.equal(asksWhoYouAre('user_email_required'), true)
+  // Everything else is a real refusal and must reach the person as written.
+  assert.equal(asksWhoYouAre('invalid_license_key'), false)
+  assert.equal(asksWhoYouAre(undefined), false)
+  assert.equal(asksWhoYouAre(null), false)
 })
 
 test('an installation identifier is 32 characters of hexadecimal', () => {

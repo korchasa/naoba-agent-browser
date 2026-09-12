@@ -5,6 +5,8 @@ import { hostname } from 'node:os'
 import { join } from 'node:path'
 import {
   activateRequest,
+  asksWhoYouAre,
+  type Buyer,
   checkRequest,
   deactivateRequest,
   describe,
@@ -81,12 +83,30 @@ export function state(): LicenceState {
   return describe(load())
 }
 
+/**
+ * Raised when the key is good but belongs to nobody: the window has to ask for
+ * a name and an address before trying again. Its own class, because the window
+ * answers it by drawing three more fields rather than by printing a complaint.
+ */
+export class NeedsBuyer extends Error {
+  constructor() {
+    super('This key has no buyer on it yet.')
+    this.name = 'NeedsBuyer'
+  }
+}
+
 /** Take a key the person typed, ask the service, and keep the answer. */
-export async function activate(key: string): Promise<LicenceState> {
+export async function activate(key: string, buyer: Buyer | null = null): Promise<LicenceState> {
   const trimmed = key.trim()
   if (!trimmed) throw new Error('Enter the key from your purchase receipt.')
   const uid = load()?.uid ?? newUid((count) => randomBytes(count))
-  const answer = await send(activateRequest(trimmed, uid, hostname()))
+  let answer: unknown
+  try {
+    answer = await send(activateRequest(trimmed, uid, hostname(), buyer))
+  } catch (error) {
+    if (asksWhoYouAre((error as { code?: unknown }).code)) throw new NeedsBuyer()
+    throw error
+  }
   save(recordFrom(answer, trimmed, uid))
   schedule()
   return state()
@@ -147,8 +167,12 @@ async function send(request: Request): Promise<unknown> {
   } catch {
     throw new Error(`the licensing service answered with something that is not JSON (${response.status})`)
   }
-  const error = (parsed as { error?: { message?: string } })?.error
-  if (error) throw new Error(error.message ?? 'the licensing service refused this key')
+  const error = (parsed as { error?: { message?: string; code?: string } })?.error
+  if (error) {
+    const refusal = new Error(error.message ?? 'the licensing service refused this key') as Error & { code?: string }
+    refusal.code = error.code
+    throw refusal
+  }
   if (!response.ok) throw new Error(`the licensing service answered ${response.status}`)
   return parsed
 }

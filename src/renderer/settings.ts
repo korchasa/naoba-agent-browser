@@ -15,12 +15,13 @@ import {
   rowsFor,
   type SettingsSnapshot,
 } from '../main/preferences.ts'
+import type { Buyer } from '../main/licence.ts'
 
 declare const ab: {
   settings(): Promise<SettingsSnapshot>
   openAtLogin(on: boolean): Promise<unknown>
   buyLicence(): Promise<unknown>
-  activateLicence(key: string): Promise<unknown>
+  activateLicence(key: string, buyer: Buyer | null): Promise<unknown>
   deactivateLicence(): Promise<unknown>
   announceAutomation(on: boolean): Promise<unknown>
   orphanCloseMs(ms: number): Promise<unknown>
@@ -63,6 +64,13 @@ function render(): void {
 
 /** What is being typed into the key field, kept across a redraw the push causes. */
 let typedKey = ''
+/**
+ * Set once the service has said this key belongs to nobody. Only then does the
+ * window ask for a name and an address — a bought key carries its buyer, and
+ * asking every buyer to retype what the shop already knows would be rude.
+ */
+let askingWho = false
+const typedWho = { firstName: '', lastName: '', email: '' }
 /** What went wrong the last time a key was sent, in the words the main process used. */
 let licenceError = ''
 let sending = false
@@ -91,7 +99,10 @@ function renderLicence(values: SettingsSnapshot): HTMLElement {
   )
   group.append(node)
 
-  if (!values.licence.licensed) group.append(unlockRow())
+  if (!values.licence.licensed) {
+    group.append(unlockRow())
+    if (askingWho) group.append(whoRow())
+  }
   return group
 }
 
@@ -126,30 +137,93 @@ function unlockRow(): HTMLElement {
   return node
 }
 
+/**
+ * The three fields a key with no buyer needs, and only then.
+ *
+ * The service refuses such a key until it is told who to hand it to, so this
+ * row appears after the first attempt rather than before it: the person who
+ * bought one in the shop never sees it.
+ */
+function whoRow(): HTMLElement {
+  const node = el('div', 'setting licence')
+  const text = el('div', 'text')
+  text.append(
+    el('span', 'label', 'Who is unlocking'),
+    el('span', 'hint', 'The licence will be put in this name. It goes to the licensing service, not to us.'),
+  )
+  node.append(text)
+
+  const wrap = el('div', 'entry who')
+  wrap.append(
+    whoField('First name', 'firstName'),
+    whoField('Last name', 'lastName'),
+    whoField('Email', 'email'),
+  )
+  node.append(wrap)
+  return node
+}
+
+function whoField(placeholder: string, key: keyof typeof typedWho): HTMLInputElement {
+  const field = document.createElement('input')
+  field.type = key === 'email' ? 'email' : 'text'
+  field.className = 'key who'
+  field.placeholder = placeholder
+  field.value = typedWho[key]
+  field.spellcheck = false
+  field.oninput = () => {
+    typedWho[key] = field.value
+  }
+  field.onkeydown = (event) => {
+    if (event.key === 'Enter') void unlock()
+  }
+  return field
+}
+
 async function unlock(): Promise<void> {
   if (sending || !typedKey.trim()) return
+  if (askingWho && !whoIsFilled()) {
+    licenceError = 'Fill in your name and email, then unlock again.'
+    render()
+    return
+  }
   sending = true
   licenceError = ''
   render()
-  await hand(() => ab.activateLicence(typedKey))
+  // Held because a successful call clears the field, and this answer is a
+  // question back rather than an unlocking: the key must survive to be re-sent.
+  const key = typedKey
+  const answer = await hand(() => ab.activateLicence(key, askingWho ? { ...typedWho } : null))
+  if ((answer as { needsBuyer?: boolean } | undefined)?.needsBuyer) {
+    // Not a complaint: the key is good and this copy is the first to use it.
+    askingWho = true
+    typedKey = key
+    licenceError = 'This key was issued by hand and belongs to nobody yet. Say who you are and unlock again.'
+  }
   sending = false
   render()
 }
 
+function whoIsFilled(): boolean {
+  return Boolean(typedWho.firstName.trim() && typedWho.lastName.trim() && typedWho.email.trim())
+}
+
 /**
  * Run a licence call and keep whatever it complained about. The main process
- * answers with a fresh snapshot of its own, so nothing is drawn from the reply.
+ * answers with a fresh snapshot of its own, so nothing is drawn from the reply
+ * — except the one answer that is a question back, which the caller reads.
  */
-async function hand(call: () => Promise<unknown>): Promise<void> {
+async function hand(call: () => Promise<unknown>): Promise<unknown> {
   try {
-    await call()
+    const answer = await call()
     typedKey = ''
     licenceError = ''
+    return answer
   } catch (error) {
     // An error crossing the IPC boundary arrives wrapped in the name of the
     // channel it came from; the sentence written for the person is the tail.
     const message = error instanceof Error ? error.message : String(error)
     licenceError = message.split(': ').slice(-1)[0] || message
+    return undefined
   }
 }
 

@@ -19,10 +19,12 @@ import {
   check as checkLicence,
   deactivate as deactivateLicence,
   licensed,
+  NeedsBuyer,
   schedule as scheduleLicenceChecks,
   state as licenceState,
   stopSchedule as stopLicenceChecks,
 } from './licence-store.ts'
+import type { Buyer } from './licence.ts'
 
 /** Where a key is bought. The plan is a one-off payment; there is nothing else to sell. */
 const CHECKOUT_URL = 'https://checkout.freemius.com/product/39376/plan/67545/'
@@ -564,12 +566,19 @@ function wireChrome(hub: Hub, settings: SettingsAccess): void {
   // The person's own browser, not a tab here: a card is usually saved there,
   // and a payment is not something an agent's browser should be holding.
   ipcMain.handle('ab:buy-licence', () => shell.openExternal(CHECKOUT_URL))
-  ipcMain.handle('ab:activate-licence', async (_event, key: string) => {
+  ipcMain.handle('ab:activate-licence', async (_event, key: string, buyer: Buyer | null) => {
     // The error reaches the window as a rejected call and is drawn there; the
     // person typed a key, so they are the one who has to be told what happened.
-    const answer = await activateLicence(String(key))
-    settings.push()
-    return answer
+    // One refusal is not a complaint but a question, and it comes back as an
+    // answer the window can act on: a key nobody bought needs a name first.
+    try {
+      const licence = await activateLicence(String(key), buyer ?? null)
+      settings.push()
+      return { unlocked: true, licence }
+    } catch (error) {
+      if (error instanceof NeedsBuyer) return { unlocked: false, needsBuyer: true }
+      throw error
+    }
   })
   ipcMain.handle('ab:deactivate-licence', async () => {
     const answer = await deactivateLicence()

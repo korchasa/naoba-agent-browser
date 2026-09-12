@@ -82,12 +82,46 @@ export interface Request {
   body?: unknown
 }
 
-export function activateRequest(key: string, uid: string, title: string, productId = PRODUCT_ID): Request {
+/**
+ * Who is unlocking, for the one kind of key that needs telling.
+ *
+ * A key that was bought carries its buyer already, so activation says nothing
+ * about the person. A key written by hand in the shop — a gift, a review copy —
+ * belongs to nobody yet, and the service will not take it until it knows who to
+ * hand it to.
+ */
+export interface Buyer {
+  firstName: string
+  lastName: string
+  email: string
+}
+
+export function activateRequest(
+  key: string,
+  uid: string,
+  title: string,
+  buyer: Buyer | null = null,
+  productId = PRODUCT_ID,
+): Request {
+  const who = buyer
+    ? { first_name: buyer.firstName, last_name: buyer.lastName, user_email: buyer.email }
+    : {}
   return {
     url: `${API_ORIGIN}/v1/products/${productId}/licenses/activate.json`,
     method: 'POST',
-    body: { uid, license_key: key, title },
+    body: { uid, license_key: key, title, ...who },
   }
+}
+
+/**
+ * Whether the service refused because it does not know who is activating.
+ *
+ * It complains about one field at a time — the name first, then the surname,
+ * then the address — so any of the three means the same thing: this key has no
+ * buyer on it.
+ */
+export function asksWhoYouAre(code: unknown): boolean {
+  return code === 'first_name_required' || code === 'last_name_required' || code === 'user_email_required'
 }
 
 export function checkRequest(record: LicenceRecord, productId = PRODUCT_ID): Request {

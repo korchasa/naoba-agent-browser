@@ -25,7 +25,7 @@ const api = {
   openSettings: () => ipcRenderer.invoke('ab:open-settings'),
   openAtLogin: (on: boolean) => ipcRenderer.invoke('ab:open-at-login', on),
   buyLicence: () => ipcRenderer.invoke('ab:buy-licence'),
-  activateLicence: (key: string) => ipcRenderer.invoke('ab:activate-licence', key),
+  activateLicence: (key: string, buyer: unknown = null) => ipcRenderer.invoke('ab:activate-licence', key, buyer),
   deactivateLicence: () => ipcRenderer.invoke('ab:deactivate-licence'),
   orphanCloseMs: (ms: number) => ipcRenderer.invoke('ab:orphan-close-ms', ms),
   presence: (value: string) => ipcRenderer.invoke('ab:presence', value),
