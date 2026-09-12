@@ -142,3 +142,20 @@ person does not repeat a wasted afternoon.
 
 Run `deno task check` before calling anything done, and `deno task test` before
 calling it correct.
+
+## Documents
+
+These are roles, not filenames: a workflow that asks this repository where its
+plans belong reads the answer here.
+
+- **`tasks` → `documents/tasks/<YYYY>/<MM>/<slug>.md`.** One file per task. YAML
+  frontmatter carries `date`, `status`, `implements`, `tags` and
+  `related_tasks`; the body is Goal, Overview, Definition of Done, Solution.
+  Write the Definition of Done as top-level checkboxes — that list is what a
+  workflow counts to decide whether the task is `to do`, `in progress` or
+  `done`, and a numbered list it cannot count leaves the status frozen.
+- **`index`, `SRS`, `SDS` — deliberately unbound.** There is no requirement
+  register here, so `implements:` stays empty; what this application must do and
+  how it does it lives in this file and in the code. A task that needs to record
+  a decision records it in its own body, and nothing in a workflow may create a
+  document at a conventional path to fill one of these in.
