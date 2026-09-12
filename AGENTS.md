@@ -305,6 +305,35 @@ name — `node --test --test-concurrency=1 --test-timeout=90000
 --test-name-pattern='a snapshot ref' test/integration.test.mjs` — and run the
 whole thing before the commit.
 
+A red that proves nothing is the cheapest mistake to make here, and it has been
+made twice: a test written against a module that does not exist yet fails with
+`ERR_MODULE_NOT_FOUND`, which says the import is wrong and says nothing about the
+behaviour under test (2026-09-12, twice in two sessions — `resolveWritePath`, and
+then the whole of `preferences.ts`). Write the module, watch the test go green,
+and only then take the red: copy the file to a scratch directory, break exactly
+the decision the test is about, run it, read the numbers in the failure, and
+restore from the copy. `actual: null, expected: 240` is a proof; a missing module
+is a typo.
+
+Some of what this application does is out of reach of both suites — the panel is
+a view no test drives, and the settings window is another. The accessibility API
+reaches what the code cannot: `osascript -e 'tell application "System Events" to
+tell process "Naoba Dev" to ...'` lists `name of menu bar items of menu bar 1`,
+reads `name of menu items of menu 1 of menu bar item 2` with the `AXMenuItemCmdChar`
+of any one of them, clicks one, and answers `get name of windows`. That is how
+"⌘, opens a window called Settings, and a second press does not open another" was
+evidenced rather than left for the owner (2026-09-12). Two limits: the process
+has to be running and installed, and a menu Electron pops up itself — the tray's
+— is not attached to its status item, so `AXShowMenu` cannot reach it.
+
+**A copy started by hand writes to a real state directory.** `test/helpers/app.mjs`
+always passes `--user-data-dir`, so the suite is sealed off; `node_modules/.bin/
+electron dist/main.js` is not, and a bare run keeps its state in
+`~/Library/Application Support/Electron` — the checkout's own, with the projects
+the owner has admitted from it. A probe that called `hub.forget()` there deleted
+one of those records and had to be put back by hand (2026-09-12). Pass
+`--user-data-dir` to anything that writes, `--snapshot` runs included.
+
 One test in the suite has been seen red with nobody having changed it:
 "pressing Enter in a field submits the form". On 2026-09-12 it failed three
 times out of ten runs — once in a full suite, once in three runs by name, and
