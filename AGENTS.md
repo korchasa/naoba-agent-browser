@@ -98,6 +98,16 @@ state must go through the project's own session, never through
   that has never loaded anything has no renderer to answer the DevTools
   protocol: a command sent before the blank page is up never returns, which
   is why the disguise is tracked after the first navigate, not before it.
+- **A scenario's values come from another realm, so `instanceof` lies about
+  them.** `runner.ts` compiles an agent's script in a `node:vm` context with
+  intrinsics of its own, so anything the script builds itself fails an
+  `instanceof` test in the main process — and the builtins it would build carry
+  no own enumerable keys, so they serialise as `{}`, the one answer
+  `serialize.ts` exists to prevent. Test the `Object.prototype.toString` tag
+  instead, the way the Promise branch does; `Array.isArray` is cross-realm by
+  design and needs nothing. The `instanceof` branches for Error, Date, RegExp,
+  Map and Set still have the hole — a scenario returning one of each comes back
+  as `{err:{}, when:{}, re:{}, m:{}, s:{}}` (measured 2026-09-12).
 - **Input goes through the DevTools protocol, not `sendInputEvent`.** Both look
   trusted to the page, but `sendInputEvent` is delivered through the window and
   does nothing when that window is hidden.
