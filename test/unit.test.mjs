@@ -73,17 +73,17 @@ test('a file to upload is taken from the project, whatever spelling of it the ag
 test('a screenshot is written inside the project, and nowhere else', async () => {
   const project = mkdtempSync(join(tmpdir(), 'ab-write-'))
   const elsewhere = mkdtempSync(join(tmpdir(), 'ab-elsewhere-write-'))
-  // The directory this browser keeps its own screenshots in, spelled as the
-  // application spells it: it does not exist until the first picture lands.
-  const shots = join(realpathSync(mkdtempSync(join(tmpdir(), 'ab-shots-'))), 'screenshots')
   symlinkSync(elsewhere, join(project, 'out'))
-  const boundary = { roots: [realpathSync(project), shots], describe: 'the project' }
+  const boundary = { roots: [realpathSync(project)], describe: 'the project' }
 
   assert.equal(await resolveWritePath(join(project, 'page.png'), boundary), join(realpathSync(project), 'page.png'))
   // A path with no root of its own belongs to the project, and the directory it
-  // names need not exist — most screenshots land in one that does not.
-  assert.equal(await resolveWritePath('shots/page.png', boundary), join(realpathSync(project), 'shots', 'page.png'))
-  assert.equal(await resolveWritePath(join(shots, 'page.png'), boundary), join(shots, 'page.png'))
+  // names need not exist — this browser's own `.naoba/screenshots` does not,
+  // until the first picture lands in it.
+  assert.equal(
+    await resolveWritePath('.naoba/screenshots/page.png', boundary),
+    join(realpathSync(project), '.naoba', 'screenshots', 'page.png'),
+  )
   // A root spelled through a symlink — `/tmp` is `/private/tmp`, and a root that
   // does not exist yet is left unresolved by `identify()` — still owns its own
   // files, because both sides are resolved as far as the directories that exist.

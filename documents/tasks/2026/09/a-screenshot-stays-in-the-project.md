@@ -28,11 +28,24 @@ written from page text, which is written by whoever controls the page; and the
 write happens in the browser process, where nobody is asked. PNG bytes over
 somebody's notes is a loss whatever the intent behind the path was.
 
-Nothing an agent does every day is lost. `screenshot()` with no path already
-lands in `userData/screenshots/<projectId>/`, which is inside the boundary, and
-that directory is the one `setFiles` may already read from — so taking a picture
-and attaching it to a form still needs no copy. A picture that has to leave the
-project is copied out by the agent's own tools, where the person is asked.
+Nothing an agent does every day is lost. A picture that has to leave the project
+is copied out by the agent's own tools, where the person is asked.
+
+### Where a picture goes when nobody says
+
+The boundary raised the question the old default had been dodging. Pictures used
+to land in `userData/screenshots/<projectId>/` — this application's own state
+directory, keyed by a hash. It was inside the boundary only because the boundary
+was given a second root to make it so, and a person looking for a picture had to
+know where an Electron app keeps its state and which hash was theirs.
+
+So the default moved into the project (owner, 2026-09-12):
+`<project>/.naoba/screenshots/`. One directory this browser owns inside each
+project, `screenshots/` under it, and room for whatever else has to be kept per
+project later. Three things fall out of it: a picture sits beside the work it is
+about, the boundary is the project alone with no second root to keep in step,
+and two projects photographing the same site cannot collide, because they were
+never writing to one place.
 
 ## Definition of Done
 
@@ -42,6 +55,7 @@ project is copied out by the agent's own tools, where the person is asked.
       not exist yet — which is where most screenshots go.
 - [x] The boundary is the one `setFiles` reads within, from one place in the
       code, so the two cannot drift apart.
+- [x] A screenshot with no path lands in `<project>/.naoba/screenshots/`.
 - [x] The manual says the rule where an agent meets the helper.
 - [x] `deno task check` and `deno task test` exit 0, and `deno fmt --check`
       reports only the three files `AGENTS.md` already names.
@@ -56,7 +70,9 @@ project is copied out by the agent's own tools, where the person is asked.
    it; an existing directory as the target is refused by name.
 2. **`src/main/api.ts`** — `screenshot` resolves a named path through the
    boundary before `guard`, and `uploadBoundary` is renamed `fileBoundary`.
-   Called with no path, nothing changes.
+   `naobaDir(root)` and `shotDir(root)` replace the `userData` lookup, so the
+   module no longer imports `electron` at all, and the boundary carries one
+   root instead of two.
 3. **`packages/bridge/reference.mjs`** — the `screenshot` entry says where a
    picture may land and names the same boundary `setFiles` reads within.
 
@@ -74,10 +90,12 @@ from the side it had not been met from: the root, not the file.
 
 ### What the tests answered
 
-- A unit test over `resolveWritePath`: inside, relative-to-the-project, into the
-  screenshot directory before it exists, and a root spelled through a symlink —
-  then the four refusals (outside, a symlink leading out, a sibling whose name
-  merely starts with the project's, and a directory as the target).
+- A unit test over `resolveWritePath`: inside, relative-to-the-project, into
+  `.naoba/screenshots` before that directory exists, and a root spelled through
+  a symlink — then the four refusals (outside, a symlink leading out, a sibling
+  whose name merely starts with the project's, and a directory as the target).
+- An integration test for the default: `screenshot()` with no path comes back
+  from `<project>/.naoba/screenshots/<timestamp>.png`, and the file is a PNG.
 - An integration test over the live api: a picture into the project comes back
   at its resolved path and is a real PNG.
 - An integration test for the refusal: the message names the boundary and
@@ -86,4 +104,5 @@ from the side it had not been met from: the root, not the file.
 Proved red before being trusted: with the boundary check disabled, the
 integration test got back a path under `/private/var/folders/…` and the unit
 test reported a missing rejection — both for the reason under test, not for a
-neighbouring one. 107 tests pass with the boundary in place.
+neighbouring one. 108 tests pass with the boundary and the new default in
+place.

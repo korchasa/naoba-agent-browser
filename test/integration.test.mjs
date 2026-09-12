@@ -100,20 +100,35 @@ test('a screenshot reaches the agent as a file, even with no window on screen', 
   const agent = await app.agent(PROJECT_A, 'shot')
   // Inside the project, because that is as far as a picture may be written —
   // the same boundary setFiles reads within, for the reason in `files.ts`.
-  const target = join(PROJECT_A, 'shots', 'page.png')
+  const target = join(PROJECT_A, 'pictures', 'page.png')
   const outcome = await agent.run(`
     await api.navigate(${JSON.stringify(origin + '/page.html')})
     return await api.screenshot(${JSON.stringify(target)})
   `)
   // The path comes back resolved: `/tmp` is a symlink to `/private/tmp`, and the
   // boundary compares resolved paths, so that is the file that was written.
-  assert.match(outcome.value, /naoba-tests\/project-a\/shots\/page\.png$/)
+  assert.match(outcome.value, /naoba-tests\/project-a\/pictures\/page\.png$/)
   // A real page is a couple of hundred kilobytes of base64, which the wire
   // truncates and no agent wants to read; and Chromium refuses capturePage for
   // a window nobody is looking at, which is how this browser normally runs.
   const bytes = await readFile(outcome.value)
   assert.equal(bytes.subarray(1, 4).toString(), 'PNG')
   assert.ok(bytes.length > 1000, `the picture is only ${bytes.length} bytes`)
+  agent.close()
+})
+
+test('a screenshot with no path lands in the project, under .naoba', async () => {
+  const agent = await app.agent(PROJECT_A, 'shot-default')
+  const outcome = await agent.run(`
+    await api.navigate(${JSON.stringify(origin + '/page.html')})
+    return await api.screenshot()
+  `)
+  // Everything this browser keeps for a project it keeps in the project: a
+  // picture sits beside the work it is about, not in this application's own
+  // state directory, which nobody thinks to look in.
+  assert.match(outcome.value, /naoba-tests\/project-a\/\.naoba\/screenshots\/[\d-]+T[\d-]+Z\.png$/)
+  const bytes = await readFile(outcome.value)
+  assert.equal(bytes.subarray(1, 4).toString(), 'PNG')
   agent.close()
 })
 

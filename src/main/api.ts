@@ -5,7 +5,6 @@ import type { Tab } from './tab.ts'
 import { pause } from './tab.ts'
 import type { Holder } from './lease.ts'
 import { describeVisits, VisitLog } from './visits.ts'
-import { app } from 'electron'
 import { fullReference, helpFor } from '../../packages/bridge/reference.mjs'
 import { join } from 'node:path'
 
@@ -403,7 +402,7 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
      */
     async screenshot(path?: string) {
       const target = path === undefined
-        ? defaultShotPath(context.identity.id)
+        ? defaultShotPath(context.identity.root)
         : await resolveWritePath(path, fileBoundary(context.identity))
       return guard(`screenshot() to ${target}`, (tab) => tab.screenshot(target))
     },
@@ -698,29 +697,35 @@ const SNAPSHOT_FN = `(rootSel) => {
 }`
 
 /**
- * Where a screenshot lands when the agent did not say. One directory per
- * project, so two projects photographing the same site do not overwrite each
- * other, and a name that sorts by time.
+ * Everything this browser keeps for a project it keeps in the project, under
+ * one directory it owns. A picture then sits beside the work it is about, the
+ * person can find it without being told where this application hides its state,
+ * and two projects photographing the same site cannot overwrite each other
+ * because they are not writing to the same place to begin with.
  */
-function defaultShotPath(projectId: string): string {
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
-  return join(shotDir(projectId), `${stamp}.png`)
+function naobaDir(root: string): string {
+  return join(root, '.naoba')
 }
 
-function shotDir(projectId: string): string {
-  return join(app.getPath('userData'), 'screenshots', projectId)
+function shotDir(root: string): string {
+  return join(naobaDir(root), 'screenshots')
+}
+
+/** Where a screenshot lands when the agent did not say. A name that sorts by time. */
+function defaultShotPath(root: string): string {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+  return join(shotDir(root), `${stamp}.png`)
 }
 
 /**
  * What `setFiles` may read and `screenshot` may write: the project's own
- * directory, and the directory this application writes that project's
- * screenshots into — so a picture this agent just took can be attached to a
- * form without a copy, while staying inside the project the whole way.
+ * directory. This browser's own screenshots live inside it too, in
+ * `.naoba/screenshots`, so a picture this agent just took can be attached to a
+ * form without a copy and without a second root to keep in step.
  */
 function fileBoundary(identity: ProjectIdentity): FileBoundary {
-  const shots = shotDir(identity.id)
   return {
-    roots: [identity.root, shots],
-    describe: `${identity.root}, and this project's own screenshots in ${shots}`,
+    roots: [identity.root],
+    describe: `${identity.root}, this browser's own pictures included (${shotDir(identity.root)})`,
   }
 }

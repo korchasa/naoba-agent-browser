@@ -113,10 +113,10 @@ State
   api.getCookies(filter) / api.setCookie(details) / api.deleteCookie(url, name)
   api.clearStorage()
   api.screenshot(path?)              writes a PNG and returns its path. With no
-                                     path it lands in this project's own
-                                     screenshot directory; a path you name has
-                                     to be inside the project, the same
-                                     boundary setFiles reads within
+                                     path it lands in .naoba/screenshots inside
+                                     the project; a path you name has to be
+                                     inside the project too, the same boundary
+                                     setFiles reads within
   api.resize(width, height)
 
 Watching
