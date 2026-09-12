@@ -135,7 +135,7 @@ export const PREFERENCES: { [K in PreferenceKey]: Entry } = {
     scale: { per: 60_000, floor: 0, unit: 'minutes' },
     draw: (values) => ({
       kind: 'number',
-      hint: 'An agent that reconnects still wants the page it was on, so its tabs wait this long.',
+      hint: 'A restarted session comes back as a new agent and still wants the page it was on.',
       value: asShown('orphanCloseMs', values.orphanCloseMs),
       floor: 0,
       unit: 'minutes',

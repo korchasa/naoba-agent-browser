@@ -56,8 +56,10 @@ state must go through the project's own session, never through
   one press of Reload made an agent's tab appear twice (2026-09-05).
 - **A departed agent's tabs close after a grace period, not at once.** A
   session that restarts comes back as a new agent and wants the page it was
-  on; `--orphan-close-ms` (default five minutes) is how long that page waits.
-  A tab another agent has moved into, or the person is holding, is not closed.
+  on. How long the page waits is the row in the settings window, kept in
+  `settings.json` and five minutes until somebody changes it;
+  `--orphan-close-ms` overrides it for one launch. A tab another agent has
+  moved into, or the person is holding, is not closed.
 - **The tool description is a budget, not a manual.** The client cuts the
   `evalInBrowser` description at about 2040 characters and appends
   `… [truncated]` — nothing in the bridge can see that happen. The whole helper

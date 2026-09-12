@@ -123,5 +123,9 @@ on the assumption that it was never taken.
 
 ## Follow-ups
 
-- The wording at `AGENTS.md:57` says "departed agent" where the window says
-  "An agent that reconnects". One of the two should give way.
+- ~~Closed 2026-09-12.~~ The wording at `AGENTS.md:57` says "departed agent"
+  where the window says "An agent that reconnects". One of the two should give
+  way. — It was the window's: a session does not reconnect, it comes back as a
+  new agent, which is what the rule and the code both say. The hint now says
+  so. The rule gained the one thing it was missing, that the grace period is a
+  row in the settings window and the flag only overrides it for a launch.
