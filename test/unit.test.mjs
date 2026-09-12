@@ -638,6 +638,45 @@ test('every preference the window draws is a value the application sends, and ba
   assert.equal(login.hint, 'Starts only when you open it yourself.')
 })
 
+test('the Dock icon counts what is waiting for the person, and nothing else', async () => {
+  const { dockSignal } = await import('../src/main/dock.ts')
+  // A badge on macOS says "this many things want you". The number of connected
+  // agents is not that: agents work without the person, and a red 3 for three
+  // working agents reads as three unanswered requests.
+  assert.equal(dockSignal(0, 0).badge, '')
+  assert.equal(dockSignal(1, 0).badge, '1')
+  assert.equal(dockSignal(12, 12).badge, '12')
+})
+
+test('the Dock icon bounces when a new call starts waiting, and not while it waits', async () => {
+  const { dockSignal } = await import('../src/main/dock.ts')
+  assert.equal(dockSignal(1, 0).bounce, true)
+  assert.equal(dockSignal(2, 1).bounce, true)
+  // Still waiting is not news; answering one of two is not news either.
+  assert.equal(dockSignal(1, 1).bounce, false)
+  assert.equal(dockSignal(1, 2).bounce, false)
+  assert.equal(dockSignal(0, 1).bounce, false)
+})
+
+test('a call already waiting when the Dock icon appears is shown but not announced', async () => {
+  const { watchDock } = await import('../src/main/dock.ts')
+  const done = []
+  const dock = { setBadge: (text) => done.push(`badge:${text}`), bounce: (type) => done.push(`bounce:${type}`) }
+  let waiting = 2
+  // Turning the Dock icon on is not the moment two agents started asking.
+  const watch = watchDock(dock, () => waiting)
+  assert.deepEqual(done, ['badge:2'])
+  waiting = 3
+  watch.look()
+  assert.deepEqual(done, ['badge:2', 'badge:3', 'bounce:informational'])
+  waiting = 0
+  watch.look()
+  assert.deepEqual(done, ['badge:2', 'badge:3', 'bounce:informational', 'badge:'])
+  // Sent to the menu bar, the icon must not leave a badge behind on the Dock.
+  watch.stop()
+  assert.equal(done.at(-1), 'badge:')
+})
+
 test('the application is never left with neither icon, whatever the choice', async () => {
   const { presenceOf } = await import('../src/main/preferences.ts')
   // The reason this is one row of three rather than two switches: a pair of

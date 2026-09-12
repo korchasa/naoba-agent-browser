@@ -121,6 +121,18 @@ state must go through the project's own session, never through
   application (2026-09-12): `background only` of the process and `number of menu
   bars` in System Events follow each of the three, a restart comes back where it
   was left, and a hand-edited value in `settings.json` starts in the menu bar.
+- **The two icons carry different things, and the Dock badge is not a
+  counter.** A badge on macOS means "this many things want you", so it holds
+  the number of calls waiting for the person (`waitingForPerson`), and nothing
+  when none are; the number of connected agents is ambient status and stays on
+  the menu-bar icon, which is what a menu bar is for. The icon bounces
+  `informational` once when that number goes up and never while a call waits —
+  `dockSignal` in `dock.ts` makes both decisions without Electron, and the
+  first look after the icon appears draws the badge without bouncing, because
+  turning the Dock icon on is not the moment an agent started asking. Both
+  icons offer the same right-click menu, built once in `iconMenu`. Proved on
+  the running application (2026-09-12) by reading `AXStatusLabel` of the Dock's
+  own item: empty, then `1` while a call waited, then empty again.
 - **The login item is offered once, and then the OS decides.** An installed
   copy (`app.isPackaged`) registers itself with `app.setLoginItemSettings` on
   its first start and writes `loginItemOffered` — only after

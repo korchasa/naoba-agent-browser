@@ -16,35 +16,46 @@ import { appName } from './variant.ts'
  * quit, because the two answers differ by every tab the agents are working in,
  * and a quieter second way out would answer that for the person.
  */
+/** How many calls are waiting for the person, across every project. */
+export function waitingForPerson(hub: Hub): number {
+  return [...hub.contexts.values()].reduce((sum, context) => sum + context.pendingHuman.size, 0)
+}
+
+/**
+ * Bring up the window a click on an icon should show: the project that is
+ * waiting for the person if one is, otherwise the one worked in most recently.
+ * With no project yet the window still opens — its panel says how to connect an
+ * agent, which beats answering a click with nothing.
+ */
+export function revealForemost(hub: Hub): void {
+  const contexts = [...hub.contexts.values()]
+  const context = contexts.find((one) => one.pendingHuman.size > 0) ??
+    contexts.sort((a, b) => b.lastTouched - a.lastTouched)[0] ?? null
+  if (context) context.reveal(true)
+  else hub.shell.reveal(true)
+}
+
+/**
+ * The menu both icons offer. Built here rather than twice: a right-click on
+ * the menu bar and a right-click on the Dock are the same question, and two
+ * copies of the answer drift apart.
+ */
+export function iconMenu(hub: Hub, settings: { open(): void }): Menu {
+  return Menu.buildFromTemplate([
+    { label: `Open ${appName()}`, click: () => revealForemost(hub) },
+    { label: 'Settings…', click: () => settings.open() },
+  ])
+}
+
 export function installTray(hub: Hub, settings: { open(): void }): Tray {
   const tray = new Tray(nativeImage.createEmpty())
   tray.setToolTip(`${appName()} — click to open`)
   const painter = new IconPainter()
 
   const contexts = () => [...hub.contexts.values()]
-  const waiting = () => contexts().filter((context) => context.pendingHuman.size > 0)
 
-  /** The window a click should bring up, or `null` when there is none yet. */
-  const foremost = () => {
-    const asking = waiting()
-    if (asking.length > 0) return asking[0]!
-    return contexts().sort((a, b) => b.lastTouched - a.lastTouched)[0] ?? null
-  }
-
-  const open = () => {
-    const context = foremost()
-    // With no project yet the window still opens: its panel says how to
-    // connect an agent, which beats answering a click with nothing.
-    if (context) context.reveal(true)
-    else hub.shell.reveal(true)
-  }
-  tray.on('click', open)
-  tray.on('right-click', () => {
-    tray.popUpContextMenu(Menu.buildFromTemplate([
-      { label: `Open ${appName()}`, click: open },
-      { label: 'Settings…', click: () => settings.open() },
-    ]))
-  })
+  tray.on('click', () => revealForemost(hub))
+  tray.on('right-click', () => tray.popUpContextMenu(iconMenu(hub, settings)))
 
   let shown = ''
   const refresh = () => {
@@ -52,10 +63,11 @@ export function installTray(hub: Hub, settings: { open(): void }): Tray {
     // and the number of connected agents drawn into the glyph — the two things
     // worth a glance at the menu bar.
     const connected = contexts().reduce((sum, context) => sum + context.agents.size, 0)
-    const key = `${waiting().length > 0 ? 'hand' : 'globe'}:${connected}`
+    const asking = waitingForPerson(hub) > 0
+    const key = `${asking ? 'hand' : 'globe'}:${connected}`
     if (key === shown) return
     shown = key
-    void painter.paint(waiting().length > 0, connected).then((image) => {
+    void painter.paint(asking, connected).then((image) => {
       if (shown === key && !tray.isDestroyed()) tray.setImage(image)
     })
   }

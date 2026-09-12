@@ -2,7 +2,8 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu } from 'electron'
 import { dirname, join } from 'node:path'
 import { cpSync, existsSync } from 'node:fs'
 import { Hub } from './hub.ts'
-import { installTray } from './tray.ts'
+import { iconMenu, installTray, waitingForPerson } from './tray.ts'
+import { installDock } from './dock.ts'
 import { readSettings, writeSettings } from './settings.ts'
 import { DEFAULT_PORT } from './protocol.ts'
 import { normalizeUrl } from './tab.ts'
@@ -28,6 +29,9 @@ let trayHandle: import('electron').Tray | null = null
 
 /** Where the person last asked the application to show itself. */
 let presence: Presence = 'menu-bar'
+
+/** Stops the Dock icon's badge while there is one; `null` when there is not. */
+let dockHandle: (() => void) | null = null
 
 const flags = new Set(process.argv.slice(1))
 const isTestRun = flags.has('--admit-everything')
@@ -120,6 +124,8 @@ async function start(): Promise<void> {
     leaving = true
     event.preventDefault()
     hub.stop()
+    dockHandle?.()
+    dockHandle = null
     trayHandle?.destroy()
     trayHandle = null
     void hub.flushAll().finally(() => app.exit(0))
@@ -224,8 +230,20 @@ function loginItem(): LoginItemState {
  */
 function showApplication(hub: Hub, settings: SettingsAccess): void {
   const wanted = presenceOf(presence)
-  if (wanted.dock) void app.dock?.show()
-  else app.dock?.hide()
+  if (wanted.dock && app.dock) {
+    void app.dock.show()
+    if (!dockHandle) {
+      // The Dock icon carries the one number that is about the person: how
+      // many calls are waiting for them. How many agents are connected is
+      // ambient status, and that is what the menu-bar icon is for.
+      app.dock.setMenu(iconMenu(hub, settings))
+      dockHandle = installDock(app.dock, () => waitingForPerson(hub))
+    }
+  } else {
+    dockHandle?.()
+    dockHandle = null
+    app.dock?.hide()
+  }
   if (wanted.menuBar && !trayHandle) trayHandle = installTray(hub, settings)
   if (!wanted.menuBar && trayHandle) {
     trayHandle.destroy()
