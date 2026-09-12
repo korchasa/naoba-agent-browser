@@ -97,7 +97,8 @@ async function handle(request) {
       serverInfo: { name: NAME, version: VERSION },
       instructions:
         'A browser shared by every agent working in this project, and closed to agents working in any other. ' +
-        'Write a whole scenario in one evalInBrowser call rather than one call per action.',
+        'Write a whole scenario in one evalInBrowser call rather than one call per action. ' +
+        'api.help() inside a scenario prints every helper there is; the tool description carries only a summary.',
     })
     return
   }

@@ -11,6 +11,8 @@ import { toTransferable } from '../src/main/serialize.ts'
 import { decodeLines } from '../src/main/protocol.ts'
 import { CommandLog } from '../src/main/commands.ts'
 import { buildTree, expandNew, groupKey, projectKey, sortGroups, tabKey } from '../src/renderer/tree.ts'
+import { documentedNames, fullReference, helpFor, namesIn, TOOL_DESCRIPTION } from '../packages/bridge/reference.mjs'
+import { TOOLS } from '../packages/bridge/tools.mjs'
 
 test('a project is the repository the agent is working in, not its subdirectory', () => {
   const base = mkdtempSync(join(tmpdir(), 'ab-project-'))
@@ -518,4 +520,97 @@ test("the settings view describes the login item in the person's terms", async (
     describeLoginItem({ packaged: false, status: 'not-registered' }),
     'Not available from a checkout — install the application first.',
   )
+})
+
+/**
+ * The client cuts a tool description at about 2040 characters and appends
+ * "… [truncated]". The limit here is deliberately well under that: a test that
+ * only fails at the real cap fails when the text is already unreadable, and the
+ * cap is the client's to change without telling us.
+ */
+const DESCRIPTION_LIMIT = 1800
+
+test('the whole tool description reaches the agent, with room to spare', () => {
+  const description = TOOLS.find((tool) => tool.name === 'evalInBrowser').description
+  assert.ok(
+    description.length <= DESCRIPTION_LIMIT,
+    `the evalInBrowser description is ${description.length} characters, past the ${DESCRIPTION_LIMIT} this repository ` +
+      'allows itself; the client cuts at about 2040 and what is past the cut reaches nobody. New helpers go into the ' +
+      'reference, not into the description.',
+  )
+})
+
+test('the description that arrives names the way to read the rest', () => {
+  const description = TOOLS.find((tool) => tool.name === 'evalInBrowser').description
+  // Both, on purpose: an application older than this bridge has no help().
+  assert.match(description, /api\.help\(\)/)
+  assert.match(description, /Object\.keys\(api\)/)
+  // The form snapshot() prints, and — since 53c7bb1 — the form that resolves.
+  assert.match(description, /\[ref_N\]/)
+  assert.ok(!description.includes('[truncated]'))
+})
+
+test('every helper the description names is one the manual documents', () => {
+  const description = TOOLS.find((tool) => tool.name === 'evalInBrowser').description
+  // The module's own extractor, so the rule cannot be copied into this test wrong.
+  const named = [...new Set(description.split('\n').flatMap(namesIn))]
+  const documented = new Set(documentedNames())
+  assert.deepEqual(named.filter((name) => !documented.has(name)), [])
+})
+
+test('no helper is described in two places', () => {
+  const seen = new Map()
+  for (const line of fullReference().split('\n')) {
+    if (!/^ {2}\S/.test(line)) continue
+    for (const name of namesIn(line)) seen.set(name, (seen.get(name) ?? 0) + 1)
+  }
+  assert.deepEqual([...seen].filter(([, count]) => count > 1), [])
+})
+
+test('a helper answers to every spelling an agent would write', () => {
+  const bare = helpFor('click')
+  assert.match(bare, /api\.click/)
+  assert.equal(helpFor('api.click'), bare)
+  assert.equal(helpFor('click()'), bare)
+  assert.equal(helpFor('api.click(sel)'), bare)
+  // The entry arrives under its section, so the reader learns what neighbours it.
+  assert.match(bare, /^Acting/)
+})
+
+test("a helper's entry carries the lines under it, not just its first line", () => {
+  // The only test of the rule that anything indented deeper belongs to the
+  // entry above it: break it, and every other test here stays green.
+  const entry = helpFor('snapshot')
+  assert.match(entry, /\[ref_N\]/)
+  assert.match(entry, /generated class names/)
+  assert.equal(entry.split('\n').length, 5)
+})
+
+test('the spelling an agent types is not the spelling it is punished for', () => {
+  assert.equal(helpFor('  Click '), helpFor('click'))
+  // An empty name is no name at all, and the whole manual is the better answer.
+  assert.ok(helpFor('').startsWith('Write JavaScript'))
+  assert.equal(helpFor(''), fullReference())
+})
+
+test('a name nobody has says so, and says what there is', () => {
+  const answer = helpFor('typeText')
+  assert.match(answer, /typeText/)
+  assert.match(answer, /\btype\b/)
+  assert.match(answer, /\bfill\b/)
+})
+
+test('every documented name resolves to its own entry', () => {
+  const missing = documentedNames().filter((name) => !helpFor(name).includes(`api.${name}`))
+  assert.deepEqual(missing, [])
+})
+
+test('the reference carries the sections the description leaves out', () => {
+  const reference = fullReference()
+  for (const section of ['Finding things', 'Acting', 'Frames', 'Moving around', 'State', 'Watching', 'Notes']) {
+    assert.ok(reference.includes(section), `the reference lost the ${section} section`)
+  }
+  // The opening paragraph is the one part the sections above cannot vouch for.
+  assert.ok(reference.startsWith('Write JavaScript'))
+  assert.ok(reference.length > TOOL_DESCRIPTION.length)
 })

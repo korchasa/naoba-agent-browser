@@ -193,8 +193,11 @@ a couple of hundred kilobytes of base64, which is more than the wire carries in
 one value and more than any agent wants to read as text. Pass a path of your own
 if you care where it lands.
 
-The full list of helpers is in the tool description the bridge publishes, so an
-agent has it without being told.
+The tool description carries the shape of a scenario and the few helpers that
+save a round trip. `api.help()` prints the rest — every helper with its
+arguments — and `api.help('click')` prints one of them. The description is kept
+short on purpose: a client cuts a long one, and the half it cuts used to be the
+half with the tabs, the cookies and the waits in it.
 
 ## Several agents, one project
 

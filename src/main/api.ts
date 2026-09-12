@@ -3,6 +3,7 @@ import type { Tab } from './tab.ts'
 import { pause } from './tab.ts'
 import type { Holder } from './lease.ts'
 import { app } from 'electron'
+import { fullReference, helpFor } from '../../packages/bridge/reference.mjs'
 import { join } from 'node:path'
 
 export interface ApiOptions {
@@ -525,6 +526,16 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
 
     async project() {
       return { id: context.identity.id, name: context.identity.name, root: context.identity.root }
+    },
+
+    /**
+     * The manual. The tool description reaches an agent unasked and the client
+     * cuts it at about 2040 characters, so only a summary fits there; this is
+     * where the rest of it lives. One text, in `packages/bridge/reference.mjs`,
+     * because a second copy would drift at the next helper.
+     */
+    help(name?: string): string {
+      return name === undefined ? fullReference() : helpFor(name)
     },
 
     sleep: pause,

@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { nextPort, startApp } from './helpers/app.mjs'
 import { startFixtureServer } from './fixtures/server.mjs'
+import { documentedNames } from '../packages/bridge/reference.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
@@ -589,6 +590,37 @@ test('a login made by hand survives the tab being closed', async () => {
     outcome.value.includes('persisted'),
     `expected the cookie to outlive the tab, got ${JSON.stringify(outcome.value)}`,
   )
+  agent.close()
+})
+
+test('the manual documents every helper an agent can call, and no helper it cannot', async () => {
+  const agent = await app.agent(PROJECT_A, 'manual')
+  const outcome = await agent.run(`return Object.keys(api)`)
+  // sort() rewrites the array it is given, and the outcome is read again below.
+  const live = [...outcome.value].sort()
+  const documented = [...documentedNames()].sort()
+  assert.deepEqual(
+    live.filter((name) => !documented.includes(name)),
+    [],
+    'a helper exists that the manual never mentions, so no agent will find it',
+  )
+  assert.deepEqual(
+    documented.filter((name) => !live.includes(name)),
+    [],
+    'the manual promises a helper that is not there',
+  )
+  agent.close()
+})
+
+test('an agent can read the rest of the manual from inside a scenario', async () => {
+  const agent = await app.agent(PROJECT_A, 'help')
+  const outcome = await agent.run(`return { whole: api.help(), one: api.help('waitForLoad') }`)
+  // The sections the description cannot carry are exactly what help() is for.
+  assert.match(outcome.value.whole, /Watching/)
+  assert.match(outcome.value.whole, /api\.requestHuman/)
+  assert.match(outcome.value.one, /api\.waitForLoad/)
+  // One entry, under its own section — not the whole manual with the name in it.
+  assert.ok(!outcome.value.one.includes('Watching'))
   agent.close()
 })
 
