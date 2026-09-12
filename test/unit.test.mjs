@@ -23,6 +23,7 @@ import { candidates, owningBundle } from '../packages/bridge/launch.mjs'
 import { bridgeCommand, bridgeEntry } from '../src/main/bridge-path.ts'
 import {
   activateRequest,
+  admitsWithoutKey,
   asksWhoYouAre,
   checkRequest,
   deactivateRequest,
@@ -1334,6 +1335,15 @@ test('a key nobody bought carries the person activating it, and a bought one doe
     last_name: 'Lovelace',
     user_email: 'ada@example.com',
   })
+})
+
+test('the copy that is sold asks for a key, and the one built from a checkout does not', () => {
+  // What a buyer downloads.
+  assert.equal(admitsWithoutKey(false, false), false)
+  // The maintainer's own copy, installed from this repository under its own name.
+  assert.equal(admitsWithoutKey(false, true), true)
+  // A test run and the run that photographs the window.
+  assert.equal(admitsWithoutKey(true, false), true)
 })
 
 test('the service asking who you are is three complaints meaning one thing', () => {

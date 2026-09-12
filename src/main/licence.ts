@@ -71,6 +71,19 @@ export function verdict(record: LicenceRecord | null, now = Date.now(), graceDay
   return { state: 'licensed', until: record.expiration }
 }
 
+/**
+ * Which copies answer an agent without a key at all.
+ *
+ * A test run and the snapshot run drive a browser nobody bought. So does the
+ * development copy: it is built from a checkout by the person working on the
+ * application, under its own bundle id and its own name, and asking them to buy
+ * their own work back on every reinstall helps nobody. The copy people download
+ * is not any of these, and it asks.
+ */
+export function admitsWithoutKey(isTestRun: boolean, isDevCopy: boolean): boolean {
+  return isTestRun || isDevCopy
+}
+
 /** A 32-character identifier for this installation, from whatever gives us bytes. */
 export function newUid(bytes: (count: number) => Uint8Array): string {
   return [...bytes(16)].map((b) => b.toString(16).padStart(2, '0')).join('')

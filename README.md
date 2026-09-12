@@ -261,6 +261,10 @@ is kept: a month without the service confirming it again changes nothing, so
 the application works on a train, on a plane and on a network that is down. A
 key that is refunded or cancelled stops working at the next check.
 
-The check is part of the application, so a copy built from this source asks
-for a key too. What the source licence above gives you is the right to read
-the code, change it and build on it — including changing that.
+The check is part of the application, so a copy you build from this source and
+install as Naoba asks for a key too. The one exception is the development copy
+— `deno task install dev`, which installs "Naoba Dev" under its own bundle id
+and its own state — and it admits agents without a key, because it exists for
+working on the application rather than using it. What the source licence above
+gives you is the right to read the code, change it and build on it — including
+changing any of that.

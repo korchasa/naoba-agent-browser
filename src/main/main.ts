@@ -24,7 +24,7 @@ import {
   state as licenceState,
   stopSchedule as stopLicenceChecks,
 } from './licence-store.ts'
-import type { Buyer } from './licence.ts'
+import { admitsWithoutKey, type Buyer } from './licence.ts'
 
 /** Where a key is bought. The plan is a one-off payment; there is nothing else to sell. */
 const CHECKOUT_URL = 'https://checkout.freemius.com/product/39376/plan/67545/'
@@ -85,9 +85,12 @@ async function start(): Promise<void> {
     contentionWaitMs: numberFlag('--contention-wait-ms', 30_000),
     defaultScriptTimeoutMs: numberFlag('--script-timeout-ms', 60_000),
     admitEverything: isTestRun,
-    // A test run and the snapshot run drive a browser nobody bought; every
-    // other copy answers an agent only once the person has unlocked it.
-    licensed: isTestRun ? () => true : licensed,
+    // A test run and the snapshot run drive a browser nobody bought, and so
+    // does the development copy: it is built from a checkout by the person
+    // working on the application, under its own bundle id, and asking them to
+    // buy their own work back on every reinstall helps nobody. The copy people
+    // download asks for a key, and that is the one that is sold.
+    licensed: admitsWithoutKey(isTestRun, isDevVariant()) ? () => true : licensed,
     headless: flags.has('--headless'),
     announceAutomation: flags.has('--announce-automation') || readSettings().announceAutomation === true,
   })
@@ -138,10 +141,11 @@ async function start(): Promise<void> {
     // The licence, once at startup and then on its own schedule. A copy that
     // has not been unlocked opens the settings window itself: an agent is
     // refused until it is, and nothing else in the application would say why.
+    // The development copy refuses nobody, so it has nothing to explain.
     scheduleLicenceChecks()
     void checkLicence().then(() => {
       settings.push()
-      if (!licensed()) settings.open()
+      if (!licensed() && !admitsWithoutKey(isTestRun, isDevVariant())) settings.open()
     })
   }
 
