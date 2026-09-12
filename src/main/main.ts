@@ -24,7 +24,7 @@ import {
   state as licenceState,
   stopSchedule as stopLicenceChecks,
 } from './licence-store.ts'
-import { admitsWithoutKey, type Buyer } from './licence.ts'
+import { admitsWithoutKey, type Buyer, describeFreeCopy } from './licence.ts'
 
 /** Where a key is bought. The plan is a one-off payment; there is nothing else to sell. */
 const CHECKOUT_URL = 'https://checkout.freemius.com/product/39376/plan/67545/'
@@ -298,7 +298,9 @@ function settingsFor(hub: Hub): SettingsSnapshot {
     announceAutomation: hub.announceAutomation,
     orphanCloseMs: hub.orphanCloseMs,
     projects: hub.admissions(),
-    licence: licenceState(),
+    // A copy that needs no key says so, rather than reporting the empty record
+    // it will never fill in as if something were missing.
+    licence: admitsWithoutKey(isTestRun, isDevVariant()) ? describeFreeCopy() : licenceState(),
   }
 }
 

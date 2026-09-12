@@ -85,18 +85,22 @@ function renderLicence(values: SettingsSnapshot): HTMLElement {
   const node = el('div', values.licence.licensed ? 'setting licence' : 'setting licence refused')
   const text = el('div', 'text')
   const name = el('div', 'name')
-  name.append(el('span', 'dot'), el('span', '', values.licence.licensed ? 'Unlocked' : 'Not unlocked'))
+  const heading = values.licence.needsNoKey ? 'No key needed' : values.licence.licensed ? 'Unlocked' : 'Not unlocked'
+  name.append(el('span', 'dot'), el('span', '', heading))
   text.append(name, el('span', 'hint', values.licence.sentence))
   if (values.licence.tail) {
     const checked = values.licence.checkedOn ? `, last confirmed ${values.licence.checkedOn}` : ''
     text.append(el('span', 'hint', `Key ending ${values.licence.tail}${checked}.`))
   }
   node.append(text)
-  node.append(
-    values.licence.licensed
-      ? button('Deactivate', () => void hand(() => ab.deactivateLicence()), 'Free this key for another Mac')
-      : button('Buy a key', () => void ab.buyLicence(), 'Opens the shop in your own browser'),
-  )
+  // Nothing to buy and nothing to free on a copy that needs no key.
+  if (!values.licence.needsNoKey) {
+    node.append(
+      values.licence.licensed
+        ? button('Deactivate', () => void hand(() => ab.deactivateLicence()), 'Free this key for another Mac')
+        : button('Buy a key', () => void ab.buyLicence(), 'Opens the shop in your own browser'),
+    )
+  }
   group.append(node)
 
   if (!values.licence.licensed) {

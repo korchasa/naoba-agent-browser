@@ -183,7 +183,7 @@ export function refreshed(record: LicenceRecord, answer: unknown, now = Date.now
   }
 }
 
-/** What the settings window says about the licence, in the two forms a row draws. */
+/** What the settings window says about the licence, in the three forms a row draws. */
 export interface LicenceState {
   licensed: boolean
   sentence: string
@@ -192,6 +192,24 @@ export interface LicenceState {
   tail: string | null
   /** When the service last confirmed it, as a date, or `null` if never. */
   checkedOn: string | null
+  /**
+   * True on a copy that answers agents without a key. There is no key to buy,
+   * none to type and none to free, so the row says what this copy is and shows
+   * no button at all.
+   */
+  needsNoKey: boolean
+}
+
+/** What that row says on a copy which needs no key. */
+export function describeFreeCopy(): LicenceState {
+  return {
+    licensed: true,
+    sentence: 'This copy was built from the source and runs without a key.',
+    plan: null,
+    tail: null,
+    checkedOn: null,
+    needsNoKey: true,
+  }
 }
 
 export function describe(record: LicenceRecord | null, now = Date.now(), graceDays = GRACE_DAYS): LicenceState {
@@ -204,6 +222,7 @@ export function describe(record: LicenceRecord | null, now = Date.now(), graceDa
       plan: record?.plan ?? null,
       tail: record ? record.key.slice(-4) : null,
       checkedOn: record ? new Date(record.checkedAt).toISOString().slice(0, 10) : null,
+      needsNoKey: false,
     }
   }
   return {
@@ -212,5 +231,6 @@ export function describe(record: LicenceRecord | null, now = Date.now(), graceDa
     plan: record?.plan ?? null,
     tail: record ? record.key.slice(-4) : null,
     checkedOn: record ? new Date(record.checkedAt).toISOString().slice(0, 10) : null,
+    needsNoKey: false,
   }
 }

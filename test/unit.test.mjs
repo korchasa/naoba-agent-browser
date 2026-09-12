@@ -25,6 +25,7 @@ import {
   activateRequest,
   admitsWithoutKey,
   asksWhoYouAre,
+  describeFreeCopy,
   checkRequest,
   deactivateRequest,
   describe,
@@ -1344,6 +1345,16 @@ test('the copy that is sold asks for a key, and the one built from a checkout do
   assert.equal(admitsWithoutKey(false, true), true)
   // A test run and the run that photographs the window.
   assert.equal(admitsWithoutKey(true, false), true)
+})
+
+test('a copy that needs no key says so instead of reporting a missing one', () => {
+  const free = describeFreeCopy()
+  assert.equal(free.needsNoKey, true)
+  assert.equal(free.licensed, true)
+  assert.match(free.sentence, /without a key/)
+  // The row draws a button off `needsNoKey`, so the ordinary states must not set it.
+  assert.equal(describe(null).needsNoKey, false)
+  assert.equal(describe(stored()).needsNoKey, false)
 })
 
 test('the service asking who you are is three complaints meaning one thing', () => {
