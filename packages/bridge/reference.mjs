@@ -141,6 +141,11 @@ Working next to other agents and next to the person
                                      wait above beats it
 
 Notes
+  A scenario that fails keeps the work before it: the error carries the api
+  calls that already ran, what each one answered, and the one that failed. So
+  write the long scenario rather than a timid one. What comes back is a record
+  of what was done, not a checkpoint — those steps already happened, and
+  running the scenario again runs them a second time.
   Sites stay logged in between runs, per project. If something needs an account,
   call requestHuman rather than trying to log in.
   Agents in other projects share nothing with you: not tabs, not cookies, not logins.`
