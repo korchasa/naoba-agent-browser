@@ -245,3 +245,19 @@ it, change it, use it for anything that is not commercial. The built
 application sold as Naoba is a separate thing — buying it licenses you to run
 that binary, under the terms in [EULA.md](EULA.md), and nothing in this
 repository grants or withholds that.
+
+### The key
+
+The application you buy is unlocked with a key, once per Mac. Until it is
+unlocked it refuses every agent and says so, and the settings window opens by
+itself with the field to type the key into. Deactivating frees the key for a
+different Mac.
+
+The key is checked against the licensing service now and then, and the answer
+is kept: a month without the service confirming it again changes nothing, so
+the application works on a train, on a plane and on a network that is down. A
+key that is refunded or cancelled stops working at the next check.
+
+The check is part of the application, so a copy built from this source asks
+for a key too. What the source licence above gives you is the right to read
+the code, change it and build on it — including changing that.
