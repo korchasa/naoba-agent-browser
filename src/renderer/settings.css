@@ -53,9 +53,9 @@ button {
   justify-content: center;
   font: inherit;
   font-weight: 500;
-  color: var(--text);
-  background: var(--color-surface);
-  border: 1px solid var(--color-divider);
+  color: var(--text-dim);
+  background: none;
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
   min-height: 2.3rem;
   padding: 4px 12px;
@@ -63,16 +63,17 @@ button {
   flex: none;
 }
 button:hover {
-  background: color-mix(in srgb, var(--color-text) 6%, var(--color-surface));
+  color: var(--text);
+  background: var(--fill);
 }
 button:active {
-  background: color-mix(in srgb, var(--color-text) 12%, var(--color-surface));
+  background: var(--fill-strong);
 }
 
-/* A group of rows reads as one card, the way a native settings pane does. */
+/* A group of rows reads as one panel laid on the shell. The panel is a
+   different colour from the shell, so it needs no frame as well. */
 .group {
   background: var(--color-surface);
-  border: 1px solid var(--color-divider);
   border-radius: var(--radius-md);
   overflow: hidden;
 }
@@ -129,13 +130,12 @@ button:active {
   min-height: 0;
   height: 1.45rem;
   padding: 0;
-  border: 1px solid var(--tick);
+  border: none;
   border-radius: var(--radius-sm);
   background: var(--fill-strong);
 }
 .switch.on {
   background: var(--color-accent);
-  border-color: var(--color-accent);
 }
 .switch .knob {
   position: absolute;
@@ -145,22 +145,18 @@ button:active {
   height: calc(1.45rem - 6px);
   border-radius: var(--radius-sm);
   background: var(--color-surface);
-  border: 1px solid var(--tick);
   transition: left 0.12s steps(3, end);
 }
 .switch.on .knob {
   left: calc(100% - 1.3rem + 2px);
-  border-color: var(--color-accent-600);
 }
 
-/* A choice of a few: a row of keys sharing one hairline frame, the chosen one
-   pressed in and lit. */
+/* A choice of a few: the places written out in a row, the chosen one lit.
+   Nothing is drawn around the ones that are not chosen. */
 .segmented {
   flex: none;
   display: flex;
-  border: 1px solid var(--color-divider);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
+  gap: 2px;
 }
 .segmented .segment {
   min-height: 1.9rem;
@@ -170,13 +166,9 @@ button:active {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-faint);
-  background: var(--color-surface);
+  background: none;
   border: none;
-  border-left: 1px solid var(--color-divider);
-  border-radius: 0;
-}
-.segmented .segment:first-child {
-  border-left: none;
+  border-radius: var(--radius-sm);
 }
 .segmented .segment:hover {
   color: var(--text);
@@ -241,6 +233,7 @@ input.number:focus {
 .project button {
   min-height: 2rem;
   font-weight: 500;
+  color: var(--accent);
 }
 
 .empty {

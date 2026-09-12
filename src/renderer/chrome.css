@@ -162,8 +162,9 @@ svg {
   visibility: visible;
 }
 
-/* A key on the instrument: flat, hairline-edged, square. Nothing is lifted
-   off the panel by a shadow — the border is the whole of it. */
+/* A key on the instrument: the glyph printed on the case, with a fill under
+   it only while the pointer is there. Nothing is lifted off the panel by a
+   shadow, and nothing is boxed that the pointer is not touching. */
 button {
   -webkit-app-region: no-drag;
   display: inline-flex;
@@ -171,9 +172,9 @@ button {
   justify-content: center;
   font: inherit;
   font-weight: 500;
-  color: var(--text);
-  background: var(--color-surface);
-  border: 1px solid var(--color-divider);
+  color: var(--text-dim);
+  background: none;
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
   min-height: 2.3rem;
   padding: 4px 12px;
@@ -181,10 +182,11 @@ button {
   flex: none;
 }
 button:hover {
-  background: color-mix(in srgb, var(--color-text) 6%, var(--color-surface));
+  color: var(--text);
+  background: var(--fill);
 }
 button:active {
-  background: color-mix(in srgb, var(--color-text) 12%, var(--color-surface));
+  background: var(--fill-strong);
 }
 button.icon {
   width: 2.3rem;
@@ -354,6 +356,8 @@ input.url:focus {
   /* The pale end of the ramp needs an edge, or it disappears into the panel. */
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-text) 18%, transparent);
 }
+/* The tool's name is printed beside the agent, not boxed: at this size a
+   border adds a shape to read and says nothing the letters do not. */
 .row.group .ide {
   flex: none;
   font-family: var(--font-mono);
@@ -361,10 +365,6 @@ input.url:focus {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-faint);
-  background: none;
-  border: 1px solid var(--color-divider);
-  border-radius: var(--radius-full);
-  padding: 1px 6px;
 }
 
 .row.tab .icon {
@@ -388,11 +388,7 @@ input.url:focus {
   font-size: var(--legend-size);
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--color-accent-800);
-  background: var(--color-accent-100);
-  border: 1px solid color-mix(in srgb, var(--color-accent) 45%, transparent);
-  border-radius: var(--radius-full);
-  padding: 1px 6px 1px 4px;
+  color: var(--accent);
 }
 .row.tab .count {
   flex: none;
@@ -453,9 +449,6 @@ input.url:focus {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-faint);
-  border: 1px solid var(--color-divider);
-  border-radius: var(--radius-full);
-  padding: 0 5px;
 }
 .row.cmd .what {
   font-family: var(--font-mono);
@@ -477,15 +470,12 @@ input.url:focus {
   color: var(--text-dim);
   line-height: 1.5;
 }
-/* The mark on its tile, the same figure the Dock icon carries. */
+/* The mark, the same figure the Dock icon carries — drawn, not framed. */
 .empty .sign {
-  width: 52px;
-  height: 52px;
-  padding: 9px;
-  border: 2px solid var(--color-accent);
-  border-radius: var(--radius-md);
+  width: 40px;
+  height: 40px;
   color: var(--color-accent);
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 .empty h3 {
   margin: 0;
@@ -508,9 +498,7 @@ input.url:focus {
   font-family: var(--font-mono);
   font-size: 0.85rem;
   color: var(--text);
-  background: var(--color-surface);
-  border: 1px solid var(--color-divider);
-  border-radius: var(--radius-md);
+  background: var(--fill);
   padding: 9px 12px;
   user-select: all;
 }
@@ -522,15 +510,14 @@ input.url:focus {
   font-size: 0.9rem;
 }
 
-/* The one card in the panel: a white panel screwed onto the shell, with the
-   orange rule across its top saying which one is live. */
+/* The one card in the panel: a white panel laid on the shell under one
+   orange rule. The rule is what marks it; a frame around it as well would be
+   the same thing said twice. */
 .callout {
   flex: none;
   margin: 0 10px 10px;
-  padding: var(--space-4);
-  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4) var(--space-4);
   background: var(--color-surface);
-  border: 1px solid var(--color-divider);
   border-top: 2px solid var(--color-accent);
   line-height: 1.45;
 }
