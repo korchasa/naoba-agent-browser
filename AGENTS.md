@@ -32,7 +32,10 @@ state must go through the project's own session, never through
 - `src/main/trail.ts` — what a scenario had already done when it failed
 - `src/main/lease.ts`, `queue.ts` — who may act on a tab, and in what order
 - `src/main/hub.ts` — admission and routing
-- `src/main/server.ts`, `protocol.ts` — the wire
+- `src/main/server.ts`, `protocol.ts` — the wire, and the token every
+  connection shows before the hub hears of it
+- `src/main/handshake.ts`, `packages/bridge/handshake.mjs` — the two halves of
+  the file that tells a bridge which port to dial and what to show on it
 - `packages/bridge/` — the MCP server an IDE launches, one per agent
 - `packages/bridge/reference.mjs` — the manual an agent reads, in the one
   place both sides can reach it

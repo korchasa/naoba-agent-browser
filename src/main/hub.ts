@@ -73,6 +73,11 @@ export class Hub {
     return this.#server.port
   }
 
+  /** What a bridge must present to be let in. New on every start. */
+  get bridgeToken(): string {
+    return this.#server.token
+  }
+
   /** Whether pages are told that a program drives the browser. One switch for every project. */
   get announceAutomation(): boolean {
     return this.#announceAutomation

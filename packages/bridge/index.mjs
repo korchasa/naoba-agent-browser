@@ -2,6 +2,7 @@
 import { createInterface } from 'node:readline'
 import { AppClient, DEFAULT_PORT, PORT_RANGE } from './client.mjs'
 import { launchApp } from './launch.mjs'
+import { tokenForPort } from './handshake.mjs'
 import { TOOLS } from './tools.mjs'
 import { renderError, renderOutcome } from './render.mjs'
 
@@ -15,7 +16,7 @@ import { renderError, renderOutcome } from './render.mjs'
  */
 const PROTOCOL = '2025-06-18'
 const NAME = 'naoba'
-const VERSION = '0.1.0'
+const VERSION = '1.0.0'
 
 const projectDir = process.env.NAOBA_PROJECT_DIR || process.cwd()
 const agent = {
@@ -37,15 +38,13 @@ async function ensureConnected() {
       port = await waitForPort(20_000)
       if (port === null) {
         throw new Error(
-          `Naoba was started but nothing is listening on ${DEFAULT_PORT}–${
-            DEFAULT_PORT + PORT_RANGE - 1
-          } yet. ` +
+          `Naoba was started but nothing is listening on ${DEFAULT_PORT}–${DEFAULT_PORT + PORT_RANGE - 1} yet. ` +
             'Give it a moment and call again.',
         )
       }
     }
     const fresh = new AppClient()
-    await fresh.connect(port)
+    await fresh.connect(port, tokenForPort(port))
     await fresh.hello(projectDir, agent)
     client = fresh
     return fresh

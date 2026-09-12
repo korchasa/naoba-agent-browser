@@ -12,6 +12,7 @@ import { appName, isDevVariant } from './variant.ts'
 import { accepted, decideLoginItem, describeLoginItem } from './login.ts'
 import { asPresence, type LoginItemState, type Presence, presenceOf, type SettingsSnapshot } from './preferences.ts'
 import { SettingsWindow } from './settings-window.ts'
+import { clearHandshake, writeHandshake } from './handshake.ts'
 
 // Every page an agent visits is somebody else's, and Electron's warning about
 // their content security policy would drown the console an agent reads.
@@ -86,6 +87,10 @@ async function start(): Promise<void> {
 
   try {
     const port = await hub.start(numberFlag('--port', DEFAULT_PORT))
+    // How a bridge reaches this copy: the port it listens on, and the token it
+    // will demand on the first message. Written before the line below, so a
+    // bridge that starts the moment it sees that line finds the file there.
+    writeHandshake(port, hub.bridgeToken)
     // The bridge reads this line when it starts the app itself.
     process.stdout.write(`naoba listening on 127.0.0.1:${port}\n`)
   } catch (error) {
@@ -124,6 +129,7 @@ async function start(): Promise<void> {
     leaving = true
     event.preventDefault()
     hub.stop()
+    clearHandshake()
     dockHandle?.()
     dockHandle = null
     trayHandle?.destroy()

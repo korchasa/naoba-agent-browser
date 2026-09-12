@@ -5,6 +5,10 @@
  * connection on the loopback interface carrying newline-delimited JSON does the
  * same job with no dependency and no handshake to get wrong. FoxCode needed a
  * WebSocket only because its client was a browser extension.
+ *
+ * The first message of a connection carries the token the application wrote
+ * into its state directory at startup; a connection that shows anything else is
+ * closed before the hub ever hears of it.
  */
 export const PROTOCOL_VERSION = 1
 
@@ -70,7 +74,7 @@ export interface AgentCommand {
 }
 
 export type ClientMessage =
-  | { type: 'hello'; id: number; protocol: number; projectDir: string; agent: AgentDescriptor }
+  | { type: 'hello'; id: number; protocol: number; projectDir: string; agent: AgentDescriptor; token: string }
   | { type: 'call'; id: number; method: string; params?: unknown }
   | { type: 'cancel'; id: number; target: number }
   | { type: 'bye'; id: number }

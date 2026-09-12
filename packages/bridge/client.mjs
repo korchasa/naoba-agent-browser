@@ -16,6 +16,7 @@ export class AppClient {
   #pending = new Map()
   #eventHandlers = new Set()
   #closed = false
+  #token = undefined
 
   constructor({ onEvent } = {}) {
     if (onEvent) this.#eventHandlers.add(onEvent)
@@ -34,7 +35,12 @@ export class AppClient {
     return null
   }
 
-  async connect(port) {
+  /**
+   * `token` is what the application wrote into its state directory for this
+   * run; `handshake.mjs` finds it. Without it the first message is refused and
+   * the connection closed — that is the point of it.
+   */
+  async connect(port, token) {
     // `findPort` answers null when nothing is listening, and passing that
     // straight to node gives ERR_INVALID_ARG_TYPE about `options.port` — an
     // error about an argument, when the fact is that the browser is not up.
@@ -43,6 +49,7 @@ export class AppClient {
         'Naoba is not running: nothing is listening on its port range. Start the application and try again.',
       )
     }
+    this.#token = token
     await new Promise((resolve, reject) => {
       const socket = connect({ port, host: '127.0.0.1' }, () => {
         socket.setNoDelay(true)
@@ -116,7 +123,7 @@ export class AppClient {
   }
 
   hello(projectDir, agent) {
-    return this.#request({ type: 'hello', protocol: PROTOCOL_VERSION, projectDir, agent })
+    return this.#request({ type: 'hello', protocol: PROTOCOL_VERSION, projectDir, agent, token: this.#token })
   }
 
   call(method, params) {

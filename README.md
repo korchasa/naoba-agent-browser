@@ -105,6 +105,19 @@ export NAOBA_DEV_ROOT=/absolute/path/to/this/checkout
 `NAOBA_APP=/path/to/Some.app` names one bundle explicitly and wins over all of
 them.
 
+### The token
+
+Loopback is not a boundary between the programs running on one machine, and the
+browser on the other side of that port holds your logged-in sessions. So the
+application admits only something that can read a file of its own: at every
+start it writes `bridge.json` into its state directory — the port it listens on
+and a token for this run, readable by the owner alone — and it closes any
+connection whose first message does not carry that token. A token from an
+earlier run is worth nothing.
+
+The bridge reads that file itself, so there is nothing to set up. When the
+application runs with a state directory of its own, `NAOBA_STATE_DIR` names it.
+
 ## The development copy
 
 The application can be installed twice: the release copy, and a development
@@ -224,3 +237,11 @@ keep it.
 - `deno task install [dev]` — build, replace in `/Applications` and start
 
 Signing, packaging and distribution happen outside this repository.
+
+## Licence
+
+The source is under the PolyForm Noncommercial License 1.0.0: read it, build
+it, change it, use it for anything that is not commercial. The built
+application sold as Naoba is a separate thing — buying it licenses you to run
+that binary, under the terms in [EULA.md](EULA.md), and nothing in this
+repository grants or withholds that.

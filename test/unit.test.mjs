@@ -18,6 +18,7 @@ import { describePattern, matcherFor } from '../src/main/urls.ts'
 import { buildTree, expandNew, groupKey, projectKey, sortGroups, tabKey } from '../src/renderer/tree.ts'
 import { documentedNames, fullReference, helpFor, namesIn, TOOL_DESCRIPTION } from '../packages/bridge/reference.mjs'
 import { TOOLS } from '../packages/bridge/tools.mjs'
+import { stateDirs, tokenForPort } from '../packages/bridge/handshake.mjs'
 
 test('a project is the repository the agent is working in, not its subdirectory', () => {
   const base = mkdtempSync(join(tmpdir(), 'ab-project-'))
@@ -1172,4 +1173,34 @@ test('a call that has not come back is in the trail, marked as running', () => {
   assert.equal(done.pending, undefined)
   assert.equal(running.pending, true)
   assert.equal(running.ok, false)
+})
+
+test('the bridge takes the token from the copy listening on that port', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'naoba-state-'))
+  writeFileSync(join(dir, 'bridge.json'), JSON.stringify({ port: 8899, token: 'a'.repeat(64) }))
+  const env = { NAOBA_STATE_DIR: dir }
+  assert.equal(tokenForPort(8899, env), 'a'.repeat(64))
+  // A file left behind by a copy that is no longer the one answering must not
+  // be presented as if it were: the port is what ties a token to a copy.
+  assert.throws(() => tokenForPort(8900, env), /was not found/)
+})
+
+test('a bridge that cannot find the token says where it looked', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'naoba-state-'))
+  try {
+    tokenForPort(8899, { NAOBA_STATE_DIR: dir })
+    assert.fail('should have thrown')
+  } catch (error) {
+    assert.equal(error.code, 'token-not-found')
+    assert.match(error.message, new RegExp(dir))
+  }
+})
+
+test('the copies the bridge knows to look in are the three a person can have', () => {
+  const dirs = stateDirs({ HOME: '/home/someone' })
+  assert.deepEqual(dirs, [
+    '/home/someone/Library/Application Support/Naoba',
+    '/home/someone/Library/Application Support/Naoba Dev',
+    '/home/someone/Library/Application Support/Electron',
+  ])
 })

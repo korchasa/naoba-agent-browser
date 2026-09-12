@@ -278,7 +278,9 @@ async function composeWindow(context: {
   // without this the panel comes out transparent and reads as black.
   const canvas = Buffer.alloc(width * height * 4, 0)
   const [b, g, r] = nativeTheme.shouldUseDarkColors ? [0x24, 0x22, 0x21] : [0xf2, 0xef, 0xec]
-  for (let at = 0; at < canvas.length; at += 4) canvas[at] = b, canvas[at + 1] = g, canvas[at + 2] = r, canvas[at + 3] = 255
+  for (let at = 0; at < canvas.length; at += 4) {
+    canvas[at] = b, canvas[at + 1] = g, canvas[at + 2] = r, canvas[at + 3] = 255
+  }
 
   const paste = (piece: { bitmap: Buffer; width: number; height: number } | null, atX: number, atY: number) => {
     if (!piece) return

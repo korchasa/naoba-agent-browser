@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -65,17 +65,22 @@ export async function startApp(
     })
   })
 
+  // The application demands this on the first message of every connection, and
+  // writes it into the state directory before it says it is listening.
+  const { token } = JSON.parse(await readFile(join(userData, 'bridge.json'), 'utf8'))
+
   const clients = []
 
   return {
     port: listening,
     userData,
+    token,
     /** Connect as one agent working in `projectDir`. */
     async agent(projectDir, label = 'test-agent') {
       const client = new AppClient()
       const events = []
       client.onEvent((event) => events.push(event))
-      await client.connect(listening)
+      await client.connect(listening, token)
       const welcome = await client.hello(projectDir, { label, ide: 'test', pid: process.pid })
       clients.push(client)
       return {

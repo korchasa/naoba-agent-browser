@@ -342,7 +342,9 @@ test('a tab an agent opened leaves with the agent', async () => {
   await new Promise((resolve) => setTimeout(resolve, 2000))
   // Earlier tests' agents left tabs of their own that go in this same window,
   // so the watcher's tab is the anchor here, not the count.
-  const after = await watcher.run(`return { tabs: (await api.getTabs()).map((tab) => tab.id), own: (await api.currentTab()).id }`)
+  const after = await watcher.run(
+    `return { tabs: (await api.getTabs()).map((tab) => tab.id), own: (await api.currentTab()).id }`,
+  )
   assert.ok(!after.value.tabs.includes(opened.value), 'the tab should have gone with its agent')
   assert.ok(after.value.tabs.includes(after.value.own), 'the tab of the agent that stayed is untouched')
   watcher.close()
@@ -354,6 +356,43 @@ test('connecting when the browser is not running says exactly that', async () =>
   // `options.port`, which reads as a bug in the caller rather than as a browser
   // that is not up.
   await assert.rejects(() => new AppClient().connect(null), /Naoba is not running/)
+})
+
+test('a connection that does not show the token is refused and closed', async () => {
+  const { AppClient } = await import('../packages/bridge/client.mjs')
+  const client = new AppClient()
+  await client.connect(app.port)
+  await assert.rejects(
+    () => client.hello('/tmp/naoba-tests/no-token', { label: 'stranger', ide: 'test', pid: process.pid }),
+    /did not present the browser token/,
+  )
+  // Refusing the message is half of it; the connection must not stay open for a
+  // second attempt.
+  await waitFor(() => !client.connected, 2000)
+  client.close()
+})
+
+test('a token from another run is refused', async () => {
+  const { AppClient } = await import('../packages/bridge/client.mjs')
+  const client = new AppClient()
+  // The same shape as a real token, so what is being tested is the comparison
+  // and not a length check somewhere before it.
+  await client.connect(app.port, 'f'.repeat(app.token.length))
+  await assert.rejects(
+    () => client.hello('/tmp/naoba-tests/stale-token', { label: 'stale', ide: 'test', pid: process.pid }),
+    /did not present the browser token/,
+  )
+  client.close()
+})
+
+test('the token is written for this run only, and only the owner can read it', async () => {
+  const path = join(app.userData, 'bridge.json')
+  const record = JSON.parse(await readFile(path, 'utf8'))
+  assert.equal(record.port, app.port)
+  assert.equal(record.token, app.token)
+  assert.match(record.token, /^[0-9a-f]{64}$/)
+  const mode = (await stat(path)).mode & 0o777
+  assert.equal(mode, 0o600, `the token file is ${mode.toString(8)}, not 600`)
 })
 
 test('opening a tab without an address says what is missing', async () => {
@@ -741,7 +780,7 @@ test('a field behind a rich editor names the editor to write into instead', asyn
   assert.ok(value.inPage.includes("fill('#notes-editor', value)"), value.inPage)
   // A frame a script built reports about:blank and no name, so the only handle
   // that reaches it is its index in frames().
-  assert.ok(value.nameless.includes('fill(\'body\', value, {frame: 1})'), value.nameless)
+  assert.ok(value.nameless.includes("fill('body', value, {frame: 1})"), value.nameless)
   assert.match(value.descr, /into the editor/)
   assert.equal(value.notes, 'into the contenteditable')
   assert.equal(value.story, 'into the story')
