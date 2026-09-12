@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { identify, normalizeRoot, projectIdFor, resolveProjectRoot } from '../src/main/project.ts'
-import { resolveUploadPaths, within } from '../src/main/files.ts'
+import { resolveUploadPaths, resolveWritePath, within } from '../src/main/files.ts'
 import { KeyedQueue, QueueTimeout } from '../src/main/queue.ts'
 import { LeaseTable } from '../src/main/lease.ts'
 import { toTransferable } from '../src/main/serialize.ts'
@@ -68,6 +68,37 @@ test('a file to upload is taken from the project, whatever spelling of it the ag
   // The project's own missing file is missing, not an intruder.
   await assert.rejects(() => resolveUploadPaths([join(project, 'nope.jpg')], boundary), /no file at/)
   await assert.rejects(() => resolveUploadPaths([project], boundary), /directory/)
+})
+
+test('a screenshot is written inside the project, and nowhere else', async () => {
+  const project = mkdtempSync(join(tmpdir(), 'ab-write-'))
+  const elsewhere = mkdtempSync(join(tmpdir(), 'ab-elsewhere-write-'))
+  // The directory this browser keeps its own screenshots in, spelled as the
+  // application spells it: it does not exist until the first picture lands.
+  const shots = join(realpathSync(mkdtempSync(join(tmpdir(), 'ab-shots-'))), 'screenshots')
+  symlinkSync(elsewhere, join(project, 'out'))
+  const boundary = { roots: [realpathSync(project), shots], describe: 'the project' }
+
+  assert.equal(await resolveWritePath(join(project, 'page.png'), boundary), join(realpathSync(project), 'page.png'))
+  // A path with no root of its own belongs to the project, and the directory it
+  // names need not exist — most screenshots land in one that does not.
+  assert.equal(await resolveWritePath('shots/page.png', boundary), join(realpathSync(project), 'shots', 'page.png'))
+  assert.equal(await resolveWritePath(join(shots, 'page.png'), boundary), join(shots, 'page.png'))
+  // A root spelled through a symlink — `/tmp` is `/private/tmp`, and a root that
+  // does not exist yet is left unresolved by `identify()` — still owns its own
+  // files, because both sides are resolved as far as the directories that exist.
+  const unresolved = { roots: [project], describe: 'the project' }
+  assert.equal(
+    await resolveWritePath('page.png', unresolved),
+    join(realpathSync(project), 'page.png'),
+  )
+
+  await assert.rejects(() => resolveWritePath(join(elsewhere, 'page.png'), boundary), /outside this project/)
+  // Inside the project until the symlink is followed.
+  await assert.rejects(() => resolveWritePath(join(project, 'out', 'page.png'), boundary), /outside this project/)
+  await assert.rejects(() => resolveWritePath(`${project}-evil/page.png`, boundary), /outside this project/)
+  await assert.rejects(() => resolveWritePath(project, boundary), /directory/)
+  await assert.rejects(() => resolveWritePath('', boundary), /takes a path/)
 })
 
 test('a directory outside a repository is its own project', () => {

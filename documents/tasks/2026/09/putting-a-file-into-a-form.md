@@ -81,7 +81,9 @@ any path the agent names and writes the PNG there (`src/main/api.ts:369`,
 task is bounding. Somebody reading the two side by side will ask why. The answer
 is the one above — writing locally and exfiltrating are different operations —
 but whether the write boundary earns a run of its own is the owner's decision,
-not this task's (owner, 2026-09-12: recorded, not scheduled).
+not this task's (owner, 2026-09-12: recorded, not scheduled). **Answered the
+same day:** the owner chose the symmetric boundary, and `screenshot(path)` now
+writes only where `setFiles` reads — see `a-screenshot-stays-in-the-project`.
 
 Variants weighed, and the one chosen:
 

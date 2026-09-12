@@ -98,18 +98,41 @@ test('with the disguise off, a page sees an automated client and says so', async
 
 test('a screenshot reaches the agent as a file, even with no window on screen', async () => {
   const agent = await app.agent(PROJECT_A, 'shot')
-  const target = join(await mkdtemp(join(tmpdir(), 'naoba-shot-')), 'page.png')
+  // Inside the project, because that is as far as a picture may be written —
+  // the same boundary setFiles reads within, for the reason in `files.ts`.
+  const target = join(PROJECT_A, 'shots', 'page.png')
   const outcome = await agent.run(`
     await api.navigate(${JSON.stringify(origin + '/page.html')})
     return await api.screenshot(${JSON.stringify(target)})
   `)
-  assert.equal(outcome.value, target)
+  // The path comes back resolved: `/tmp` is a symlink to `/private/tmp`, and the
+  // boundary compares resolved paths, so that is the file that was written.
+  assert.match(outcome.value, /naoba-tests\/project-a\/shots\/page\.png$/)
   // A real page is a couple of hundred kilobytes of base64, which the wire
   // truncates and no agent wants to read; and Chromium refuses capturePage for
   // a window nobody is looking at, which is how this browser normally runs.
-  const bytes = await readFile(target)
+  const bytes = await readFile(outcome.value)
   assert.equal(bytes.subarray(1, 4).toString(), 'PNG')
   assert.ok(bytes.length > 1000, `the picture is only ${bytes.length} bytes`)
+  agent.close()
+})
+
+test('a screenshot outside the project is refused, and says where it may go', async () => {
+  const agent = await app.agent(PROJECT_A, 'shot-out')
+  const outside = join(await mkdtemp(join(tmpdir(), 'naoba-shot-out-')), 'page.png')
+  const outcome = await agent.run(`
+    await api.navigate(${JSON.stringify(origin + '/page.html')})
+    try {
+      return await api.screenshot(${JSON.stringify(outside)})
+    } catch (error) {
+      return error.message
+    }
+  `)
+  assert.match(outcome.value, /outside this project/)
+  // A refusal that does not say where a picture may go leaves an agent guessing.
+  assert.match(outcome.value, /screenshot\(\) with no path/)
+  // The refusal is a refusal: nothing was written on the way to it.
+  await assert.rejects(() => readFile(outside))
   agent.close()
 })
 

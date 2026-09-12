@@ -15,14 +15,20 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
  *
  * So the boundary is the directory this application already reasons in: the
  * project. A file from anywhere else is copied in first, and that copy runs in
- * the agent's own tools, where the person is already asked. The neighbouring
- * `screenshot(path)` writes anywhere, which is looser — writing a picture onto
- * the person's own disk and handing their file to a website are not the same
- * operation, and whether that write deserves a boundary of its own is a
- * separate question (recorded 2026-09-12, not answered here).
+ * the agent's own tools, where the person is already asked.
+ *
+ * `screenshot(path)` is the same argument with the sides swapped, and it gets
+ * the same boundary (decided 2026-09-12, after being left open for a day). The
+ * two operations are not the same — handing a file to a website gives it away,
+ * writing a picture destroys whatever the path already held — but the reason a
+ * boundary is needed at all does not change: the path is chosen by a scenario,
+ * a scenario is often written from page text, and nobody is asked before the
+ * write. Free rein over `writeFile` plus `mkdir -p` is enough to overwrite any
+ * file this application can reach, and PNG bytes over somebody's notes is a
+ * loss whatever the intent behind the path was.
  */
-export interface UploadBoundary {
-  /** Directories a file may come from. The first is the project itself. */
+export interface FileBoundary {
+  /** Directories a file may come from, and go to. The first is the project. */
   roots: string[]
   /** The boundary in the words an agent should read it in. */
   describe: string
@@ -50,7 +56,7 @@ export function within(root: string, candidate: string): boolean {
  * not. A relative path is read against the project, which is the only directory
  * an agent could mean — the browser's own working directory means nothing to it.
  */
-export async function resolveUploadPaths(asked: string[], boundary: UploadBoundary): Promise<string[]> {
+export async function resolveUploadPaths(asked: string[], boundary: FileBoundary): Promise<string[]> {
   const roots = await Promise.all(boundary.roots.map(canonical))
   const project = roots[0] ?? resolve('.')
   const inside = (path: string) => roots.some((root) => within(root, path))
@@ -98,6 +104,38 @@ export async function resolveUploadPaths(asked: string[], boundary: UploadBounda
 }
 
 /**
+ * Where a screenshot may land. The same directories `setFiles` reads from, for
+ * the reason in this module's header.
+ *
+ * The file itself is almost never there yet — that is the ordinary case, not an
+ * error — so the judgement runs over the directories that do exist. A path is
+ * followed before it is judged: a symlink inside the project pointing out of it
+ * is out of it.
+ */
+export async function resolveWritePath(asked: string, boundary: FileBoundary): Promise<string> {
+  if (typeof asked !== 'string' || asked.trim() === '') {
+    throw new Error('screenshot takes a path, or nothing at all: screenshot("shots/page.png")')
+  }
+  const roots = await Promise.all(boundary.roots.map(canonical))
+  const project = roots[0] ?? resolve('.')
+  const wanted = resolve(project, asked)
+  const real = await resolveThroughExisting(wanted)
+  if (!roots.some((root) => within(root, real))) {
+    const link = real === wanted ? '' : ` (it leads to ${real})`
+    throw new Error(
+      `${asked} is outside this project${link}, so screenshot will not write there. It writes under ` +
+        `${boundary.describe}. Call screenshot() with no path and one is chosen for you inside the project, ` +
+        `or name a path inside it.`,
+    )
+  }
+  const info = await stat(real).catch(() => null)
+  if (info?.isDirectory()) {
+    throw new Error(`${asked} is a directory, and screenshot writes a file — name one inside it`)
+  }
+  return real
+}
+
+/**
  * The path with every directory that exists resolved, and the missing tail left
  * as written. `realpath` refuses a path that is not there, and the answer to
  * "may this file be read" must not depend on whether it happens to exist.
@@ -118,11 +156,15 @@ async function resolveThroughExisting(path: string): Promise<string> {
   }
 }
 
-/** A directory that may not exist yet — the screenshot one is made on first use. */
+/**
+ * A root in the spelling the candidates are compared against. It may not exist
+ * yet — the screenshot directory is made on first use — and it may be named
+ * through a symlink, which is the ordinary case rather than the odd one: a
+ * project under `/tmp` really lives in `/private/tmp`, and `identify()` leaves
+ * the root unresolved when the directory is not there. Resolving only as far as
+ * the directories that exist gets both: without it a root spelled `/tmp/...`
+ * refuses its own files, since the candidate beside it has been resolved.
+ */
 async function canonical(path: string): Promise<string> {
-  try {
-    return await realpath(path)
-  } catch {
-    return resolve(path)
-  }
+  return await resolveThroughExisting(resolve(path))
 }

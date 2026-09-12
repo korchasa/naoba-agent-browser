@@ -1,6 +1,6 @@
 import type { AgentHandle, ProjectContext } from './context.ts'
 import type { ProjectIdentity } from './project.ts'
-import { resolveUploadPaths, type UploadBoundary } from './files.ts'
+import { type FileBoundary, resolveUploadPaths, resolveWritePath } from './files.ts'
 import type { Tab } from './tab.ts'
 import { pause } from './tab.ts'
 import type { Holder } from './lease.ts'
@@ -155,7 +155,7 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
           'setFiles does not reach inside a frame yet: the input it takes has to be in the page itself',
         )
       }
-      const files = await resolveUploadPaths(Array.isArray(paths) ? paths : [paths], uploadBoundary(context.identity))
+      const files = await resolveUploadPaths(Array.isArray(paths) ? paths : [paths], fileBoundary(context.identity))
       const many = files.length === 1 ? '1 file' : `${files.length} files`
       // No `options` for guard: the frame it would enter is refused above.
       return guard(`setFiles(${selector}, ${many})`, (tab) => tab.setFiles(selector, files, t(options)))
@@ -402,7 +402,9 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
      * carries in one value, and more than any agent wants to read as text.
      */
     async screenshot(path?: string) {
-      const target = path ?? defaultShotPath(context.identity.id)
+      const target = path === undefined
+        ? defaultShotPath(context.identity.id)
+        : await resolveWritePath(path, fileBoundary(context.identity))
       return guard(`screenshot() to ${target}`, (tab) => tab.screenshot(target))
     },
 
@@ -710,12 +712,12 @@ function shotDir(projectId: string): string {
 }
 
 /**
- * Where `setFiles` may read from: the project's own directory, and the
- * directory this application writes that project's screenshots into — so a
- * picture this agent just took can be attached to a form without a copy, while
- * staying inside the project the whole way.
+ * What `setFiles` may read and `screenshot` may write: the project's own
+ * directory, and the directory this application writes that project's
+ * screenshots into — so a picture this agent just took can be attached to a
+ * form without a copy, while staying inside the project the whole way.
  */
-function uploadBoundary(identity: ProjectIdentity): UploadBoundary {
+function fileBoundary(identity: ProjectIdentity): FileBoundary {
   const shots = shotDir(identity.id)
   return {
     roots: [identity.root, shots],

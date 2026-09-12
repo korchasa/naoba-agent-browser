@@ -155,7 +155,12 @@ state must go through the project's own session, never through
   answer to "may this be read" must not fall back to the unresolved spelling.
   `src/main/files.ts` resolves through the directories that do exist and leaves
   the missing tail as written; before it did, a missing file inside the project
-  was refused for being outside it (caught by its own test, 2026-09-12).
+  was refused for being outside it (caught by its own test, 2026-09-12). The
+  root needs the same treatment, which is the side this was met from second:
+  `identify()` falls back to the unresolved spelling when the directory is not
+  there, so a root of `/tmp/work` compared against a candidate already resolved
+  to `/private/tmp/work` refused the project's own directory. Resolve both sides
+  the same way, or neither.
 - **A fixture that answers instantly cannot prove a wait.** The test server
   hands a whole page back in one write, so an address commits and its document
   is readable in the same breath — and a test that waits for a page and then
