@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert'
 import { after, before, test } from 'node:test'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -13,16 +13,33 @@ const here = dirname(fileURLToPath(import.meta.url))
 let app
 let fixture
 let origin
+/**
+ * A project directory that really exists, because `identify()` resolves its
+ * root through `realpath` — on macOS that turns `/var/...` into `/private/var/...`,
+ * and a boundary check comparing the two as strings would refuse the project's
+ * own files.
+ */
+let uploadProject
+let outsideDir
 
 before(async () => {
   fixture = await startFixtureServer()
   origin = fixture.origin
   app = await startApp({ port: 8951 })
+  uploadProject = await mkdtemp(join(tmpdir(), 'naoba-project-'))
+  outsideDir = await mkdtemp(join(tmpdir(), 'naoba-outside-'))
+  await writeFile(join(uploadProject, 'note.txt'), 'inside the project\n')
+  await writeFile(join(uploadProject, 'second.txt'), 'also inside\n')
+  await writeFile(join(outsideDir, 'secret.txt'), 'not yours\n')
+  // A path that is inside the project only until it is followed.
+  await symlink(join(outsideDir, 'secret.txt'), join(uploadProject, 'link-out.txt'))
 })
 
 after(async () => {
   await app?.stop()
   fixture?.server.close()
+  await rm(uploadProject, { recursive: true, force: true })
+  await rm(outsideDir, { recursive: true, force: true })
 })
 
 const PROJECT_A = '/tmp/naoba-tests/project-a'
@@ -590,6 +607,116 @@ test('a login made by hand survives the tab being closed', async () => {
     outcome.value.includes('persisted'),
     `expected the cookie to outlive the tab, got ${JSON.stringify(outcome.value)}`,
   )
+  agent.close()
+})
+
+test('a file reaches a hidden input, and the page hears about it', async () => {
+  const agent = await app.agent(uploadProject, 'files')
+  const note = join(uploadProject, 'note.txt')
+  const outcome = await agent.run(`
+    await api.navigate(${JSON.stringify(origin + '/page.html')})
+    const files = await api.setFiles('#hidden-file', ${JSON.stringify(note)})
+    return { files, events: await api.getText('#file-events') }
+  `)
+  // The input every photo-upload site actually uses is display:none, which is
+  // why nothing on this path may ask for size, visibility or focus.
+  const size = (await stat(note)).size
+  assert.deepEqual(outcome.value.files.map((f) => ({ name: f.name, size: f.size })), [{ name: 'note.txt', size }])
+  // A site that reacts only to `change` would ignore a file that arrived
+  // without one, so this is the assertion the helper is really about.
+  assert.match(outcome.value.events, /hidden-file:change:isTrusted=true:note\.txt/)
+  assert.match(outcome.value.events, /hidden-file:input:/)
+  agent.close()
+})
+
+test('several files go in at once, and a ref names the input', async () => {
+  const agent = await app.agent(uploadProject, 'files-many')
+  const outcome = await agent.run(`
+    await api.navigate(${JSON.stringify(origin + '/page.html')})
+    const tree = await api.snapshot('#attach')
+    const ref = /\\[(ref_\\d+)\\]/.exec(tree)[1]
+    const files = await api.setFiles('[' + ref + ']', [
+      ${JSON.stringify(join(uploadProject, 'note.txt'))},
+      ${JSON.stringify(join(uploadProject, 'second.txt'))},
+    ])
+    return { ref, files: files.map((f) => f.name), events: await api.getText('#file-events') }
+  `)
+  // The printed form, brackets included — the one an agent has in hand.
+  assert.match(outcome.value.ref, /^ref_\d+$/)
+  assert.deepEqual([...outcome.value.files], ['note.txt', 'second.txt'])
+  assert.match(outcome.value.events, /many-files:change/)
+  agent.close()
+})
+
+test('a path outside the project is refused by name, and so is a symlink out of it', async () => {
+  const agent = await app.agent(uploadProject, 'files-boundary')
+  const outcome = await agent.run(`
+    await api.navigate(${JSON.stringify(origin + '/page.html')})
+    const tried = async (paths) => {
+      try {
+        await api.setFiles('#hidden-file', paths)
+        return 'no error'
+      } catch (error) {
+        return error.message
+      }
+    }
+    return {
+      outside: await tried(${JSON.stringify(join(outsideDir, 'secret.txt'))}),
+      symlink: await tried(${JSON.stringify(join(uploadProject, 'link-out.txt'))}),
+      missing: await tried(${JSON.stringify(join(uploadProject, 'nothing-here.txt'))}),
+      directory: await tried(${JSON.stringify(uploadProject)}),
+      events: await api.getText('#file-events'),
+    }
+  `)
+  // Every refusal names the path, and the boundary one names the way out.
+  assert.match(outcome.value.outside, /secret\.txt/)
+  assert.match(outcome.value.outside, /outside this project/)
+  assert.match(outcome.value.outside, /copy/i)
+  // Following the link is the whole point: it is inside the project until it is.
+  assert.match(outcome.value.symlink, /outside this project/)
+  assert.match(outcome.value.missing, /no file/i)
+  assert.match(outcome.value.directory, /directory/i)
+  // A refused path puts nothing into the page.
+  assert.equal(outcome.value.events, 'none')
+  agent.close()
+})
+
+test('an element that is not a file input says what it is instead', async () => {
+  const agent = await app.agent(uploadProject, 'files-element')
+  const outcome = await agent.run(`
+    await api.navigate(${JSON.stringify(origin + '/page.html')})
+    const tried = async (sel, paths) => {
+      try {
+        await api.setFiles(sel, paths)
+        return 'no error'
+      } catch (error) {
+        return error.message
+      }
+    }
+    return {
+      button: await tried('#go', ${JSON.stringify(join(uploadProject, 'note.txt'))}),
+      text: await tried('#field', ${JSON.stringify(join(uploadProject, 'note.txt'))}),
+      tooMany: await tried('#hidden-file', [
+        ${JSON.stringify(join(uploadProject, 'note.txt'))},
+        ${JSON.stringify(join(uploadProject, 'second.txt'))},
+      ]),
+      inFrame: await (async () => {
+        try {
+          await api.setFiles('#hidden-file', ${JSON.stringify(join(uploadProject, 'note.txt'))}, { frame: 0 })
+          return 'no error'
+        } catch (error) {
+          return error.message
+        }
+      })(),
+    }
+  `)
+  // The file input is usually hidden next to the thing the agent can see, so
+  // the message has to point at it rather than only say no.
+  assert.match(outcome.value.button, /button/)
+  assert.match(outcome.value.button, /input\[type=file\]/)
+  assert.match(outcome.value.text, /type=text/)
+  assert.match(outcome.value.tooMany, /multiple/)
+  assert.match(outcome.value.inFrame, /frame/)
   agent.close()
 })
 

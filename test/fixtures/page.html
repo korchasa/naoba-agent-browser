@@ -19,6 +19,11 @@
     <iframe id="inner" src="/inner.html" style="width: 220px; height: 90px; border: 1px solid #999"></iframe>
     <div id="late"></div>
     <a id="link" href="/second.html">second page</a>
+    <form id="attach">
+      <input id="hidden-file" type="file" style="display: none" />
+      <input id="many-files" type="file" title="photos" multiple />
+    </form>
+    <p id="file-events">none</p>
     <div id="zoomed" style="margin-top: 40px; width: 120px; height: 40px; background: #cfc">zoom target</div>
     <p id="zoomhit">no</p>
     <script>
@@ -59,6 +64,19 @@
         document.getElementById('heading').dataset.loaded = d.ok
       })
     })
+    // A file placed through the DevTools protocol is only useful if the page
+    // hears about it the way it hears about a person picking one: sites react to
+    // `change`, not to the value being there.
+    const fileEvents = []
+    for (const id of ['hidden-file', 'many-files']) {
+      for (const kind of ['input', 'change']) {
+        document.getElementById(id).addEventListener(kind, (event) => {
+          const names = [...event.target.files].map((f) => f.name).join('|')
+          fileEvents.push(id + ':' + kind + ':isTrusted=' + event.isTrusted + ':' + names)
+          document.getElementById('file-events').textContent = fileEvents.join(', ')
+        })
+      }
+    }
     document.getElementById('link').addEventListener('click', (e) => {
       if (e.isTrusted) document.body.dataset.linkTrusted = 'yes'
     })

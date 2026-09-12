@@ -69,6 +69,11 @@ Acting (real input events — the page sees isTrusted: true)
   api.fill(sel, value)               replaces the field's contents
   api.type(sel, text)                appends, the way typing does
   api.select(sel, value)             a <select>
+  api.setFiles(sel, path | paths)    a file into an input[type=file] — the hidden
+                                     one behind a "choose a photo" button too,
+                                     which is the one thing fill cannot do. Reads
+                                     only files inside this project's directory:
+                                     copy anything else in first
   api.check(sel) / api.uncheck(sel)
   api.hover(sel) / api.press(key, modifiers) / api.scrollTo(x, y) / api.scrollBy(dx, dy)
   api.drag(from, to, {steps})        press, move, release — a canvas, a slider, a

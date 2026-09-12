@@ -1,4 +1,6 @@
 import type { AgentHandle, ProjectContext } from './context.ts'
+import type { ProjectIdentity } from './project.ts'
+import { resolveUploadPaths, type UploadBoundary } from './files.ts'
 import type { Tab } from './tab.ts'
 import { pause } from './tab.ts'
 import type { Holder } from './lease.ts'
@@ -135,6 +137,27 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
           value,
         )
       }, options)
+    },
+
+    /**
+     * Put a local file into a file input — including the hidden one behind a
+     * styled "choose a photo" button, which is exactly what `fill` and `click`
+     * cannot reach: a file input's value is not settable from script, and the
+     * click path refuses a zero-size element.
+     *
+     * Only files inside this project are read; see `UploadBoundary` in
+     * `files.ts` for why, and what an agent is told instead.
+     */
+    async setFiles(selector: string, paths: string | string[], options?: ApiOptions) {
+      if (options?.frame !== undefined) {
+        throw new Error(
+          'setFiles does not reach inside a frame yet: the input it takes has to be in the page itself',
+        )
+      }
+      const files = await resolveUploadPaths(Array.isArray(paths) ? paths : [paths], uploadBoundary(context.identity))
+      const many = files.length === 1 ? '1 file' : `${files.length} files`
+      // No `options` for guard: the frame it would enter is refused above.
+      return guard(`setFiles(${selector}, ${many})`, (tab) => tab.setFiles(selector, files, t(options)))
     },
 
     async check(selector: string, options?: ApiOptions) {
@@ -625,5 +648,23 @@ const SNAPSHOT_FN = `(rootSel) => {
  */
 function defaultShotPath(projectId: string): string {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-')
-  return join(app.getPath('userData'), 'screenshots', projectId, `${stamp}.png`)
+  return join(shotDir(projectId), `${stamp}.png`)
+}
+
+function shotDir(projectId: string): string {
+  return join(app.getPath('userData'), 'screenshots', projectId)
+}
+
+/**
+ * Where `setFiles` may read from: the project's own directory, and the
+ * directory this application writes that project's screenshots into — so a
+ * picture this agent just took can be attached to a form without a copy, while
+ * staying inside the project the whole way.
+ */
+function uploadBoundary(identity: ProjectIdentity): UploadBoundary {
+  const shots = shotDir(identity.id)
+  return {
+    roots: [identity.root, shots],
+    describe: `${identity.root}, and this project's own screenshots in ${shots}`,
+  }
 }

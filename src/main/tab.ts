@@ -51,6 +51,41 @@ const INPUT_SETTLE_MS = 16
 const REF_SELECTOR = /^\[?ref_(\d+)\]?$/
 
 /**
+ * The resolver the page answers selectors with, in one place because it is
+ * installed in two: every `call` defines it, and `setFiles` evaluates it
+ * through the DevTools protocol to get a handle on the node rather than a
+ * value. It is defined per call and never installed once, because a single-page
+ * application replaces the document without ever reloading and a helper left at
+ * load time quietly disappears with it. A `ref_N` comes from the last snapshot
+ * and resolves against the list it left behind.
+ */
+const PAGE_HELPERS = `
+      window.__abRefIndex = (sel) => {
+        if (typeof sel !== 'string') return null
+        const found = ${REF_SELECTOR}.exec(sel)
+        return found ? Number(found[1]) : null
+      }
+      window.__abQuery = (sel) => {
+        if (sel === null || sel === undefined) return null
+        if (typeof sel !== 'string') return sel
+        const index = window.__abRefIndex(sel)
+        if (index !== null) return (window.__abRefs || [])[index] || null
+        return document.querySelector(sel)
+      }
+      // Everything a selector answers to. A ref names exactly one node, and
+      // asking the document instead gives two different answers to the same
+      // question: \`[ref_7]\` is a valid selector that matches nothing, while
+      // \`ref_7\` is not a selector at all and throws.
+      window.__abAll = (sel) => {
+        if (window.__abRefIndex(sel) !== null) {
+          const one = window.__abQuery(sel)
+          return one ? [one] : []
+        }
+        return [...document.querySelectorAll(sel)]
+      }
+`
+
+/**
  * One page. Everything an agent does lands here in the end.
  *
  * Interaction goes through `sendInputEvent` rather than synthetic DOM events,
@@ -314,34 +349,8 @@ export class Tab {
   /** Run a function body in the page with arguments, without string-splicing the caller's data in. */
   async call<T = unknown>(fn: string, ...args: unknown[]): Promise<T> {
     const payload = JSON.stringify(args)
-    // `__abQuery` is defined on every call rather than injected once, because a
-    // single-page application replaces the document without ever reloading, and
-    // a helper installed at load time quietly disappears with it. A `ref_N`
-    // comes from the last snapshot and resolves against the list it left behind.
     const wrapped = `(async () => {
-      window.__abRefIndex = (sel) => {
-        if (typeof sel !== 'string') return null
-        const found = ${REF_SELECTOR}.exec(sel)
-        return found ? Number(found[1]) : null
-      }
-      window.__abQuery = (sel) => {
-        if (sel === null || sel === undefined) return null
-        if (typeof sel !== 'string') return sel
-        const index = window.__abRefIndex(sel)
-        if (index !== null) return (window.__abRefs || [])[index] || null
-        return document.querySelector(sel)
-      }
-      // Everything a selector answers to. A ref names exactly one node, and
-      // asking the document instead gives two different answers to the same
-      // question: \`[ref_7]\` is a valid selector that matches nothing, while
-      // \`ref_7\` is not a selector at all and throws.
-      window.__abAll = (sel) => {
-        if (window.__abRefIndex(sel) !== null) {
-          const one = window.__abQuery(sel)
-          return one ? [one] : []
-        }
-        return [...document.querySelectorAll(sel)]
-      }
+      ${PAGE_HELPERS}
       const __args = ${payload}
       return await (${fn}).apply(null, __args)
     })()`
@@ -502,6 +511,65 @@ export class Tab {
 
   async #input(method: string, params: Record<string, unknown>): Promise<void> {
     await this.wc.debugger.sendCommand(method, params)
+  }
+
+  /**
+   * Put files into a file input, through the browser rather than through the page.
+   *
+   * A file input's value cannot be set from script — that is a browser rule and
+   * not a gap — so this is the one route there is, and it is also the only one
+   * that works on the input these sites actually use: `display: none` behind a
+   * styled button. Nothing on this path may ask for size, visibility or focus
+   * for that reason. Because it is the browser placing the file, the page gets
+   * its own `input` and `change` events and reacts as it would to a person
+   * picking one, which is what a site listening for `change` needs.
+   *
+   * The node is resolved in the page and handed over as a remote object, not
+   * looked up with `DOM.querySelector`: a `[ref_7]` names an entry in
+   * `window.__abRefs`, which no CSS selector can reach.
+   */
+  async setFiles(selector: string, paths: string[], timeoutMs: number): Promise<{ name: string; size: number }[]> {
+    await this.waitFor(selector, timeoutMs, false)
+    const found = await this.call<{ tag: string; type: string; multiple: boolean } | null>(
+      `(sel) => {
+        const el = window.__abQuery(sel)
+        if (!el) return null
+        return { tag: el.tagName.toLowerCase(), type: String(el.type || '').toLowerCase(), multiple: !!el.multiple }
+      }`,
+      selector,
+    )
+    if (!found) throw new Error(this.#nothingMatched(selector, timeoutMs, false))
+    if (found.tag !== 'input' || found.type !== 'file') {
+      const what = found.tag === 'input' ? `an <input type=${found.type || 'text'}>` : `a <${found.tag}>`
+      throw new Error(
+        `${selector} is ${what}, not an input[type=file]. The file input is usually hidden next to the button ` +
+          `that opens the picker: look for input[type=file] in the same form.`,
+      )
+    }
+    if (paths.length > 1 && !found.multiple) {
+      throw new Error(
+        `${selector} takes one file at a time — it carries no multiple attribute, and ${paths.length} were given`,
+      )
+    }
+    this.#attachDebugger()
+    const handle = await this.wc.debugger.sendCommand('Runtime.evaluate', {
+      expression: `(() => {${PAGE_HELPERS}
+        return window.__abQuery(${JSON.stringify(selector)})
+      })()`,
+    }) as { result?: { objectId?: string } }
+    const objectId = handle.result?.objectId
+    if (!objectId) throw new Error(`${selector} was there a moment ago and is not now — take a fresh snapshot`)
+    try {
+      await this.wc.debugger.sendCommand('DOM.setFileInputFiles', { objectId, files: paths })
+    } finally {
+      await this.wc.debugger.sendCommand('Runtime.releaseObject', { objectId }).catch(() => undefined)
+    }
+    // What the input holds now, read back from the page: evidence the files
+    // arrived, in the page's own terms rather than ours.
+    return await this.call<{ name: string; size: number }[]>(
+      `(sel) => [...(window.__abQuery(sel)?.files ?? [])].map((f) => ({ name: f.name, size: f.size }))`,
+      selector,
+    )
   }
 
   async focus(selector: string, timeoutMs: number): Promise<void> {

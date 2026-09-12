@@ -1,10 +1,11 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import { createContext, Script } from 'node:vm'
-import { mkdirSync, mkdtempSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { identify, normalizeRoot, projectIdFor, resolveProjectRoot } from '../src/main/project.ts'
+import { resolveUploadPaths, within } from '../src/main/files.ts'
 import { KeyedQueue, QueueTimeout } from '../src/main/queue.ts'
 import { LeaseTable } from '../src/main/lease.ts'
 import { toTransferable } from '../src/main/serialize.ts'
@@ -21,6 +22,48 @@ test('a project is the repository the agent is working in, not its subdirectory'
 
   assert.equal(resolveProjectRoot(join(base, 'src', 'deep')), resolveProjectRoot(base))
   assert.equal(identify(join(base, 'src')).id, identify(base).id)
+})
+
+test("a sibling whose name starts with the project's is not inside it", () => {
+  // `startsWith` would admit it, which is why the check is `relative`.
+  assert.equal(within('/a/project', '/a/project/photo.jpg'), true)
+  assert.equal(within('/a/project', '/a/project'), true)
+  assert.equal(within('/a/project', '/a/project-evil/photo.jpg'), false)
+  assert.equal(within('/a/project', '/a'), false)
+  assert.equal(within('/a/project', '/elsewhere/photo.jpg'), false)
+})
+
+test('a file to upload is taken from the project, whatever spelling of it the agent used', async () => {
+  // On macOS `mkdtemp` hands back a path under /var, which is a symlink to
+  // /private/var — and `identify()` resolves the project root through realpath.
+  // So the two sides of this check are spelled differently for the same
+  // directory, which is exactly the case a string comparison gets wrong.
+  const project = mkdtempSync(join(tmpdir(), 'ab-upload-'))
+  const elsewhere = mkdtempSync(join(tmpdir(), 'ab-elsewhere-'))
+  writeFileSync(join(project, 'photo.jpg'), 'bytes')
+  writeFileSync(join(elsewhere, 'secret'), 'not yours')
+  symlinkSync(join(elsewhere, 'secret'), join(project, 'link-out'))
+  const boundary = { roots: [realpathSync(project)], describe: 'the project' }
+
+  assert.deepEqual(
+    await resolveUploadPaths([join(project, 'photo.jpg')], boundary),
+    [join(realpathSync(project), 'photo.jpg')],
+  )
+  // A path with no root of its own belongs to the project, not to whatever
+  // directory this process happens to be started in.
+  assert.deepEqual(await resolveUploadPaths(['photo.jpg'], boundary), [join(realpathSync(project), 'photo.jpg')])
+
+  await assert.rejects(
+    () => resolveUploadPaths([join(elsewhere, 'secret')], boundary),
+    /outside this project/,
+  )
+  // Inside the project until it is followed.
+  await assert.rejects(() => resolveUploadPaths([join(project, 'link-out')], boundary), /outside this project/)
+  // A neighbour whose name merely begins with the project's.
+  await assert.rejects(() => resolveUploadPaths([`${project}-evil/photo.jpg`], boundary), /outside this project/)
+  // The project's own missing file is missing, not an intruder.
+  await assert.rejects(() => resolveUploadPaths([join(project, 'nope.jpg')], boundary), /no file at/)
+  await assert.rejects(() => resolveUploadPaths([project], boundary), /directory/)
 })
 
 test('a directory outside a repository is its own project', () => {
