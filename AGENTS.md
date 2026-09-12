@@ -108,6 +108,19 @@ state must go through the project's own session, never through
   the register of admitted projects is shown and forgotten; the panel keeps only
   what is about the window in front of you — the grip, and the order of the
   agents.
+- **Where the application shows itself is the person's choice, and the menu bar
+  is the default.** macOS has one knob for it, `NSApplicationActivationPolicy`
+  — Electron spells it `app.dock.show()`/`hide()` — and it says only whether
+  there is a Dock icon; the menu-bar icon is a `Tray` object that exists or does
+  not. The two are drawn as one row of three (`Presence` and `presenceOf` in
+  `preferences.ts`), not as two switches: the fourth combination leaves the
+  person no icon to reach the window by, and refusing to turn the second switch
+  off would contradict the rule above about a value under its floor.
+  `showApplication` in `main.ts` applies the answer at start-up and again on
+  every change, so nothing in it may assume it runs once. Proved on the running
+  application (2026-09-12): `background only` of the process and `number of menu
+  bars` in System Events follow each of the three, a restart comes back where it
+  was left, and a hand-edited value in `settings.json` starts in the menu bar.
 - **The login item is offered once, and then the OS decides.** An installed
   copy (`app.isPackaged`) registers itself with `app.setLoginItemSettings` on
   its first start and writes `loginItemOffered` — only after

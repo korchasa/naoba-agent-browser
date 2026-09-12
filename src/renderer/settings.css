@@ -147,6 +147,36 @@ button:active {
   left: calc(100% - 1.45rem + 2px);
 }
 
+/* A choice of a few: the segments in one track, the current one lifted out of
+   it. The whole track is one control, so it carries the border and the
+   segments carry none. */
+.segmented {
+  flex: none;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--fill);
+  border-radius: var(--radius-sm);
+}
+.segmented .segment {
+  min-height: 1.85rem;
+  padding: 0 10px;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+.segmented .segment:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+}
+.segmented .segment.on {
+  color: var(--text);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
 input.number {
   flex: none;
   width: 4.5rem;

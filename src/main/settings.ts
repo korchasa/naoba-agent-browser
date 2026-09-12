@@ -18,6 +18,11 @@ interface Settings {
   loginItemOffered?: true
   /** How long a departed agent's tabs stay open, in case its session comes back. */
   orphanCloseMs?: number
+  /**
+   * Where the application shows itself: the menu bar, the Dock, or both. Read
+   * through `asPresence`, so a hand-edited file cannot leave it nowhere.
+   */
+  presence?: string
 }
 
 function file(): string {

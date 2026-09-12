@@ -22,6 +22,7 @@ declare const ab: {
   announceAutomation(on: boolean): Promise<unknown>
   panelWidth(width: number): Promise<unknown>
   orphanCloseMs(ms: number): Promise<unknown>
+  presence(value: string): Promise<unknown>
   forgetProject(root: string): Promise<unknown>
   on(channel: 'settings', handler: (payload: unknown) => void): () => void
 }
@@ -60,8 +61,20 @@ function renderSetting(row: Row): HTMLElement {
   const text = el('div', 'text')
   text.append(el('span', 'label', row.label), el('span', 'hint', row.hint))
   node.append(text)
-  node.append(row.kind === 'switch' ? switchControl(row.on, (on) => void commit(row.key, on)) : amount(row))
+  node.append(control(row))
   return node
+}
+
+/** The row's own control, one per kind of preference there is. */
+function control(row: Row): HTMLElement {
+  switch (row.kind) {
+    case 'switch':
+      return switchControl(row.on, (on) => void commit(row.key, on))
+    case 'number':
+      return amount(row)
+    case 'choice':
+      return segmented(row, (value) => void commit(row.key, value))
+  }
 }
 
 /** A number and the unit it is typed in, so the field itself carries no words. */
@@ -69,6 +82,29 @@ function amount(row: Extract<Row, { kind: 'number' }>): HTMLElement {
   const wrap = el('div', 'amount')
   wrap.append(numberField(row.value, row.floor, (value) => void commit(row.key, value)), el('span', 'unit', row.unit))
   return wrap
+}
+
+/**
+ * A choice of a few, the way macOS draws one: the segments side by side with
+ * the current one filled, rather than a menu that hides the alternatives until
+ * it is opened.
+ */
+function segmented(row: Extract<Row, { kind: 'choice' }>, onPick: (value: string) => void): HTMLElement {
+  const group = el('div', 'segmented')
+  group.setAttribute('role', 'radiogroup')
+  for (const option of row.options) {
+    const node = document.createElement('button')
+    const picked = option.value === row.value
+    node.className = picked ? 'segment on' : 'segment'
+    node.textContent = option.label
+    node.setAttribute('role', 'radio')
+    node.setAttribute('aria-checked', String(picked))
+    node.onclick = () => {
+      if (!picked) onPick(option.value)
+    }
+    group.append(node)
+  }
+  return group
 }
 
 /**
@@ -102,10 +138,13 @@ function renderProjects(values: SettingsSnapshot): HTMLElement {
  * writes it down and pushes the result back at this window — so drawing what
  * was asked for here would be drawing a guess.
  */
-async function commit(key: PreferenceKey, value: boolean | number): Promise<void> {
+async function commit(key: PreferenceKey, value: boolean | number | string): Promise<void> {
   switch (key) {
     case 'loginItem':
       await ab.openAtLogin(value as boolean)
+      return
+    case 'presence':
+      await ab.presence(value as string)
       return
     case 'announceAutomation':
       await ab.announceAutomation(value as boolean)

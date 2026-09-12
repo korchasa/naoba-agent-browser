@@ -25,6 +25,7 @@ const api = {
   openSettings: () => ipcRenderer.invoke('ab:open-settings'),
   openAtLogin: (on: boolean) => ipcRenderer.invoke('ab:open-at-login', on),
   orphanCloseMs: (ms: number) => ipcRenderer.invoke('ab:orphan-close-ms', ms),
+  presence: (value: string) => ipcRenderer.invoke('ab:presence', value),
   tabMenu: (projectId: string, tabId: string) => ipcRenderer.invoke('ab:tab-menu', projectId, tabId),
   takeOver: (projectId: string, tabId: string) => ipcRenderer.invoke('ab:take-over', projectId, tabId),
   release: (projectId: string, tabId: string) => ipcRenderer.invoke('ab:release', projectId, tabId),

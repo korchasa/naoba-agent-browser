@@ -9,7 +9,7 @@ import { normalizeUrl } from './tab.ts'
 import { userAgentFor } from './disguise.ts'
 import { appName, isDevVariant } from './variant.ts'
 import { accepted, decideLoginItem, describeLoginItem } from './login.ts'
-import type { LoginItemState, SettingsSnapshot } from './preferences.ts'
+import { asPresence, type LoginItemState, type Presence, presenceOf, type SettingsSnapshot } from './preferences.ts'
 import { SettingsWindow } from './settings-window.ts'
 
 // Every page an agent visits is somebody else's, and Electron's warning about
@@ -25,6 +25,9 @@ app.userAgentFallback = userAgentFor(false)
 // Held for the lifetime of the app; a tray dropped by the collector disappears
 // from the menu bar.
 let trayHandle: import('electron').Tray | null = null
+
+/** Where the person last asked the application to show itself. */
+let presence: Presence = 'menu-bar'
 
 const flags = new Set(process.argv.slice(1))
 const isTestRun = flags.has('--admit-everything')
@@ -96,11 +99,11 @@ async function start(): Promise<void> {
   buildMenu(hub, settings)
 
   if (!isTestRun) {
-    // The application belongs in the menu bar, not in the Dock: it runs all day
-    // for agents that need it, and it should cost the person nothing to have
-    // running.
-    trayHandle = installTray(hub, settings)
-    app.dock?.hide()
+    // The menu bar alone is the default: the application runs all day for
+    // agents that need it, and costs the person a Dock icon only if they ask
+    // for one.
+    presence = asPresence(readSettings().presence)
+    showApplication(hub, settings)
     offerLoginItem()
   }
 
@@ -213,9 +216,27 @@ function loginItem(): LoginItemState {
 }
 
 /** Everything the settings window shows, in one shape. */
+/**
+ * Put the application where the person asked for it. Both icons are live: the
+ * Dock is `NSApplicationActivationPolicy` under another name, and the menu-bar
+ * icon is a `Tray` that is made or destroyed. Called at start-up and again on
+ * every change, so nothing here may assume it runs once.
+ */
+function showApplication(hub: Hub, settings: SettingsAccess): void {
+  const wanted = presenceOf(presence)
+  if (wanted.dock) void app.dock?.show()
+  else app.dock?.hide()
+  if (wanted.menuBar && !trayHandle) trayHandle = installTray(hub, settings)
+  if (!wanted.menuBar && trayHandle) {
+    trayHandle.destroy()
+    trayHandle = null
+  }
+}
+
 function settingsFor(hub: Hub): SettingsSnapshot {
   return {
     loginItem: loginItem(),
+    presence,
     announceAutomation: hub.announceAutomation,
     panelWidth: hub.shell.panelWidth(),
     orphanCloseMs: hub.orphanCloseMs,
@@ -503,6 +524,19 @@ function wireChrome(hub: Hub, settings: SettingsAccess): void {
     writeSettings({ orphanCloseMs: kept })
     settings.push()
     return kept
+  })
+
+  /**
+   * The Dock icon and the menu-bar icon, applied without a restart. The answer
+   * is what was kept, not what was asked for: a value this application does
+   * not know comes back as the menu bar rather than being refused.
+   */
+  ipcMain.handle('ab:presence', (_event, value: unknown) => {
+    presence = asPresence(value)
+    if (!isTestRun) showApplication(hub, settings)
+    writeSettings({ presence })
+    settings.push()
+    return presence
   })
 
   ipcMain.handle('ab:take-over', (_event, projectId: string, tabId: string) => {

@@ -20,6 +20,15 @@ export const PANEL_WIDTH = 340
 /** Narrower than this and the address bar has no room for an address. */
 export const PANEL_MIN_WIDTH = 240
 
+/**
+ * Where the application shows itself. macOS has one knob for it,
+ * `NSApplicationActivationPolicy`, and it says only whether there is a Dock
+ * icon; the menu-bar icon is a separate object that exists or does not. So
+ * these three are two independent facts, drawn as one row because the fourth
+ * combination — neither icon — must be unreachable.
+ */
+export type Presence = 'menu-bar' | 'dock' | 'both'
+
 /** The OS's answer about the login item, in the two forms a row draws. */
 export interface LoginItemState {
   on: boolean
@@ -30,6 +39,7 @@ export interface LoginItemState {
 /** Everything the main process sends the settings window about itself. */
 export interface PreferenceValues {
   loginItem: LoginItemState
+  presence: Presence
   announceAutomation: boolean
   panelWidth: number
   orphanCloseMs: number
@@ -51,6 +61,13 @@ export interface SettingsSnapshot extends PreferenceValues {
 export type Drawn =
   | { kind: 'switch'; hint: string; on: boolean }
   | { kind: 'number'; hint: string; value: number; floor: number; unit: string }
+  | { kind: 'choice'; hint: string; value: string; options: Option[] }
+
+/** One segment of a choice: the value that is kept, and the word on it. */
+export interface Option {
+  value: string
+  label: string
+}
 
 export type Row = Drawn & { key: PreferenceKey; label: string }
 
@@ -89,6 +106,19 @@ export const PREFERENCES: { [K in PreferenceKey]: Entry } = {
     // while System Settings says on.
     draw: (values) => ({ kind: 'switch', hint: values.loginItem.sentence, on: values.loginItem.on }),
   },
+  presence: {
+    label: 'Show the application in',
+    draw: (values) => ({
+      kind: 'choice',
+      hint: PRESENCE_HINT[values.presence],
+      value: values.presence,
+      options: [
+        { value: 'menu-bar', label: 'Menu bar' },
+        { value: 'dock', label: 'Dock' },
+        { value: 'both', label: 'Both' },
+      ],
+    }),
+  },
   announceAutomation: {
     label: 'Announce automation',
     draw: (values) => ({
@@ -121,6 +151,31 @@ export const PREFERENCES: { [K in PreferenceKey]: Entry } = {
       unit: 'minutes',
     }),
   },
+}
+
+/**
+ * What each choice gets the person, which is the only reason to prefer one.
+ * Three sentences rather than one: a row that says the same thing whatever is
+ * picked is a row that explains nothing.
+ */
+const PRESENCE_HINT: Record<Presence, string> = {
+  'menu-bar': 'The menu-bar icon counts the connected agents.',
+  dock: 'The Dock icon puts the window in the app switcher.',
+  both: 'You get the count in the menu bar and the window in the app switcher.',
+}
+
+/** Which icons a choice asks for. Never neither — that is the point of the row. */
+export function presenceOf(presence: Presence): { menuBar: boolean; dock: boolean } {
+  return { menuBar: presence !== 'dock', dock: presence !== 'menu-bar' }
+}
+
+/**
+ * What `settings.json` holds, turned into a choice. Anything else — a file
+ * edited by hand, a field an older version never wrote — is the menu bar,
+ * which is what the application did before there was a choice.
+ */
+export function asPresence(value: unknown): Presence {
+  return value === 'dock' || value === 'both' ? value : 'menu-bar'
 }
 
 /** Every row the settings window draws, in order, filled in from one answer. */

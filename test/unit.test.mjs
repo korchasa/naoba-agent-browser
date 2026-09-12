@@ -614,6 +614,7 @@ test("the settings window describes the login item in the person's terms", async
  */
 const SAMPLE_VALUES = {
   loginItem: { on: false, status: 'not-registered', sentence: 'Starts only when you open it yourself.' },
+  presence: 'menu-bar',
   announceAutomation: false,
   panelWidth: 340,
   orphanCloseMs: 5 * 60_000,
@@ -635,6 +636,49 @@ test('every preference the window draws is a value the application sends, and ba
   // written here: the window must not say "Off." while System Settings says on.
   const login = rows.find((row) => row.key === 'loginItem')
   assert.equal(login.hint, 'Starts only when you open it yourself.')
+})
+
+test('the application is never left with neither icon, whatever the choice', async () => {
+  const { presenceOf } = await import('../src/main/preferences.ts')
+  // The reason this is one row of three rather than two switches: a pair of
+  // switches has a fourth state, and in it the person cannot reach the window
+  // at all.
+  for (const presence of ['menu-bar', 'dock', 'both']) {
+    const wanted = presenceOf(presence)
+    assert.ok(wanted.menuBar || wanted.dock, `${presence} asks for no icon at all`)
+  }
+  assert.deepEqual(presenceOf('menu-bar'), { menuBar: true, dock: false })
+  assert.deepEqual(presenceOf('dock'), { menuBar: false, dock: true })
+  assert.deepEqual(presenceOf('both'), { menuBar: true, dock: true })
+})
+
+test('a settings file holding anything else starts the application in the menu bar', async () => {
+  const { asPresence } = await import('../src/main/preferences.ts')
+  assert.equal(asPresence('dock'), 'dock')
+  assert.equal(asPresence('both'), 'both')
+  assert.equal(asPresence('menu-bar'), 'menu-bar')
+  // Hand-edited, written by an older version, or missing: the answer is what
+  // the application did before the choice existed.
+  for (const junk of [undefined, null, '', 'Dock', 'tray', 7, {}]) {
+    assert.equal(asPresence(junk), 'menu-bar', `${JSON.stringify(junk) ?? 'undefined'} is not menu-bar`)
+  }
+})
+
+test('the choice of where to appear is drawn as the three places, the current one marked', async () => {
+  const { rowsFor } = await import('../src/main/preferences.ts')
+  const row = rowsFor({ ...SAMPLE_VALUES, presence: 'both' }).find((row) => row.key === 'presence')
+  assert.equal(row.kind, 'choice')
+  assert.equal(row.value, 'both')
+  assert.deepEqual(row.options.map((option) => option.value), ['menu-bar', 'dock', 'both'])
+  for (const option of row.options) assert.ok(option.label.length > 0, `${option.value} has no label`)
+  // The sentence under the row says what the choice gets you, so it cannot be
+  // the same sentence for all three.
+  const said = new Set(
+    ['menu-bar', 'dock', 'both'].map((presence) =>
+      rowsFor({ ...SAMPLE_VALUES, presence }).find((row) => row.key === 'presence').hint
+    ),
+  )
+  assert.equal(said.size, 3)
 })
 
 test("a preference is written in the person's unit and kept in the application's", async () => {
