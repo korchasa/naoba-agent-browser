@@ -203,6 +203,58 @@ input.number:focus {
   border-bottom-color: var(--color-accent);
 }
 
+/* The licence row: the lamp says whether this copy is unlocked, and under it
+   sits the field a key is typed into. A copy without a key is not a fault to
+   apologise for, so the row does not go pale the way a refused project does —
+   it only loses the lamp's colour. */
+.licence .name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 500;
+}
+.licence .dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+.licence.refused .dot {
+  background: var(--tick);
+}
+.licence .hint.error {
+  color: var(--alarm);
+}
+.licence button {
+  min-height: 2rem;
+  font-weight: 500;
+  color: var(--accent);
+}
+.entry {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+input.key {
+  width: 15rem;
+  min-height: 2rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--text);
+  caret-color: var(--color-accent);
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--color-divider);
+  border-radius: 0;
+  padding: 0 2px;
+}
+input.key:focus {
+  outline: none;
+  border-bottom-color: var(--color-accent);
+}
+
 /* The register of projects: the same rows, with the path under the name and a
    dot saying whether agents working there get a browser. */
 .project .path {

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell } from 'electron'
 import { dirname, join } from 'node:path'
 import { cpSync, existsSync } from 'node:fs'
 import { Hub } from './hub.ts'
@@ -13,6 +13,18 @@ import { accepted, decideLoginItem, describeLoginItem } from './login.ts'
 import { asPresence, type LoginItemState, type Presence, presenceOf, type SettingsSnapshot } from './preferences.ts'
 import { SettingsWindow } from './settings-window.ts'
 import { clearHandshake, writeHandshake } from './handshake.ts'
+import {
+  activate as activateLicence,
+  check as checkLicence,
+  deactivate as deactivateLicence,
+  licensed,
+  schedule as scheduleLicenceChecks,
+  state as licenceState,
+  stopSchedule as stopLicenceChecks,
+} from './licence-store.ts'
+
+/** Where a key is bought. The plan is a one-off payment; there is nothing else to sell. */
+const CHECKOUT_URL = 'https://checkout.freemius.com/product/39376/plan/67545/'
 
 // Every page an agent visits is somebody else's, and Electron's warning about
 // their content security policy would drown the console an agent reads.
@@ -68,6 +80,9 @@ async function start(): Promise<void> {
     contentionWaitMs: numberFlag('--contention-wait-ms', 30_000),
     defaultScriptTimeoutMs: numberFlag('--script-timeout-ms', 60_000),
     admitEverything: isTestRun,
+    // A test run and the snapshot run drive a browser nobody bought; every
+    // other copy answers an agent only once the person has unlocked it.
+    licensed: isTestRun ? () => true : licensed,
     headless: flags.has('--headless'),
     announceAutomation: flags.has('--announce-automation') || readSettings().announceAutomation === true,
   })
@@ -114,6 +129,15 @@ async function start(): Promise<void> {
     presence = asPresence(readSettings().presence)
     showApplication(hub, settings)
     offerLoginItem()
+
+    // The licence, once at startup and then on its own schedule. A copy that
+    // has not been unlocked opens the settings window itself: an agent is
+    // refused until it is, and nothing else in the application would say why.
+    scheduleLicenceChecks()
+    void checkLicence().then(() => {
+      settings.push()
+      if (!licensed()) settings.open()
+    })
   }
 
   // The app is a server as much as a window: closing every window leaves it
@@ -130,6 +154,7 @@ async function start(): Promise<void> {
     event.preventDefault()
     hub.stop()
     clearHandshake()
+    stopLicenceChecks()
     dockHandle?.()
     dockHandle = null
     trayHandle?.destroy()
@@ -264,6 +289,7 @@ function settingsFor(hub: Hub): SettingsSnapshot {
     announceAutomation: hub.announceAutomation,
     orphanCloseMs: hub.orphanCloseMs,
     projects: hub.admissions(),
+    licence: licenceState(),
   }
 }
 
@@ -529,6 +555,21 @@ function wireChrome(hub: Hub, settings: SettingsAccess): void {
   /** Read fresh: the OS may have changed the login item behind our back. */
   ipcMain.handle('ab:settings', () => settingsFor(hub))
 
+  // The person's own browser, not a tab here: a card is usually saved there,
+  // and a payment is not something an agent's browser should be holding.
+  ipcMain.handle('ab:buy-licence', () => shell.openExternal(CHECKOUT_URL))
+  ipcMain.handle('ab:activate-licence', async (_event, key: string) => {
+    // The error reaches the window as a rejected call and is drawn there; the
+    // person typed a key, so they are the one who has to be told what happened.
+    const answer = await activateLicence(String(key))
+    settings.push()
+    return answer
+  })
+  ipcMain.handle('ab:deactivate-licence', async () => {
+    const answer = await deactivateLicence()
+    settings.push()
+    return answer
+  })
   /** The switch in the settings window; the result is the OS's answer, not the request. */
   ipcMain.handle('ab:open-at-login', (_event, on: boolean) => {
     const item = setLoginItem(on === true)

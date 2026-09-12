@@ -11,6 +11,9 @@
  * and the settings window's renderer bundles it. Nothing here may import
  * `electron`, and no colour, markup or DOM belongs in it either.
  */
+import type { LicenceState } from './licence.ts'
+
+export type { LicenceState }
 
 /**
  * The panel is the window's whole chrome, so it has to hold an address bar and
@@ -57,6 +60,8 @@ export type PreferenceKey = keyof PreferenceValues
  */
 export interface SettingsSnapshot extends PreferenceValues {
   projects: AdmissionRecord[]
+  /** The licence as this machine holds it. Not a preference — nothing about it is set by choosing. */
+  licence: LicenceState
 }
 
 /** What a row looks like once a value has been put in it. */

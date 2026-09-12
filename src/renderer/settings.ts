@@ -19,6 +19,9 @@ import {
 declare const ab: {
   settings(): Promise<SettingsSnapshot>
   openAtLogin(on: boolean): Promise<unknown>
+  buyLicence(): Promise<unknown>
+  activateLicence(key: string): Promise<unknown>
+  deactivateLicence(): Promise<unknown>
   announceAutomation(on: boolean): Promise<unknown>
   orphanCloseMs(ms: number): Promise<unknown>
   presence(value: string): Promise<unknown>
@@ -37,6 +40,9 @@ function render(): void {
     root.append(el('p', 'hint', 'Reading the settings…'))
     return
   }
+  root.append(el('h6', '', 'Licence'))
+  root.append(renderLicence(snapshot))
+
   root.append(el('h6', '', 'General'))
   const general = el('div', 'group')
   for (const row of rowsFor(snapshot)) general.append(renderSetting(row))
@@ -53,6 +59,98 @@ function render(): void {
         'A project that already has a browser keeps its tabs and its logins.',
     ),
   )
+}
+
+/** What is being typed into the key field, kept across a redraw the push causes. */
+let typedKey = ''
+/** What went wrong the last time a key was sent, in the words the main process used. */
+let licenceError = ''
+let sending = false
+
+/**
+ * The licence, and the only thing in this window that is not a preference: it
+ * is a fact about this copy, and the one thing without which an agent is
+ * refused.
+ */
+function renderLicence(values: SettingsSnapshot): HTMLElement {
+  const group = el('div', 'group')
+  const node = el('div', values.licence.licensed ? 'setting licence' : 'setting licence refused')
+  const text = el('div', 'text')
+  const name = el('div', 'name')
+  name.append(el('span', 'dot'), el('span', '', values.licence.licensed ? 'Unlocked' : 'Not unlocked'))
+  text.append(name, el('span', 'hint', values.licence.sentence))
+  if (values.licence.tail) {
+    const checked = values.licence.checkedOn ? `, last confirmed ${values.licence.checkedOn}` : ''
+    text.append(el('span', 'hint', `Key ending ${values.licence.tail}${checked}.`))
+  }
+  node.append(text)
+  node.append(
+    values.licence.licensed
+      ? button('Deactivate', () => void hand(() => ab.deactivateLicence()), 'Free this key for another Mac')
+      : button('Buy a key', () => void ab.buyLicence(), 'Opens the shop in your own browser'),
+  )
+  group.append(node)
+
+  if (!values.licence.licensed) group.append(unlockRow())
+  return group
+}
+
+/** The field a key is typed into, and the button that sends it. */
+function unlockRow(): HTMLElement {
+  const node = el('div', 'setting licence')
+  const text = el('div', 'text')
+  text.append(
+    el('span', 'label', 'Licence key'),
+    el('span', 'hint', 'From the receipt you were sent after buying. It unlocks this Mac.'),
+  )
+  if (licenceError) text.append(el('span', 'hint error', licenceError))
+  node.append(text)
+
+  const field = document.createElement('input')
+  field.type = 'text'
+  field.className = 'key'
+  field.placeholder = 'sk_…'
+  field.value = typedKey
+  field.spellcheck = false
+  field.oninput = () => {
+    typedKey = field.value
+  }
+  field.onkeydown = (event) => {
+    if (event.key === 'Enter') void unlock()
+  }
+
+  const send = button(sending ? 'Unlocking…' : 'Unlock', () => void unlock())
+  const wrap = el('div', 'entry')
+  wrap.append(field, send)
+  node.append(wrap)
+  return node
+}
+
+async function unlock(): Promise<void> {
+  if (sending || !typedKey.trim()) return
+  sending = true
+  licenceError = ''
+  render()
+  await hand(() => ab.activateLicence(typedKey))
+  sending = false
+  render()
+}
+
+/**
+ * Run a licence call and keep whatever it complained about. The main process
+ * answers with a fresh snapshot of its own, so nothing is drawn from the reply.
+ */
+async function hand(call: () => Promise<unknown>): Promise<void> {
+  try {
+    await call()
+    typedKey = ''
+    licenceError = ''
+  } catch (error) {
+    // An error crossing the IPC boundary arrives wrapped in the name of the
+    // channel it came from; the sentence written for the person is the tail.
+    const message = error instanceof Error ? error.message : String(error)
+    licenceError = message.split(': ').slice(-1)[0] || message
+  }
 }
 
 function renderSetting(row: Row): HTMLElement {

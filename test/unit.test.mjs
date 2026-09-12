@@ -19,6 +19,17 @@ import { buildTree, expandNew, groupKey, projectKey, sortGroups, tabKey } from '
 import { documentedNames, fullReference, helpFor, namesIn, TOOL_DESCRIPTION } from '../packages/bridge/reference.mjs'
 import { TOOLS } from '../packages/bridge/tools.mjs'
 import { stateDirs, tokenForPort } from '../packages/bridge/handshake.mjs'
+import {
+  activateRequest,
+  checkRequest,
+  deactivateRequest,
+  describe,
+  GRACE_DAYS,
+  newUid,
+  recordFrom,
+  refreshed,
+  verdict,
+} from '../src/main/licence.ts'
 
 test('a project is the repository the agent is working in, not its subdirectory', () => {
   const base = mkdtempSync(join(tmpdir(), 'ab-project-'))
@@ -1203,4 +1214,122 @@ test('the copies the bridge knows to look in are the three a person can have', (
     '/home/someone/Library/Application Support/Naoba Dev',
     '/home/someone/Library/Application Support/Electron',
   ])
+})
+
+// ------------------------------------------------------------------- licence
+
+const DAY = 24 * 60 * 60 * 1000
+const NOW = Date.parse('2026-09-12T12:00:00Z')
+
+/** A stored answer that is good at `NOW`, with whatever the test wants changed. */
+function stored(changes = {}) {
+  return {
+    key: 'sk_abcdefgh1234',
+    uid: 'f'.repeat(32),
+    installId: '55',
+    plan: 'Naoba',
+    expiration: null,
+    cancelled: false,
+    checkedAt: NOW,
+    ...changes,
+  }
+}
+
+test('a copy that was never unlocked is not licensed', () => {
+  const answer = verdict(null, NOW)
+  assert.equal(answer.state, 'unlicensed')
+  assert.match(answer.reason, /has not been unlocked/)
+})
+
+test('a licence bought once holds without the service saying so again', () => {
+  // The whole point of the grace: a fortnight off the network must not take the
+  // application away from someone who paid for it.
+  assert.equal(verdict(stored({ checkedAt: NOW - 14 * DAY }), NOW).state, 'licensed')
+  assert.equal(verdict(stored({ checkedAt: NOW - (GRACE_DAYS - 1) * DAY }), NOW).state, 'licensed')
+})
+
+test('a stored answer nobody confirmed for a month stops being enough', () => {
+  const answer = verdict(stored({ checkedAt: NOW - (GRACE_DAYS + 2) * DAY }), NOW)
+  assert.equal(answer.state, 'unlicensed')
+  // The sentence has to say what to do about it, not only that something is wrong.
+  assert.match(answer.reason, /32 days/)
+  assert.match(answer.reason, /Connect to the internet/)
+})
+
+test('a refunded key stops working the moment the service says it was cancelled', () => {
+  // Cancellation beats the grace: it is the answer the service gave, not silence.
+  const answer = verdict(stored({ cancelled: true }), NOW)
+  assert.equal(answer.state, 'unlicensed')
+  assert.match(answer.reason, /cancelled or refunded/)
+})
+
+test('an expiry in the past ends the licence and an expiry ahead does not', () => {
+  assert.equal(verdict(stored({ expiration: '2026-09-11 09:00:00' }), NOW).state, 'unlicensed')
+  const good = verdict(stored({ expiration: '2027-01-01 09:00:00' }), NOW)
+  assert.equal(good.state, 'licensed')
+  assert.equal(good.until, '2027-01-01 09:00:00')
+})
+
+test('the record kept after activation carries what the next check needs', () => {
+  const record = recordFrom(
+    { install_id: 4711, license_plan_name: 'Naoba', expiration: null, is_cancelled: false },
+    'sk_key',
+    'a'.repeat(32),
+    NOW,
+  )
+  assert.equal(record.installId, '4711')
+  assert.equal(record.plan, 'Naoba')
+  assert.equal(record.cancelled, false)
+  assert.equal(record.checkedAt, NOW)
+  // Without an installation there is nothing to ask about later, so accepting
+  // the answer would leave a copy that can never be re-checked.
+  assert.throws(
+    () => recordFrom({ license_plan_name: 'Naoba' }, 'sk_key', 'a'.repeat(32), NOW),
+    /named no installation/,
+  )
+})
+
+test('a check can take a licence away and cannot hand one out', () => {
+  const before = stored({ checkedAt: NOW - 3 * DAY })
+  const after = refreshed(before, { is_cancelled: true, plan_name: 'Naoba' }, NOW)
+  assert.equal(after.cancelled, true)
+  assert.equal(after.checkedAt, NOW)
+  assert.equal(after.key, before.key)
+  assert.equal(after.installId, before.installId)
+  assert.equal(verdict(after, NOW).state, 'unlicensed')
+})
+
+test('each licence call goes to the address the service documents', () => {
+  const record = stored()
+  const activate = activateRequest('sk_key', 'a'.repeat(32), 'somebodys-mac')
+  assert.equal(activate.method, 'POST')
+  assert.match(activate.url, /\/v1\/products\/39376\/licenses\/activate\.json$/)
+  assert.deepEqual(activate.body, { uid: 'a'.repeat(32), license_key: 'sk_key', title: 'somebodys-mac' })
+
+  const check = checkRequest(record)
+  assert.equal(check.method, 'GET')
+  assert.match(check.url, /\/installs\/55\/license\.json\?uid=f{32}&license_key=sk_abcdefgh1234$/)
+
+  assert.match(deactivateRequest(record).url, /\/licenses\/deactivate\.json$/)
+})
+
+test('an installation identifier is 32 characters of hexadecimal', () => {
+  const uid = newUid((count) => new Uint8Array(count).fill(0xab))
+  assert.equal(uid.length, 32)
+  assert.equal(uid, 'ab'.repeat(16))
+})
+
+test('the settings window is told what happened, not only that something did', () => {
+  const good = describe(stored(), NOW)
+  assert.equal(good.licensed, true)
+  assert.match(good.sentence, /does not expire/)
+  assert.equal(good.tail, '1234')
+  assert.equal(good.checkedOn, '2026-09-12')
+
+  const none = describe(null, NOW)
+  assert.equal(none.licensed, false)
+  assert.equal(none.tail, null)
+  // A key the person can still recognise stays on the row even once it is no
+  // good, so they can tell the dead key from one they have not tried yet.
+  assert.equal(describe(stored({ cancelled: true }), NOW).tail, '1234')
 })

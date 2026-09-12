@@ -31,6 +31,12 @@ export interface HubOptions extends ShellPaths {
   admitEverything?: boolean
   /** Whether pages are told that a program drives the browser, at the start. */
   announceAutomation?: boolean
+  /**
+   * Whether this copy has been unlocked. An agent is refused while it has not
+   * been: the browser is the product, and it is sold rather than given away.
+   * Absent means yes, which is what the tests and the snapshot run want.
+   */
+  licensed?: () => boolean
 }
 
 type Decision = 'allowed' | 'denied'
@@ -310,6 +316,17 @@ export class Hub {
         id: message.id,
         reason:
           `this app speaks protocol ${PROTOCOL_VERSION}, the bridge speaks ${message.protocol}; update the bridge`,
+      })
+      connection.close()
+      return
+    }
+
+    const licensed = this.#options.licensed?.() ?? true
+    if (!licensed) {
+      connection.send({
+        type: 'denied',
+        id: message.id,
+        reason: 'Naoba is not unlocked on this Mac. Open it and enter your licence key in the settings window.',
       })
       connection.close()
       return
