@@ -1,0 +1,26 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      outline: none;
+    }
+    </style>
+    <script>
+    // What a rich editor does for itself: the document the person types in is
+    // this one, and the field the form submits is kept in step from here.
+    window.addEventListener('DOMContentLoaded', () => {
+      document.addEventListener('input', (event) => {
+        const field = parent.document.getElementById('descr')
+        if (field) field.value = document.body.innerHTML
+        parent.postMessage('descr:input:isTrusted=' + event.isTrusted, '*')
+      })
+    })
+    </script>
+  </head>
+  <body contenteditable="true"></body>
+</html>

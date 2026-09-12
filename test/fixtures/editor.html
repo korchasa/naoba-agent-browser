@@ -1,0 +1,60 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Editor fixture</title>
+    <script>
+    // In the head, so the editor's own document does not carry this script in
+    // the value it hands back to the form.
+    window.addEventListener('DOMContentLoaded', () => {
+      const seen = []
+      const note = (text) => {
+        seen.push(text)
+        document.getElementById('events').textContent = seen.join(', ')
+      }
+      document.getElementById('notes-editor').addEventListener('input', (event) => {
+        document.getElementById('notes').value = event.target.innerHTML
+        note('notes:input:isTrusted=' + event.isTrusted)
+      })
+      window.addEventListener('message', (event) => note(String(event.data)))
+
+      // The arrangement a script-built editor leaves behind: a frame with no
+      // address and no name, so nothing but its index in frames() names it.
+      const frame = document.createElement('iframe')
+      frame.style.cssText = 'width: 320px; height: 80px'
+      document.getElementById('story-box').append(frame)
+      const doc = frame.contentDocument
+      doc.body.contentEditable = 'true'
+      doc.addEventListener('input', () => {
+        document.getElementById('story').value = doc.body.innerHTML
+        note('story:synced')
+      })
+    })
+    </script>
+  </head>
+  <body>
+    <h1 id="heading">Listing</h1>
+    <!--
+      The shape Bazar.bg uses for a listing description, and the shape every
+      rich editor ends up with: the field the form submits is a textarea the
+      page hides, and what the person actually writes in is drawn over it.
+    -->
+    <form id="listing" action="/second.html" method="get">
+      <input id="title" name="title" placeholder="title" />
+      <textarea id="descr" name="descr" style="display: none"></textarea>
+      <div class="redactor-box">
+        <iframe id="redactorIframe" src="/editor-frame.html" style="width: 320px; height: 120px"></iframe>
+      </div>
+      <!-- The same arrangement without a frame: the editor is a node in this document. -->
+      <textarea id="notes" name="notes" style="display: none"></textarea>
+      <div id="notes-editor" contenteditable="true"
+        style="width: 320px; min-height: 40px; border: 1px solid #999"></div>
+      <!-- And the same again in a frame the page built for itself. -->
+      <textarea id="story" name="story" style="display: none"></textarea>
+      <div id="story-box"></div>
+      <!-- A hidden field with nothing drawn over it: there is no editor to find. -->
+      <input id="ghost" name="ghost" style="display: none" />
+    </form>
+    <p id="events">none</p>
+  </body>
+</html>

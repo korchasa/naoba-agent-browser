@@ -643,11 +643,125 @@ export class Tab {
       `(sel) => { const el = window.__abQuery(sel); if (!el) return false; el.focus(); return document.activeElement === el }`,
       selector,
     )
-    if (!ok) {
+    if (ok) return
+    try {
       // Some controls only take focus from a real click.
       const point = await this.centerOf(selector, timeoutMs)
       await this.clickAt(point.x, point.y)
+    } catch (error) {
+      // The field a rich editor replaces cannot be focused or clicked: it is
+      // there for the form to submit and nothing else. The message that lands
+      // here named the cause, which is why the agent that first met this could
+      // act at all, so it is kept whole and the way through is added to it.
+      throw await this.#editorRouteFor(selector, error)
     }
+  }
+
+  /**
+   * The editor drawn over a field, and the call that reaches it.
+   *
+   * A page that hides a `textarea` and draws an editor over it leaves the agent
+   * with a field it cannot write to and no way to know there is anywhere else
+   * to write — the message for a hidden field with an editor over it used to be
+   * the same sentence, word for word, as for a hidden field with nothing there.
+   * Naming the route rather than typing into it on the agent's behalf is
+   * deliberate: an editor keeps its own model of the document, and a value put
+   * into the wrong layer of it is submitted as something nobody saw. That is a
+   * failure that looks like success, which is the one kind this surface must
+   * not add.
+   *
+   * The candidate has to FOLLOW the field: an editor replaces the field it is
+   * built from and is inserted after it, and without that rule any hidden field
+   * in a form with an editor somewhere gets pointed at that editor.
+   */
+  async #editorRouteFor(selector: string, failure: unknown): Promise<unknown> {
+    // A diagnostic that throws would replace the real failure with its own,
+    // which is worse than not answering: the message it was about to improve is
+    // the one the agent needs.
+    const found = await this.#editorNear(selector).catch(() => null)
+    if (!found) return failure
+    const message = failure instanceof Error ? failure.message : String(failure)
+    const route = found.kind === 'frame' ? this.#frameRoute(found) : this.#pageRoute(found)
+    return new Error(
+      `${message}. A rich editor is drawn over it: ${route} It is the editor that keeps ${selector} in step, so read ` +
+        `${selector} back afterwards to be sure it did.`,
+    )
+  }
+
+  #editorNear(selector: string) {
+    return this.call<
+      { kind: 'frame' | 'page'; selector: string | null; src: string; position: number } | null
+    >(
+      `(sel) => {
+        const el = window.__abQuery(sel)
+        if (!el) return null
+        const scope = el.closest('form') || el.parentElement || document.body
+        const drawn = (node) => {
+          const box = node.getBoundingClientRect()
+          return box.width > 0 && box.height > 0
+        }
+        const editableIn = (doc) => {
+          if (!doc) return null
+          if (doc.designMode === 'on') return 'body'
+          if (doc.body && doc.body.isContentEditable) return 'body'
+          return doc.querySelector('[contenteditable=""], [contenteditable="true"]') ? '[contenteditable]' : null
+        }
+        // The one selector that names this node and nothing else, or nothing.
+        const only = (candidate, node) => {
+          if (!candidate) return null
+          try {
+            const all = document.querySelectorAll(candidate)
+            return all.length === 1 && all[0] === node ? candidate : null
+          } catch { return null }
+        }
+        const iframes = [...document.querySelectorAll('iframe, frame')]
+        for (const node of scope.querySelectorAll('iframe, frame, [contenteditable=""], [contenteditable="true"]')) {
+          const follows = el.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING
+          if (!follows || node.contains(el) || !drawn(node)) continue
+          if (node.tagName === 'IFRAME' || node.tagName === 'FRAME') {
+            let inside = null
+            // A frame from another site answers nothing, and an editor nobody
+            // can look into is not a route worth naming.
+            try { inside = editableIn(node.contentDocument) } catch { inside = null }
+            if (!inside) continue
+            return { kind: 'frame', selector: inside, src: node.src || '', position: iframes.indexOf(node) }
+          }
+          return {
+            kind: 'page',
+            selector: only(node.id ? '#' + CSS.escape(node.id) : null, node) || only('[contenteditable]', node),
+            src: '',
+            position: -1,
+          }
+        }
+        return null
+      }`,
+      selector,
+    )
+  }
+
+  #frameRoute(found: { selector: string | null; src: string; position: number }): string {
+    // The page counts its iframes in document order and `frames()` lists them
+    // in the order they appear too, which is the same correspondence `#offsetOf`
+    // relies on. An address is unambiguous where there is one; a frame a script
+    // built has none, and only its index reaches it.
+    const list = this.frames()
+    const byUrl = found.src ? list.find((one) => one.url === found.src) : undefined
+    const byPosition = list[found.position]
+    // A frame inside a frame is in `frames()` and not in the page's own count,
+    // so the two orders can part company. An index is only named when the frame
+    // it lands on is the addressless one the page reported.
+    const frame = byUrl ??
+      (byPosition && !found.src && (byPosition.url === 'about:blank' || byPosition.url === '') ? byPosition : undefined)
+    if (!frame) return `write into the frame it is in — api.frames() lists them, and {frame: index} reaches one.`
+    const handle = frame.url && frame.url !== 'about:blank' ? `'${frame.url}'` : String(frame.index)
+    return `write into that instead, with fill('${found.selector}', value, {frame: ${handle}}).`
+  }
+
+  #pageRoute(found: { selector: string | null }): string {
+    if (!found.selector) {
+      return `it is a contenteditable element in this same document — snapshot() the form for its [ref_N] and fill that.`
+    }
+    return `write into that instead, with fill('${found.selector}', value).`
   }
 
   /**

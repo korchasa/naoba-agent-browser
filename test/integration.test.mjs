@@ -646,6 +646,75 @@ test('a request nobody answers still says what the page did while it waited', as
   agent.close()
 })
 
+test('a field behind a rich editor names the editor to write into instead', async () => {
+  const agent = await app.agent(PROJECT_A, 'editor-route')
+  const outcome = await agent.run(`
+    await api.navigate(${JSON.stringify(origin + '/editor.html')})
+    await api.waitFor('#story-box iframe')
+    const refused = async (sel) => {
+      try {
+        await api.fill(sel, 'written by the agent')
+        return 'it did not throw'
+      } catch (error) {
+        return error.message
+      }
+    }
+    const inFrame = await refused('#descr')
+    const inPage = await refused('#notes')
+    const nameless = await refused('#story')
+    // The routes the three messages name, walked. A message this specific is
+    // only worth having if what it names actually writes the value.
+    await api.fill('body', 'into the editor', { frame: ${JSON.stringify(origin + '/editor-frame.html')} })
+    await api.fill('#notes-editor', 'into the contenteditable')
+    await api.fill('body', 'into the story', { frame: 1 })
+    return {
+      inFrame,
+      inPage,
+      nameless,
+      // What the form would submit: the editor keeps the hidden field in step,
+      // which is why writing into the editor is the answer and not a detour.
+      descr: await api.eval('document.getElementById("descr").value'),
+      notes: await api.eval('document.getElementById("notes").value'),
+      story: await api.eval('document.getElementById("story").value'),
+    }
+  `)
+  const value = outcome.value
+  // The sentence that named the cause is the reason the agent that met this
+  // could act at all, so it stays, word for word, and the route is added to it.
+  assert.match(value.inFrame, /^element #descr has no size, so it cannot be clicked: nothing matching it is visible/)
+  assert.match(value.inFrame, /rich editor/)
+  assert.ok(value.inFrame.includes(`fill('body', value, {frame: '${origin}/editor-frame.html'})`), value.inFrame)
+  // An editor the page draws in its own document is named as a selector.
+  assert.ok(value.inPage.includes("fill('#notes-editor', value)"), value.inPage)
+  // A frame a script built reports about:blank and no name, so the only handle
+  // that reaches it is its index in frames().
+  assert.ok(value.nameless.includes('fill(\'body\', value, {frame: 1})'), value.nameless)
+  assert.match(value.descr, /into the editor/)
+  assert.equal(value.notes, 'into the contenteditable')
+  assert.equal(value.story, 'into the story')
+  agent.close()
+})
+
+test('a hidden field with no editor over it says what it has always said', async () => {
+  const agent = await app.agent(PROJECT_A, 'editor-none')
+  const outcome = await agent.run(`
+    await api.navigate(${JSON.stringify(origin + '/editor.html')})
+    try {
+      await api.fill('#ghost', 'nowhere')
+      return 'it did not throw'
+    } catch (error) {
+      return error.message
+    }
+  `)
+  // Word for word the message this repository already had. There is no editor
+  // over this field, and inventing one would be worse than saying nothing.
+  assert.equal(
+    outcome.value,
+    'element #ghost has no size, so it cannot be clicked: nothing matching it is visible on the page right now',
+  )
+  agent.close()
+})
+
 test('a page that moves without loading is waited for, not slept through', async () => {
   const agent = await app.agent(PROJECT_A, 'url-in-page')
   const outcome = await agent.run(`
