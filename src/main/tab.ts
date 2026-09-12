@@ -36,6 +36,21 @@ const FIRST_PAINT_WAIT_MS = 400
 const INPUT_SETTLE_MS = 16
 
 /**
+ * A snapshot ref, bare and in the form `snapshot()` actually prints it: `ref_7`
+ * and `[ref_7]`.
+ *
+ * The printed form is the one an agent has in hand — the manual tells it to
+ * pass exactly that — and it used to fall through to `document.querySelector`,
+ * where `[ref_7]` reads as an attribute selector for an attribute no page
+ * carries and so matched nothing, ever. One agent lost every ref it copied and
+ * went back to writing its own DOM walks. The resolver in the page and the
+ * stale-ref diagnostic both read this one pattern: they used to carry a copy
+ * each, which is how the diagnostic came to answer for a form the resolver no
+ * longer accepted.
+ */
+const REF_SELECTOR = /^\[?ref_(\d+)\]?$/
+
+/**
  * One page. Everything an agent does lands here in the end.
  *
  * Interaction goes through `sendInputEvent` rather than synthetic DOM events,
@@ -304,11 +319,28 @@ export class Tab {
     // a helper installed at load time quietly disappears with it. A `ref_N`
     // comes from the last snapshot and resolves against the list it left behind.
     const wrapped = `(async () => {
+      window.__abRefIndex = (sel) => {
+        if (typeof sel !== 'string') return null
+        const found = ${REF_SELECTOR}.exec(sel)
+        return found ? Number(found[1]) : null
+      }
       window.__abQuery = (sel) => {
         if (sel === null || sel === undefined) return null
         if (typeof sel !== 'string') return sel
-        if (/^ref_\\d+$/.test(sel)) return (window.__abRefs || [])[Number(sel.slice(4))] || null
+        const index = window.__abRefIndex(sel)
+        if (index !== null) return (window.__abRefs || [])[index] || null
         return document.querySelector(sel)
+      }
+      // Everything a selector answers to. A ref names exactly one node, and
+      // asking the document instead gives two different answers to the same
+      // question: \`[ref_7]\` is a valid selector that matches nothing, while
+      // \`ref_7\` is not a selector at all and throws.
+      window.__abAll = (sel) => {
+        if (window.__abRefIndex(sel) !== null) {
+          const one = window.__abQuery(sel)
+          return one ? [one] : []
+        }
+        return [...document.querySelectorAll(sel)]
       }
       const __args = ${payload}
       return await (${fn}).apply(null, __args)
@@ -341,7 +373,7 @@ export class Tab {
         let matches = 1
         let visible = 0
         try {
-          const all = [...document.querySelectorAll(sel)]
+          const all = window.__abAll(sel)
           matches = all.length
           visible = all.filter((n) => {
             const b = n.getBoundingClientRect()
@@ -579,7 +611,7 @@ export class Tab {
    */
   #nothingMatched(selector: string, timeoutMs: number, visible: boolean): string {
     const where = `the page here is ${this.wc.getURL()} ("${this.wc.getTitle()}")`
-    if (/^ref_\d+$/.test(selector)) {
+    if (REF_SELECTOR.test(selector)) {
       return `${selector} is not on this page: ${where}. A ref belongs to the snapshot() that produced it and dies when the page changes — take a fresh snapshot and use its refs.`
     }
     return `no ${visible ? 'visible ' : ''}element matched ${selector} within ${timeoutMs}ms; ${where}`

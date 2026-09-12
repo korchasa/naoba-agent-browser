@@ -138,16 +138,26 @@ test('a drag is a press, a run of moves, and a release — not a click', async (
   agent.close()
 })
 
-test('a snapshot ref can be used wherever a selector can', async () => {
+test('a snapshot ref can be used wherever a selector can, in the form snapshot() prints it', async () => {
+  // An agent copies the ref out of the snapshot, brackets and all, because that
+  // is how it was printed and how the manual says to pass it. The bare token
+  // used to be the only form that resolved, so every copied ref matched
+  // nothing and the agent went back to writing its own DOM walks.
   const agent = await app.agent(PROJECT_A, 'refs')
   const outcome = await agent.run(`
     await api.navigate(${JSON.stringify(origin + '/page.html')})
     const snapshot = await api.snapshot()
     const ref = /button "Press me" \\[(ref_\\d+)\\]/.exec(snapshot)[1]
     await api.click(ref)
-    return { ref, trusted: await api.getText('#trusted') }
+    const bare = await api.getText('#trusted')
+    await api.eval('document.getElementById("trusted").textContent = "untested"')
+    await api.click('[' + ref + ']')
+    const printed = await api.getText('#trusted')
+    return { ref, bare, printed, id: await api.attr('[' + ref + ']', 'id') }
   `)
-  assert.equal(outcome.value.trusted, 'isTrusted=true')
+  assert.equal(outcome.value.bare, 'isTrusted=true')
+  assert.equal(outcome.value.printed, 'isTrusted=true', 'the form snapshot() prints does not click anything')
+  assert.equal(outcome.value.id, 'go', 'the form snapshot() prints does not resolve to the element it names')
   agent.close()
 })
 
@@ -308,21 +318,30 @@ test('a selector that never matches says which page it was looking at', async ()
   agent.close()
 })
 
-test('a ref from a snapshot the page has replaced says so', async () => {
+test('a ref from a snapshot the page has replaced says so, in either form', async () => {
   const agent = await app.agent(PROJECT_A, 'stale-ref')
   const outcome = await agent.run(`
     await api.navigate(${JSON.stringify(origin + '/page.html')})
     await api.snapshot()
     await api.navigate(${JSON.stringify(origin + '/second.html')})
-    try {
-      await api.click('ref_0', { timeout: 300 })
-      return 'no complaint'
-    } catch (error) {
-      return error.message
+    const complaints = {}
+    for (const form of ['ref_0', '[ref_0]']) {
+      try {
+        await api.click(form, { timeout: 300 })
+        complaints[form] = 'no complaint'
+      } catch (error) {
+        complaints[form] = error.message
+      }
     }
+    return complaints
   `)
-  assert.match(outcome.value, /snapshot/)
-  assert.match(outcome.value, /second\.html/)
+  // The bracketed form is the one an agent actually has in hand, so it is the
+  // one that most needs to say "your snapshot is stale" rather than "no element
+  // matched" — which sends the agent hunting through a selector that was right.
+  for (const form of ['ref_0', '[ref_0]']) {
+    assert.match(outcome.value[form], /snapshot/, form)
+    assert.match(outcome.value[form], /second\.html/, form)
+  }
   agent.close()
 })
 
