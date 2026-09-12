@@ -27,6 +27,8 @@ state must go through the project's own session, never through
 - `src/main/hub.ts` — admission and routing
 - `src/main/server.ts`, `protocol.ts` — the wire
 - `packages/bridge/` — the MCP server an IDE launches, one per agent
+- `packages/bridge/reference.mjs` — the manual an agent reads, in the one
+  place both sides can reach it
 - `src/renderer/chrome.ts` — the window's chrome: the address bar and the tree
   of agents, their tabs and the calls made in them
 - `src/renderer/tree.ts` — how that tree is built, and the only part of the
@@ -47,6 +49,23 @@ state must go through the project's own session, never through
   session that restarts comes back as a new agent and wants the page it was
   on; `--orphan-close-ms` (default five minutes) is how long that page waits.
   A tab another agent has moved into, or the person is holding, is not closed.
+- **The tool description is a budget, not a manual.** The client cuts the
+  `evalInBrowser` description at about 2040 characters and appends
+  `… [truncated]` — nothing in the bridge can see that happen. The whole helper
+  reference used to live there, 3922 characters of it, so everything from
+  *Moving around* on reached no agent at all: the tabs, the cookies, the
+  screenshots, `sleep`, `waitForLoad` and `requestHuman`. One session paid 281 s
+  of hand-written pauses for the two missing waits. Both texts now come from
+  `packages/bridge/reference.mjs`: `TOOL_DESCRIPTION` is a summary that names
+  `api.help()`, `MANUAL` is everything, and a unit test fails at 1800 characters
+  — early, because the cap is the client's to move. A new helper gets a line in
+  `MANUAL` and a mention in the description only if it earns one. The module
+  stays plain `.mjs` with no imports of its own, because the application reads
+  it too (`allowJs` in `tsconfig.json`, bundled by esbuild) while the bridge is
+  launched standalone by an IDE and can reach nothing outside
+  `packages/bridge/`. An integration test compares `Object.keys(api)` with the
+  names the manual documents, both ways, so a helper with no line in it fails
+  the suite.
 - **Icons come from the `lucide` package**, bundled into the panel by esbuild
   and drawn inline so they take the text colour. Add a glyph by importing its
   node into the `ICONS` map in `src/renderer/chrome.ts`; nothing is drawn by
