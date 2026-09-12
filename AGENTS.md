@@ -22,6 +22,7 @@ state must go through the project's own session, never through
 - `src/main/context.ts` — one project: session, window, tabs, agents, events
 - `src/main/tab.ts` — one page: navigation, input, capture, network
 - `src/main/api.ts` — the object an agent's script runs against
+- `src/main/files.ts` — what a scenario may hand a website, and why
 - `src/main/runner.ts` — runs that script
 - `src/main/lease.ts`, `queue.ts` — who may act on a tab, and in what order
 - `src/main/hub.ts` — admission and routing
@@ -141,6 +142,30 @@ state must go through the project's own session, never through
   that walked out of `walk()` can still be the other realm's `Array`, and
   `assert.deepStrictEqual` compares prototypes, so it rejects a host `[1, 2]`
   that JSON would render identically. Compare a spread copy, or the JSON.
+- **A path boundary compares realpaths, and a path that is not there has to be
+  resolved as far as it goes.** `identify()` runs the project root through
+  `realpathSync.native`, so a project the agent calls `/tmp/work` is really
+  `/private/tmp/work` and `/var/folders/…` is really `/private/var/folders/…`.
+  Compare the two spellings as strings and the project's own file is refused as
+  an intruder. Compare with `path.relative`, never a prefix — `/a/project-evil`
+  starts with `/a/project` and is no part of it — and realpath the file as well
+  as the root, or a symlink inside the project quietly leads out of it. The trap
+  that is easy to miss: `realpath` refuses a path that does not exist, so the
+  answer to "may this be read" must not fall back to the unresolved spelling.
+  `src/main/files.ts` resolves through the directories that do exist and leaves
+  the missing tail as written; before it did, a missing file inside the project
+  was refused for being outside it (caught by its own test, 2026-09-12).
+- **A DevTools command that needs a node takes a `Runtime.evaluate` object id.**
+  That is how `setFiles` reaches an element the page resolved — `DOM.querySelector`
+  cannot, because a `[ref_7]` names an entry in `window.__abRefs` and no CSS
+  selector reaches it. `DOM.enable` is not needed on this path, and
+  `Runtime.releaseObject` afterwards is. `DOM.setFileInputFiles` is also the only
+  way to fill a file input at all: its value is not settable from script, and the
+  input these sites use is `display: none`, so nothing on that path may ask for
+  size, visibility or focus. Because it is the browser placing the file, the page
+  gets `input` and `change` with `isTrusted: true` and reacts as it would to a
+  person picking one — measured 2026-09-12, not assumed, because a site that
+  listens only for `change` would otherwise ignore the file.
 - **Input goes through the DevTools protocol, not `sendInputEvent`.** Both look
   trusted to the page, but `sendInputEvent` is delivered through the window and
   does nothing when that window is hidden.
