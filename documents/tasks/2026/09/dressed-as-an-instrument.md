@@ -12,8 +12,7 @@ The window had no dress of its own. It was a pastel green (`#6dbf94`) on
 rounded ten-point corners with a shadow under every surface — the default look
 of a web page written in a hurry, and nothing in it said what the application
 is. The panel, the settings window and the icons now speak one language, the
-one Teenage Engineering prints on its hardware and Efferent uses on its
-screens.
+one Teenage Engineering prints on its hardware.
 
 ## The language
 

@@ -69,15 +69,15 @@ Confirmed: this is already fully implemented and committed on `main` (HEAD is `d
 
 ## Surface
 
-- `/Users/korchasa/www/factory/projects/agent-browser/src/renderer/chrome.ts` (lines 48-88, 236-311, `renderFoot` 201-231) — already holds the settings view (`renderSettings`), the gear button that opens it, and the `SettingsSnapshot` type feeding it — matches the request. Evidence: commit `a1abd47`.
-- `/Users/korchasa/www/factory/projects/agent-browser/src/main/settings.ts` (lines 1-44) — persistence layer (`Settings` interface, `readSettings`/`writeSettings`) backing every setting shown in the window: `panelWidth`, `announceAutomation`, `loginItemOffered`, `orphanCloseMs`.
-- `/Users/korchasa/www/factory/projects/agent-browser/src/main/main.ts` (lines 56-62, 180-230, 370-398) — wires IPC handlers (`ab:panel-width`, `ab:announce-automation`, `ab:open-at-login`, `ab:orphan-close-ms`) and builds the `SettingsSnapshot` sent to the renderer; already covers every setting moved into the window.
-- `/Users/korchasa/www/factory/projects/agent-browser/src/preload/preload.ts` (lines 15-19) — exposes the four setting mutators to the renderer; consistent with the settings view's calls.
-- `/Users/korchasa/www/factory/projects/agent-browser/src/main/hub.ts`, `src/main/context.ts`, `src/main/shell.ts`, `src/main/tab.ts` — producers/consumers of the settings values (`announceAutomation`, `orphanCloseMs`, `panelWidth`); not affected further — they already read from the same `Settings`-backed state the window edits.
+- `src/renderer/chrome.ts` (lines 48-88, 236-311, `renderFoot` 201-231) — already holds the settings view (`renderSettings`), the gear button that opens it, and the `SettingsSnapshot` type feeding it — matches the request. Evidence: commit `a1abd47`.
+- `src/main/settings.ts` (lines 1-44) — persistence layer (`Settings` interface, `readSettings`/`writeSettings`) backing every setting shown in the window: `panelWidth`, `announceAutomation`, `loginItemOffered`, `orphanCloseMs`.
+- `src/main/main.ts` (lines 56-62, 180-230, 370-398) — wires IPC handlers (`ab:panel-width`, `ab:announce-automation`, `ab:open-at-login`, `ab:orphan-close-ms`) and builds the `SettingsSnapshot` sent to the renderer; already covers every setting moved into the window.
+- `src/preload/preload.ts` (lines 15-19) — exposes the four setting mutators to the renderer; consistent with the settings view's calls.
+- `src/main/hub.ts`, `src/main/context.ts`, `src/main/shell.ts`, `src/main/tab.ts` — producers/consumers of the settings values (`announceAutomation`, `orphanCloseMs`, `panelWidth`); not affected further — they already read from the same `Settings`-backed state the window edits.
 - The disguise (ghost/bot) icon-button in `renderFoot` (chrome.ts lines 209-229) — a duplicate quick-access control for `announceAutomation` left in the main toolbar alongside the same setting inside the settings view. Not a scattered setting to remove: the commit message explicitly kept it as a one-click toggle in addition to the settings-window entry, so both exist by design.
 - Sort control (`sortControl`, chrome.ts lines 417-438, backed by `tree.ts` `SORT_MODES`/`SortMode`) — correctly excluded from the settings window, since it only makes sense in the context of the tree view, matching the user's explicit exception ("sortировки списков").
-- `/Users/korchasa/www/factory/projects/agent-browser/src/main/tray.ts` — the menu-bar tray; checked for any settings-like menu items (quit, preferences) that should have moved into the window. None found: the tray only opens/focuses the window, and quit lives in a native `dialog` (`shell.ts` lines 248-256), not a persisted preference, so it is out of scope for a settings window.
-- `/Users/korchasa/www/factory/projects/agent-browser/src/main/login.ts` — `decideLoginItem`/`describeLoginItem`, the login-item sentence/state shown by the "Open at login" row; consumer of the OS's `getLoginItemSettings`, feeding the settings view's first row.
+- `src/main/tray.ts` — the menu-bar tray; checked for any settings-like menu items (quit, preferences) that should have moved into the window. None found: the tray only opens/focuses the window, and quit lives in a native `dialog` (`shell.ts` lines 248-256), not a persisted preference, so it is out of scope for a settings window.
+- `src/main/login.ts` — `decideLoginItem`/`describeLoginItem`, the login-item sentence/state shown by the "Open at login" row; consumer of the OS's `getLoginItemSettings`, feeding the settings view's first row.
 
 ## Queries used
 

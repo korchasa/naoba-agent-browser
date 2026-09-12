@@ -978,8 +978,8 @@ test('a walk describes itself for an error message that has room for one line', 
 
 test('a URL pattern is a substring or a regular expression, and nothing else', () => {
   const contains = matcherFor('/ads/promo/')
-  assert.equal(contains('https://bazar.bg/ads/promo/56036876?origin=save'), true)
-  assert.equal(contains('https://bazar.bg/ads/new'), false)
+  assert.equal(contains('https://shop.example/ads/promo/56036876?origin=save'), true)
+  assert.equal(contains('https://shop.example/ads/new'), false)
 
   // The thing a substring cannot say: that the address ends there.
   const anchored = matcherFor(/second\.html$/)

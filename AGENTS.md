@@ -180,7 +180,7 @@ state must go through the project's own session, never through
   literal anywhere else in the renderer is a defect: the demo page kept a
   blue button through two accent changes because it carried its own hex.
 - **The window is dressed as an instrument, and the orange is rationed.** The
-  language is Teenage Engineering's and Efferent's: an off-white shell, white
+  language is Teenage Engineering's: an off-white shell, white
   panels, hairline rules, corners of one or three points, no shadow on
   anything that sits on a surface, and legends set in the monospaced face —
   small capitals, tracked `--legend-track` — wherever a label names a control
