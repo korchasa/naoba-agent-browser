@@ -166,6 +166,31 @@ state must go through the project's own session, never through
   gets `input` and `change` with `isTrusted: true` and reacts as it would to a
   person picking one — measured 2026-09-12, not assumed, because a site that
   listens only for `change` would otherwise ignore the file.
+- **A thrown error reaches the agent as a rebuild.** `runner.ts` catches whatever
+  a helper threw and constructs a fresh `ScriptError` carrying the message, the
+  stack, the logs and `code` — nothing else. So anything hung on an error
+  reaches a scenario that catches it, where reading a property across the
+  `node:vm` boundary is ordinary (unlike `instanceof`), and reaches nobody
+  otherwise. Put what an uncaught failure has to say in the message, and the
+  structured form on the object for the scenario that catches; `requestHuman`'s
+  timeout does both, and its message is the reason an agent that never catches
+  still learns the page moved.
+- **A tab's events talk about its frames as well as its page.** `did-navigate`
+  is the main frame's alone, but `did-navigate-in-page` fires for sub-frames too
+  and says which in its third argument, `isMainFrame`. Without that check an
+  advertisement calling `pushState` is recorded as something the person did —
+  measured 2026-09-12 by removing it, and the walk came back four steps instead
+  of three. Chromium also fires the event again for a `pushState` to the very
+  same URL, so anything counting moves of the page collapses a repeat itself.
+- **A `requestHuman` timeout leaves the tab with the person, and somebody else
+  inherits it.** The throw comes before the release on purpose: a timeout means
+  the person is still working, and the panel has their own way to hand the tab
+  back (`ab:release`). The cost lands somewhere else entirely — an agent that
+  closes its own tab inherits the project's last open one
+  (`ProjectContext.closeTab`), so a tab left held answers it with "the person at
+  the keyboard is using this tab". That is how a test that times a hold out
+  failed an unrelated test two hundred lines below it; a test that does this
+  closes the tab itself.
 - **Input goes through the DevTools protocol, not `sendInputEvent`.** Both look
   trusted to the page, but `sendInputEvent` is delivered through the window and
   does nothing when that window is hidden.
@@ -215,6 +240,12 @@ still red, build once with `deno task check` and then loop on the tests by
 name — `node --test --test-concurrency=1 --test-timeout=90000
 --test-name-pattern='a snapshot ref' test/integration.test.mjs` — and run the
 whole thing before the commit.
+
+One test in the suite is flaky and was before any of this: "pressing Enter in a
+field submits the form" fails about one run in three or four. Measured
+2026-09-12 in a `git worktree` of `9bbb1e2`, where it failed once in four runs
+with nothing changed. A single red on that name is not your change — run it
+again before hunting for one.
 
 `deno task fmt` formats everything the project owns, and three of those files
 have been unformatted for longer than anyone has looked:
