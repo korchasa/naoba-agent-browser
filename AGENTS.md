@@ -24,6 +24,7 @@ state must go through the project's own session, never through
 - `src/main/api.ts` — the object an agent's script runs against
 - `src/main/files.ts` — what a scenario may hand a website, and why
 - `src/main/runner.ts` — runs that script
+- `src/main/trail.ts` — what a scenario had already done when it failed
 - `src/main/lease.ts`, `queue.ts` — who may act on a tab, and in what order
 - `src/main/hub.ts` — admission and routing
 - `src/main/server.ts`, `protocol.ts` — the wire
@@ -177,6 +178,16 @@ state must go through the project's own session, never through
   gets `input` and `change` with `isTrusted: true` and reacts as it would to a
   person picking one — measured 2026-09-12, not assumed, because a site that
   listens only for `change` would otherwise ignore the file.
+- **A scenario's `api` is the argument it was compiled with, not the global of
+  the same name.** `runner.ts` wraps the script in `(async (api) => {…})` and
+  then calls `factory(api)`, so the parameter shadows `sandbox.api` — the
+  sandbox entry is reached only by a scenario that renames or never names its
+  own argument. Anything that replaces or wraps the object an agent calls has
+  to go to both places, and changing only the sandbox is silently a no-op: it
+  compiles, it runs, and every test that asserts the old behaviour still
+  passes. Cost one build-and-test cycle on 2026-09-12, caught because the test
+  read the new behaviour back out of the page rather than asserting it existed.
+
 - **A thrown error reaches the agent as a rebuild.** `runner.ts` catches whatever
   a helper threw and constructs a fresh `ScriptError` carrying the message, the
   stack, the logs and `code` — nothing else. So anything hung on an error
