@@ -72,24 +72,28 @@ svg {
 }
 
 /* The window's own buttons are drawn over the left of this strip, so the
-   wordmark keeps to the right of it. */
+   wordmark keeps to the right of it. It is printed on the case, not written:
+   the monospaced face in small capitals, spaced out. */
 .drag {
   flex: none;
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 5px;
+  gap: 6px;
   height: 4rem;
   padding: 0 14px;
-  font-size: 0.92rem;
   color: var(--text-dim);
   -webkit-app-region: drag;
 }
-.drag .bolt {
+.drag .sign {
   color: var(--accent);
 }
 .drag .brand {
-  font-weight: 600;
+  font-family: var(--font-mono);
+  font-size: var(--legend-size);
+  font-weight: 500;
+  letter-spacing: var(--legend-track);
+  text-transform: uppercase;
   color: var(--text);
 }
 /* The project's name, as a quiet button: plain until hovered, then a fill. */
@@ -123,12 +127,13 @@ svg {
   box-shadow: var(--shadow-md);
 }
 .sort .menu h6 {
-  margin: 4px 8px 6px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
+  margin: 4px 8px 8px;
+  font-family: var(--font-mono);
+  font-size: var(--legend-size);
+  font-weight: 500;
+  letter-spacing: var(--legend-track);
   text-transform: uppercase;
-  color: var(--text-dim);
+  color: var(--text-faint);
 }
 .sort .item {
   display: flex;
@@ -157,18 +162,19 @@ svg {
   visibility: visible;
 }
 
+/* A key on the instrument: flat, hairline-edged, square. Nothing is lifted
+   off the panel by a shadow — the border is the whole of it. */
 button {
   -webkit-app-region: no-drag;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font: inherit;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text);
   background: var(--color-surface);
   border: 1px solid var(--color-divider);
   border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-sm);
   min-height: 2.3rem;
   padding: 4px 12px;
   cursor: default;
@@ -188,12 +194,16 @@ button:disabled {
   opacity: 0.4;
   pointer-events: none;
 }
+/* The one key allowed the orange: the way forward. */
 button.primary {
   width: 100%;
+  font-family: var(--font-mono);
+  font-size: var(--legend-size);
+  letter-spacing: var(--legend-track);
+  text-transform: uppercase;
   background: var(--color-accent);
   color: var(--on-accent);
-  border-color: transparent;
-  box-shadow: none;
+  border-color: var(--color-accent);
 }
 button.primary:hover {
   background: var(--color-accent-600);
@@ -207,7 +217,8 @@ input.url {
   flex: 1;
   min-width: 0;
   min-height: 2.3rem;
-  font: inherit;
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
   color: var(--text);
   caret-color: var(--color-accent);
   background: var(--color-surface);
@@ -225,7 +236,7 @@ input.url:hover {
 input.url:focus {
   outline: none;
   border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 25%, transparent);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
 }
 
 .held-row {
@@ -309,10 +320,12 @@ input.url:focus {
   color: var(--text-dim);
 }
 .row.project .name {
-  font-weight: 700;
-  letter-spacing: 0.01em;
+  font-family: var(--font-mono);
+  font-size: var(--legend-size);
+  font-weight: 500;
+  letter-spacing: var(--legend-track);
   text-transform: uppercase;
-  font-size: 0.85rem;
+  color: var(--text-dim);
 }
 .row.project .folder {
   flex: none;
@@ -320,8 +333,10 @@ input.url:focus {
 }
 .row.project .count {
   flex: none;
-  font-size: 0.85rem;
+  font-family: var(--font-mono);
+  font-size: var(--legend-size);
   color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
 }
 
 .row.group {
@@ -336,16 +351,20 @@ input.url:focus {
   height: 8px;
   border-radius: 50%;
   background: var(--agent);
+  /* The pale end of the ramp needs an edge, or it disappears into the panel. */
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-text) 18%, transparent);
 }
 .row.group .ide {
   flex: none;
-  font-size: 0.85rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--color-neutral-800);
-  background: var(--color-neutral-200);
+  font-family: var(--font-mono);
+  font-size: var(--legend-size);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  background: none;
+  border: 1px solid var(--color-divider);
   border-radius: var(--radius-full);
-  padding: 2px 8px;
+  padding: 1px 6px;
 }
 
 .row.tab .icon {
@@ -355,6 +374,7 @@ input.url:focus {
 }
 .row.tab.active {
   background: var(--select);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 .row.tab .mark {
   flex: none;
@@ -364,18 +384,21 @@ input.url:focus {
   color: var(--held);
 }
 .row.tab.waiting .mark {
-  font-size: 0.85rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  font-family: var(--font-mono);
+  font-size: var(--legend-size);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--color-accent-800);
   background: var(--color-accent-100);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 45%, transparent);
   border-radius: var(--radius-full);
-  padding: 2px 8px 2px 6px;
+  padding: 1px 6px 1px 4px;
 }
 .row.tab .count {
   flex: none;
-  color: var(--text-dim);
-  font-size: 0.85rem;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--legend-size);
   font-variant-numeric: tabular-nums;
 }
 .row.tab .close {
@@ -406,8 +429,9 @@ input.url:focus {
 }
 .row.cmd .when {
   flex: none;
-  color: var(--text-dim);
-  font-size: 0.85rem;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--legend-size);
   font-variant-numeric: tabular-nums;
 }
 /* An agent that has gone: no colour, quieter name, and the badge says why. */
@@ -424,13 +448,14 @@ input.url:focus {
 
 .row.cmd .who {
   flex: none;
-  font-size: 0.85rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--color-accent-800);
-  background: var(--color-accent-100);
+  font-family: var(--font-mono);
+  font-size: var(--legend-size);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  border: 1px solid var(--color-divider);
   border-radius: var(--radius-full);
-  padding: 1px 7px;
+  padding: 0 5px;
 }
 .row.cmd .what {
   font-family: var(--font-mono);
@@ -452,25 +477,23 @@ input.url:focus {
   color: var(--text-dim);
   line-height: 1.5;
 }
-.empty .bolt {
-  display: flex;
-  width: 56px;
-  height: 56px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: var(--color-accent-100);
+/* The mark on its tile, the same figure the Dock icon carries. */
+.empty .sign {
+  width: 52px;
+  height: 52px;
+  padding: 9px;
+  border: 2px solid var(--color-accent);
+  border-radius: var(--radius-md);
   color: var(--color-accent);
   margin-bottom: 8px;
 }
-.empty .bolt svg {
-  width: 24px;
-  height: 24px;
-}
 .empty h3 {
   margin: 0;
-  font-size: 1.15rem;
-  letter-spacing: -0.01em;
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--text);
 }
 .empty p {
@@ -499,15 +522,16 @@ input.url:focus {
   font-size: 0.9rem;
 }
 
-/* The one card in the panel: glass over the material, the way a system alert sits. */
+/* The one card in the panel: a white panel screwed onto the shell, with the
+   orange rule across its top saying which one is live. */
 .callout {
   flex: none;
   margin: 0 10px 10px;
   padding: var(--space-4);
   border-radius: var(--radius-md);
   background: var(--color-surface);
-  border: 1px solid color-mix(in srgb, var(--color-text) 7%, transparent);
-  box-shadow: var(--shadow-md);
+  border: 1px solid var(--color-divider);
+  border-top: 2px solid var(--color-accent);
   line-height: 1.45;
 }
 .callout h3 {
@@ -515,9 +539,10 @@ input.url:focus {
   align-items: center;
   gap: 6px;
   margin: 0;
-  font-size: 0.85rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
+  font-family: var(--font-mono);
+  font-size: var(--legend-size);
+  font-weight: 500;
+  letter-spacing: var(--legend-track);
   text-transform: uppercase;
   color: var(--color-accent);
 }
@@ -530,11 +555,13 @@ input.url:focus {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   padding: 10px 18px;
   border-top: 1px solid var(--color-divider);
-  font-size: 0.85rem;
-  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: var(--legend-size);
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
 }
 .foot .dot {
   width: 6px;
@@ -557,10 +584,9 @@ input.url:focus {
 .foot .quiet {
   width: 1.8rem;
   min-height: 1.8rem;
-  color: var(--text-dim);
+  color: var(--text-faint);
   background: none;
   border-color: transparent;
-  box-shadow: none;
 }
 .foot .quiet:hover {
   color: var(--text);

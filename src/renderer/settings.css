@@ -36,13 +36,15 @@ svg {
   padding: 4px 20px 20px;
 }
 
+/* The legend over a group of controls, printed the way a case is printed. */
 h6 {
-  margin: 18px 4px 8px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
+  margin: 20px 4px 8px;
+  font-family: var(--font-mono);
+  font-size: var(--legend-size);
+  font-weight: 500;
+  letter-spacing: var(--legend-track);
   text-transform: uppercase;
-  color: var(--text-dim);
+  color: var(--text-faint);
 }
 
 button {
@@ -50,12 +52,11 @@ button {
   align-items: center;
   justify-content: center;
   font: inherit;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text);
   background: var(--color-surface);
   border: 1px solid var(--color-divider);
   border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-sm);
   min-height: 2.3rem;
   padding: 4px 12px;
   cursor: default;
@@ -112,76 +113,90 @@ button:active {
   gap: 6px;
 }
 .amount .unit {
-  font-size: 0.85rem;
-  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: var(--legend-size);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
 }
 
-/* The switch: the tint when on, a neutral fill when off, the knob slides. */
+/* The switch is a slide switch off a front panel: a square track with a hard
+   travel, orange only when the thing is on. */
 .switch {
   flex: none;
   position: relative;
-  width: 2.4rem;
+  width: 2.6rem;
   min-height: 0;
   height: 1.45rem;
   padding: 0;
-  border: none;
-  border-radius: var(--radius-full);
+  border: 1px solid var(--tick);
+  border-radius: var(--radius-sm);
   background: var(--fill-strong);
-  box-shadow: none;
 }
 .switch.on {
   background: var(--color-accent);
+  border-color: var(--color-accent);
 }
 .switch .knob {
   position: absolute;
   top: 2px;
   left: 2px;
-  width: calc(1.45rem - 4px);
-  height: calc(1.45rem - 4px);
-  border-radius: 50%;
+  width: calc(1.3rem - 4px);
+  height: calc(1.45rem - 6px);
+  border-radius: var(--radius-sm);
   background: var(--color-surface);
-  box-shadow: var(--shadow-sm);
-  transition: left 0.15s ease;
+  border: 1px solid var(--tick);
+  transition: left 0.12s steps(3, end);
 }
 .switch.on .knob {
-  left: calc(100% - 1.45rem + 2px);
+  left: calc(100% - 1.3rem + 2px);
+  border-color: var(--color-accent-600);
 }
 
-/* A choice of a few: the segments in one track, the current one lifted out of
-   it. The whole track is one control, so it carries the border and the
-   segments carry none. */
+/* A choice of a few: a row of keys sharing one hairline frame, the chosen one
+   pressed in and lit. */
 .segmented {
   flex: none;
   display: flex;
-  gap: 2px;
-  padding: 2px;
-  background: var(--fill);
+  border: 1px solid var(--color-divider);
   border-radius: var(--radius-sm);
+  overflow: hidden;
 }
 .segmented .segment {
-  min-height: 1.85rem;
+  min-height: 1.9rem;
   padding: 0 10px;
-  font-weight: 500;
-  color: var(--text-dim);
-  background: transparent;
+  font-family: var(--font-mono);
+  font-size: var(--legend-size);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  background: var(--color-surface);
   border: none;
-  box-shadow: none;
+  border-left: 1px solid var(--color-divider);
+  border-radius: 0;
+}
+.segmented .segment:first-child {
+  border-left: none;
 }
 .segmented .segment:hover {
   color: var(--text);
-  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+  background: var(--fill);
 }
 .segmented .segment.on {
-  color: var(--text);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-sm);
+  color: var(--on-accent);
+  background: var(--color-accent);
+}
+.segmented .segment.on:hover {
+  background: var(--color-accent-600);
 }
 
 input.number {
   flex: none;
   width: 4.5rem;
   min-height: 2rem;
-  font: inherit;
+  font-family: var(--font-mono);
+  font-size: 0.92rem;
+  font-variant-numeric: tabular-nums;
   text-align: right;
   color: var(--text);
   caret-color: var(--color-accent);
@@ -193,7 +208,7 @@ input.number {
 input.number:focus {
   outline: none;
   border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 25%, transparent);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
 }
 
 /* The register of projects: the same rows, with the path under the name and a

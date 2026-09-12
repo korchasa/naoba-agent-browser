@@ -20,7 +20,6 @@ import {
   Settings,
   SlidersHorizontal,
   X,
-  Zap,
 } from 'lucide'
 import {
   type AgentRow,
@@ -148,7 +147,7 @@ function renderPanel(forest: TreeProject[]): HTMLElement {
   // The window buttons sit over the top-left of the content, so the panel keeps
   // that strip empty and hands it to the window as a drag region.
   const strip = el('div', 'drag')
-  strip.append(icon('bolt', 'bolt'), el('span', 'brand', 'naoba'))
+  strip.append(icon('mark', 'sign'), el('span', 'brand', 'naoba'))
   wrap.append(strip)
   wrap.append(grip())
   wrap.append(renderBar())
@@ -291,7 +290,7 @@ function renderTree(forest: TreeProject[]): HTMLElement {
   // would explain nothing to the person who has just opened the application.
   if (allAgents().every((agent) => agent.gone)) {
     const empty = el('div', 'empty')
-    empty.append(icon('bolt', 'bolt'))
+    empty.append(icon('mark', 'sign'))
     empty.append(el('h3', '', 'No agent is here yet'))
     empty.append(
       el('p', '', 'Point one at a project and it will show up here, with every tab it opens and every call it makes.'),
@@ -466,6 +465,17 @@ function twist(open: boolean): HTMLElement {
  * Icons come from Lucide, bundled in: a consistent stroke set beats a dozen
  * paths drawn by hand, and they keep the text colour like inline SVG does.
  */
+/**
+ * The application's own mark, drawn here rather than borrowed: the same world
+ * with a command prompt in it that the Dock icon and the menu-bar icon carry,
+ * so the window, the Dock and the menu bar all show one figure.
+ */
+const MARK: IconNode = [
+  ['circle', { cx: '12', cy: '12', r: '9' }],
+  ['path', { d: 'M8.6 9 L11.4 12 L8.6 15' }],
+  ['path', { d: 'M13.2 15 H16.4' }],
+]
+
 const ICONS: Record<string, IconNode> = {
   back: ChevronLeft,
   reload: RotateCw,
@@ -474,7 +484,7 @@ const ICONS: Record<string, IconNode> = {
   x: X,
   lock: Lock,
   hand: Hand,
-  bolt: Zap,
+  mark: MARK,
   globe: Globe,
   folder: Folder,
   sliders: SlidersHorizontal,

@@ -2,77 +2,100 @@
    demo page both link this file, so a tint chosen here lands everywhere.
    Nothing else in the renderer may spell a colour literal. */
 
-/* Tokens of the "Modern MacOS/iOS" design system (Modernist Native): warm
-   neutrals, one tint, SF through the system stack, continuous-corner radii
-   and hairline dividers. Kept verbatim except the tint: the system's red is
-   swapped for a pastel green that suits a browser, with a ramp of the same
-   shape (100 tint, 600 hover, 700 press, 800 text on the 100 tint). */
+/* The window is dressed as an instrument, the way Teenage Engineering dresses
+   a synth and Efferent dresses its screens: an off-white shell, white panels,
+   hairline rules, corners of one or three points, monospaced legends in small
+   capitals, and a single orange that only the live thing and the way forward
+   may use. Greys carry every other distinction, so the orange keeps meaning
+   something. */
 :root {
-  --color-bg: #f3f2f2;
+  --color-bg: #f5f4f1;
   --color-surface: #ffffff;
-  --color-text: #201e1d;
-  --color-accent: #6dbf94;
-  --color-accent-600: #5db386;
-  --color-accent-700: #3f8f66;
-  --color-accent-100: #e9f6ee;
-  --color-accent-800: #1f5a3d;
-  --color-divider: color-mix(in srgb, #201e1d 16%, transparent);
-  --material-bar: color-mix(in srgb, #f3f2f2 78%, transparent);
-  --color-neutral-200: #eae7e7;
-  --color-neutral-800: #444141;
+  --color-text: #17181a;
+  --color-accent: #ff4b12;
+  --color-accent-600: #e63f0b;
+  --color-accent-700: #bf3308;
+  --color-accent-100: #ffe8de;
+  --color-accent-800: #8f2605;
+  --color-divider: #ddd9d3;
+  --material-bar: color-mix(in srgb, #f5f4f1 82%, transparent);
+  --color-neutral-200: #eceae5;
+  --color-neutral-800: #55524d;
   --font-body: -apple-system, BlinkMacSystemFont, "Helvetica Neue", system-ui, sans-serif;
-  --font-mono: ui-monospace, Menlo, monospace;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
-  --radius-full: 999px;
-  --shadow-sm: 0 1px 2px color-mix(in srgb, #2d2b2b 12%, transparent);
-  --shadow-md: 0 3px 12px color-mix(in srgb, #2d2b2b 15%, transparent);
+  /* An instrument has no rounded plastic: one point where an edge needs
+     softening, three where a whole panel does. */
+  --radius-sm: 1px;
+  --radius-md: 3px;
+  --radius-lg: 3px;
+  --radius-full: 2px;
+  --shadow-sm: none;
+  --shadow-md: 0 8px 24px color-mix(in srgb, #17181a 12%, transparent);
 
   /* Derived roles the system leaves to the page. */
-  --on-accent: #0f2e1f;
+  --on-accent: #ffffff;
   --page-bg: var(--color-surface);
   --page-text: var(--color-text);
   --text: var(--color-text);
-  --text-dim: color-mix(in srgb, var(--color-text) 55%, transparent);
-  --text-faint: color-mix(in srgb, var(--color-text) 30%, transparent);
-  --fill: color-mix(in srgb, var(--color-text) 6%, transparent);
-  --fill-strong: color-mix(in srgb, var(--color-text) 12%, transparent);
-  --select: color-mix(in srgb, var(--color-text) 8%, transparent);
+  --text-dim: #55524d;
+  --text-faint: #8a8781;
+  --tick: #cfcac2;
+  --fill: #efede8;
+  --fill-strong: #e3e0da;
+  --select: #ebe8e2;
   --accent: var(--color-accent);
   --held: var(--color-accent-700);
-  --ok: #2f8f5b;
-  /* One colour per agent: the tint first, then ink steps, so a fourth agent
-     is still told apart without a second hue entering the system. */
+  --ok: var(--color-accent);
+  --alarm: #c0392b;
+  /* The legend: the lettering printed on the case. Small capitals in the
+     monospaced face, spaced out, so a label reads as a marking rather than as
+     a sentence. */
+  --legend-size: 0.78rem;
+  --legend-track: 0.16em;
+  /* One colour per agent: the orange first, then the grey ramp, because the
+     instrument owns one hue and tells the rest apart by weight. */
   --agent-0: var(--color-accent);
-  --agent-1: var(--color-text);
-  --agent-2: var(--color-accent-700);
-  --agent-3: var(--color-neutral-800);
-  --agent-4: var(--color-accent-600);
+  --agent-1: #17181a;
+  --agent-2: #8a8781;
+  --agent-3: #55524d;
+  --agent-4: #cfcac2;
   /* One step of the tree. Rows carry their level in --depth and multiply. */
   --indent: 16px;
 }
 
+/* The same instrument in its black case. Teenage Engineering builds both, so
+   the dark window is a committed second finish rather than an inversion: the
+   shell darkens, the panels stay a step above it, and the orange is unchanged
+   because it is the one thing printed in ink. */
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-bg: #1c1b1a;
-    --color-surface: #272524;
-    --color-text: #f1efee;
-    --color-accent: #86d3a9;
-    --color-accent-600: #a8e1c3;
-    --color-accent-700: #c9edd9;
-    --color-accent-100: #173d2a;
-    --color-accent-800: #e0f5e9;
-    --color-divider: color-mix(in srgb, #f1efee 16%, transparent);
-    --material-bar: color-mix(in srgb, #1c1b1a 72%, transparent);
-    --color-neutral-200: #444141;
-    --color-neutral-800: #eae7e7;
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
-    --shadow-md: 0 3px 12px rgba(0, 0, 0, 0.55);
-    --ok: #5ccf8a;
+    --color-bg: #151516;
+    --color-surface: #1e1f20;
+    --color-text: #f2f0ed;
+    --color-accent: #ff5b26;
+    --color-accent-600: #ff7446;
+    --color-accent-700: #ff8d66;
+    --color-accent-100: #3a1a0d;
+    --color-accent-800: #ffb396;
+    --color-divider: #343537;
+    --material-bar: color-mix(in srgb, #151516 82%, transparent);
+    --color-neutral-200: #2b2c2d;
+    --color-neutral-800: #b8b5b0;
+    --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.55);
+    --text-dim: #a5a29c;
+    --text-faint: #76736e;
+    --tick: #3d3e40;
+    --fill: #252627;
+    --fill-strong: #313234;
+    --select: #2b2c2e;
+    --on-accent: #151516;
+    --agent-1: #f2f0ed;
+    --agent-2: #76736e;
+    --agent-3: #a5a29c;
+    --agent-4: #4a4b4d;
   }
 }

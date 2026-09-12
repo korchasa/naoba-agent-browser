@@ -121,20 +121,25 @@ state must go through the project's own session, never through
   application (2026-09-12): `background only` of the process and `number of menu
   bars` in System Events follow each of the three, a restart comes back where it
   was left, and a hand-edited value in `settings.json` starts in the menu bar.
-- **The application's face is one figure in two media.** The Dock icon is a
+- **The application's face is one figure in four media.** The Dock icon is a
   world with a command prompt on it — the browser, and the fact that a program
-  is what walks it — and the menu-bar icon is that same circle and prompt drawn
-  as a line (`WORLD` in `tray.ts`; the hand still replaces it while an agent
-  waits). `build-resources/icon.icns` is what electron-builder picks up, and it
-  is generated from two drawings: `icon.svg` for 128 points and up, and
-  `icon-small.svg` for 16 and 32, because an `.icns` holds a picture per size
-  and the full grid turns to mud when it is shrunk that far. The commands are
-  in the comment at the top of `icon.svg`. Two things about the menu bar are
-  not a matter of taste: a template image is black plus alpha and nothing else,
-  so white is a hole rather than paint — a filled glyph with a lighter mark cut
-  into it arrives as a solid blob — and the stroke is 2.1 rather than lucide's
-  2.4, because at eighteen points the chevron and the underscore close up at
-  the heavier weight.
+  is what walks it — and the same circle and prompt is drawn as a line in the
+  menu bar (`WORLD` in `tray.ts`; the hand still replaces it while an agent
+  waits), beside the wordmark in the panel, and on the tile the empty panel
+  shows (`MARK` in `chrome.ts`). The three line drawings share their
+  coordinates on purpose; change one and change the others.
+  `build-resources/icon.icns` is what electron-builder picks up, and it is
+  generated from three drawings, because an `.icns` holds a picture per size
+  and detail that reads at 512 is mud at 16: `icon.svg` for 128 points and up
+  carries the scale and the meridians, `icon-small.svg` for 32 and 64 carries
+  the dial and the whole prompt, and `icon-tiny.svg` for 16 carries the
+  chevron alone, because the underscore closes up with it in ten pixels. The
+  commands are in the comment at the top of `icon.svg`. Two things about the
+  menu bar are not a matter of taste: a template image is black plus alpha and
+  nothing else, so white is a hole rather than paint — a filled glyph with a
+  lighter mark cut into it arrives as a solid blob — and the stroke is 2.1
+  rather than lucide's 2.4, because at eighteen points the chevron and the
+  underscore close up at the heavier weight.
 - **The two icons carry different things, and the Dock badge is not a
   counter.** A badge on macOS means "this many things want you", so it holds
   the number of calls waiting for the person (`waitingForPerson`), and nothing
@@ -162,6 +167,19 @@ state must go through the project's own session, never through
   snapshot demo page both link it, so a tint changes in one place. A colour
   literal anywhere else in the renderer is a defect: the demo page kept a
   blue button through two accent changes because it carried its own hex.
+- **The window is dressed as an instrument, and the orange is rationed.** The
+  language is Teenage Engineering's and Efferent's: an off-white shell, white
+  panels, hairline rules, corners of one or three points, no shadow on
+  anything that sits on a surface, and legends set in the monospaced face —
+  small capitals, tracked `--legend-track` — wherever a label names a control
+  rather than speaking a sentence. `#FF4B12` belongs to four things and no
+  others: the way forward (the primary key, the chosen segment), the mark
+  itself, the row the person is looking at, and a call that is waiting for
+  them. Everything else is told apart by grey, the agent dots included, which
+  is why `--agent-1` through `--agent-4` walk an ink ramp instead of picking up
+  a second hue. Dark is a second finish rather than an inversion — the black
+  case Teenage Engineering also builds — so the shell darkens, the panels stay
+  a step above it, and the orange is unchanged.
 - **The disguise is one switch, and it flips live.** Pages see plain Chromium
   by default (`src/main/disguise.ts` owns the user agent); the switch in the
   settings window, or `--announce-automation`, puts the Electron user agent back
