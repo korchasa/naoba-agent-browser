@@ -99,10 +99,21 @@ const tasks: Record<string, () => Promise<number>> = {
     console.log(`installed ${target}`)
     const opened = await run('/usr/bin/open', ['-g', '-a', target])
     if (opened !== 0) return opened
-    // The copy registers itself as a login item on its first start; the list
-    // System Events keeps is the one place a shell can read that back.
+    // The copy people download registers itself as a login item on its first
+    // start; the development copy stopped doing that in 1.0.4, because it was
+    // starting a second browser at every login beside the release one. The list
+    // System Events keeps is the one place a shell can read either back.
+    const registered = await isLoginItem(name, 15_000)
+    if (rest[0] === 'dev') {
+      console.log(
+        registered
+          ? `login item: ${name} is still registered from before 1.0.4; switch it off in System Settings`
+          : `login item: ${name} does not start at login, which is right for the development copy`,
+      )
+      return 0
+    }
     console.log(
-      (await isLoginItem(name, 15_000))
+      registered
         ? `login item: ${name} is registered`
         : `login item: ${name} is not registered (off in System Settings, or the OS did not take it)`,
     )
