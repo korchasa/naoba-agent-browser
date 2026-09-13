@@ -10,10 +10,10 @@ export const TOOLS = [
   {
     name: 'begin',
     description:
-      'Call this first, before any other tool here. Say in a few words what you are working on: that is the ' +
-      'name the person sees in the window beside your tab, and it is how they tell you from the other agents ' +
-      'working in this same project. Opens your tab — at `url` if you give one — and answers with the project, ' +
-      'your tab and whoever else is here.',
+      'Call this first, before any other tool here. Say which project you are working in and, in a few words, ' +
+      'what you are doing there: the project decides whose browser you get, and the name is what the person ' +
+      'sees in the window beside your tab. Opens your tab — at `url` if you give one — and answers with the ' +
+      'project, your tab and whoever else is here.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -23,12 +23,19 @@ export const TOOLS = [
             'What you are here to do, in a few words — "rewriting the checkout tests", not "agent 2". Shown ' +
             'to the person beside your tab.',
         },
+        dir: {
+          type: 'string',
+          description:
+            'The absolute path of the project you are working in — your working directory, or the repository ' +
+            'root above it. Agents that name the same project share a browser; agents in different projects ' +
+            'share nothing.',
+        },
         url: {
           type: 'string',
           description: 'Where to open your tab. Left out, the tab opens empty and waits for your first scenario.',
         },
       },
-      required: ['name'],
+      required: ['name', 'dir'],
     },
   },
   {

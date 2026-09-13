@@ -75,8 +75,7 @@ loopback, at a fixed address.
 Its settings window prints the whole line. It reads like this:
 
 ```sh
-claude mcp add --transport http naoba http://127.0.0.1:8899/mcp \
-  --header "X-Project: ${PWD}"
+claude mcp add --transport http naoba http://127.0.0.1:8899/mcp
 ```
 
 Or in a project's `.mcp.json`:
@@ -86,44 +85,53 @@ Or in a project's `.mcp.json`:
   "mcpServers": {
     "naoba": {
       "type": "http",
-      "url": "http://127.0.0.1:8899/mcp",
-      "headers": {
-        "X-Project": "${PWD}"
-      }
+      "url": "http://127.0.0.1:8899/mcp"
     }
   }
 }
 ```
 
-`X-Project` is what makes the isolation automatic. The IDE expands `${PWD}` per
-session, so one configuration written once says which repository each agent is
-working in; the application walks up from there to the repository root, and that
-is the project. The first time a folder appears, the application asks whether to
-let it open a browser; the answer is remembered.
+An address and nothing else. There used to be a header carrying `${PWD}`, and
+it only worked in clients that expand it — Claude Code in a terminal does, the
+desktop application does not, and one that does not sends the four characters
+and reaches no project at all. Nothing is expanded on the way here any more.
 
-A configuration with no `X-Project` is not refused silently: the first tool call
-comes back saying which header to add. A directory that is not on this Mac is
-refused the same way, which is what an unexpanded `${PWD}` looks like from here.
+### The first call is `begin`
+
+Everything a header used to carry, the agent now says itself, in the first call
+it makes:
+
+```
+begin({ name: "rewriting the checkout tests", dir: "/Users/you/code/thing" })
+```
+
+`dir` is the absolute path of the project — the agent's working directory, or
+the repository root above it. It decides whose browser the agent gets: agents
+naming the same project share a window, its cookies and its logins, and agents
+in different projects share nothing. A path that is relative, that is not a
+directory, or that is still a shell expression is refused with a sentence
+saying which of the three it is. The first time a project appears, the
+application asks whether to let it open a browser, and remembers the answer.
+
+`name` is a few words about what the agent is doing — "rewriting the checkout
+tests", not "agent 2". Two agents in one repository are two sessions with two
+tabs, and this is what tells them apart on screen: the row in the panel beside
+the agent's tab, the question asking whether to admit a new project, and the
+message another agent gets when this one is holding a tab it wants.
+
+`begin` opens the agent's tab at the same time, at a `url` if it was given one,
+and answers with the project, that tab, and whoever else is working here — so
+one round trip does what used to take three. Every other tool waits for it:
+called first, they come back asking for `begin`.
+
+The agent is known by the `Mcp-Session-Id` the application hands out at
+`initialize` and the client echoes from then on. One id is one agent in one
+project. An id that calls `begin` again naming a different project moves there,
+and takes nothing from the first one with it.
 
 What happens between that first call and the moment an agent's tabs are let go,
 in four sequence diagrams:
 [documents/how-a-session-works.md](documents/how-a-session-works.md).
-
-### The first call is `begin`
-
-`X-Project` says which repository an agent is in. It does not say which agent,
-and it cannot: the configuration it lives in is shared by every agent working in
-that repository. So the first thing an agent does is call `begin` and say in a
-few words what it is here to do — "rewriting the checkout tests", not "agent 2".
-
-That sentence is the name the person sees in the window beside the agent's tab,
-in the question asking whether to let a new project open a browser, and in the
-message another agent gets when this one is holding a tab it wants.
-
-`begin` opens the agent's tab at the same time, at a `url` if it was given one,
-and answers with the project, that tab, and whoever else is working here. Two
-round trips become one. Every other tool waits for it: called first, they come
-back asking for `begin` rather than guessing at a name.
 
 ### The port
 

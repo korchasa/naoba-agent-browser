@@ -415,13 +415,15 @@ test('the development copy and the copy people download answer on different port
   assert.notEqual(mcpUrl(mcpPort(false)), mcpUrl(mcpPort(true)))
 })
 
-test('the line a person pastes carries the project and nothing to install', () => {
+test('the line a person pastes is an address and nothing else', () => {
   const line = connectCommand(8899)
   assert.match(line, /--transport http/)
   assert.match(line, /http:\/\/127\.0\.0\.1:8899\/mcp/)
-  // `${PWD}` is the IDE's to expand, once per session — that is what lets one
-  // line written today answer for every repository the person works in.
-  assert.ok(line.includes('--header "X-Project: ${PWD}"'), line)
+  // No headers at all. Which project and which agent are things the agent says
+  // in `begin`, so this line is written once and is right in every client and
+  // every repository afterwards — including the ones that expand nothing.
+  assert.ok(!line.includes('--header'), line)
+  assert.ok(!/\$\{PWD\}/.test(line), line)
   // Nothing to keep secret, so the line is safe to paste into an issue or a
   // screenshot.
   assert.ok(!/authorization/i.test(line), line)

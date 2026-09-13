@@ -69,9 +69,8 @@ class Session implements Connection {
 
   constructor(
     id: number,
-    readonly key: string,
-    /** The header the client echoes back, or `null` for a client that ignores it. */
-    readonly sessionId: string | null,
+    /** The header the client echoes back on every request. It is also the key. */
+    readonly sessionId: string,
     readonly projectDir: string,
     readonly ide: string,
     /** What the agent is called until `begin` gives it a name of its own. */
@@ -108,7 +107,7 @@ class Session implements Connection {
   }
 
   close(): void {
-    sessions.delete(this.key)
+    sessions.delete(this.sessionId)
     for (const [, waiting] of this.#pending) waiting.reject(new Error('the browser closed this session'))
     this.#pending.clear()
     this.#onClose?.()
@@ -295,42 +294,69 @@ async function callTool(
   options: McpOptions,
 ): Promise<void> {
   const id = message.id as number | string
-  const session = admitted(request, response, id, options)
-  if (!session) return
+  const name = message.params?.name
+  const args = message.params?.arguments ?? {}
 
-  try {
-    const name = message.params?.name
-    const args = message.params?.arguments ?? {}
-    if (name === 'begin') {
-      const chosen = typeof args.name === 'string' ? args.name.trim() : ''
-      if (!chosen) {
-        return void reply(response, id, {
-          isError: true,
-          content: [{
-            type: 'text',
-            text: 'begin needs a name for this agent — a few words about what you are here to do, as in ' +
-              'begin({ name: "rewriting the checkout tests" }). Other agents in this project are listed under ' +
-              'theirs, and so will you be.',
-          }],
-        })
-      }
-      await session.greet(chosen)
-      const opened = await session.call('begin', { url: args.url })
-      return void reply(response, id, { content: [{ type: 'text', text: JSON.stringify(opened, null, 2) }] })
-    }
-    if (!session.started) {
-      // Not a protocol error: the model is the one that has to act on it, and
-      // the next thing it does should be the call this asks for.
+  if (name === 'begin') {
+    const chosen = typeof args.name === 'string' ? args.name.trim() : ''
+    if (!chosen) {
       return void reply(response, id, {
         isError: true,
         content: [{
           type: 'text',
-          text: `begin has not been called yet, so this project's window does not know who you are. Call ` +
-            'begin({ name: "..." }) first, saying in a few words what you are here to do; it opens your tab and ' +
-            'answers with the project, your tab and whoever else is working here.',
+          text: 'begin needs a name for this agent — a few words about what you are here to do, as in ' +
+            'begin({ name: "rewriting the checkout tests", dir: "/Users/you/code/thing" }). Other agents in this ' +
+            'project are listed under theirs, and so will you be.',
         }],
       })
     }
+    const dir = typeof args.dir === 'string' ? args.dir.trim() : ''
+    if (!dir) {
+      return void reply(response, id, {
+        isError: true,
+        content: [{
+          type: 'text',
+          text: 'begin needs the project this agent is working in: dir, the absolute path of the directory, as ' +
+            'in begin({ name: "...", dir: "/Users/you/code/thing" }). It is what decides whose browser you get, ' +
+            'so agents in two repositories never share one.',
+        }],
+      })
+    }
+    // A client that keeps one MCP session while its working directory changes,
+    // or shares one client across two workspaces, says a different `dir` the
+    // second time. It gets the other project's browser, never the first one's
+    // under the second one's name — that is the one promise this application
+    // makes, and it outranks keeping a session alive.
+    const carried = sessionOf(request)
+    if (carried && carried.projectDir !== dir) carried.close()
+    const started = carried && carried.projectDir === dir ? carried : opened(request, response, id, dir, options)
+    if (!started) return
+    try {
+      await started.greet(chosen)
+      const picture = await started.call('begin', { url: args.url })
+      return void reply(response, id, { content: [{ type: 'text', text: JSON.stringify(picture, null, 2) }] })
+    } catch (error) {
+      return void reply(response, id, { isError: true, content: [{ type: 'text', text: renderError(error) }] })
+    } finally {
+      started.lastSeen = Date.now()
+    }
+  }
+
+  const session = sessionOf(request)
+  if (!session) {
+    return void reply(response, id, {
+      isError: true,
+      content: [{
+        type: 'text',
+        text: 'begin has not been called yet, so this project\'s window does not know who you are. Call ' +
+          'begin({ name: "...", dir: "..." }) first — a few words about what you are here to do, and the ' +
+          'absolute path of the project you are working in. It opens your tab and answers with the project, ' +
+          'your tab and whoever else is working here.',
+      }],
+    })
+  }
+
+  try {
     if (name === 'evalInBrowser') {
       const outcome = await session.call('eval', { code: args.code, timeout: args.timeout })
       return void reply(response, id, { content: [{ type: 'text', text: renderOutcome(outcome) }] })
@@ -360,8 +386,8 @@ async function testDoor(
   options: McpOptions,
 ): Promise<void> {
   const id = message.id as number | string
-  const session = admitted(request, response, id, options)
-  if (!session) return
+  const session = sessionOf(request)
+  if (!session) return void fail(response, id, -32002, 'this session has not called begin')
   if (message.method === 'naoba/events') {
     // Drained, not read: the caller is polling, and leaving them behind would
     // hand the same event back on every poll.
@@ -369,9 +395,6 @@ async function testDoor(
     return void reply(response, id, { events })
   }
   try {
-    // The door is the harness's, not an agent's: it introduces itself under the
-    // name the test put in `X-Agent` rather than going through `begin`.
-    await session.greet(session.label)
     const value = await session.call(String(message.params?.method), message.params?.params)
     reply(response, id, { value })
   } catch (error) {
@@ -389,108 +412,86 @@ async function testDoor(
  * there is none — a client that ignores the header still gets one browser per
  * project rather than a new agent on every call.
  */
-function admitted(
+/**
+ * The session this request speaks for, if `begin` has already made one.
+ *
+ * `initialize` mints the session id and the specification has the client echo
+ * it on every request after that. It is the whole identity of an agent here:
+ * one id, one agent, one project, and nothing a second agent in the same
+ * repository can be confused with.
+ */
+function sessionOf(request: IncomingMessage): Session | null {
+  const sessionId = header(request, 'mcp-session-id')
+  if (!sessionId) return null
+  const known = sessions.get(sessionId)
+  if (known) known.lastSeen = Date.now()
+  return known ?? null
+}
+
+/**
+ * The session `begin` is asking for, or an answer saying why there is none.
+ *
+ * The project directory arrives here as an argument rather than in a header.
+ * A header would have to be written once and be right for every repository
+ * afterwards, which is what `${PWD}` was for — and a client that does not
+ * expand it sends the four characters instead, which no check can repair. The
+ * agent knows where it is working, so it says so.
+ */
+function opened(
   request: IncomingMessage,
   response: ServerResponse,
   id: number | string,
+  dir: string,
   options: McpOptions,
 ): Session | null {
-  const projectDir = header(request, 'x-project')
-  if (!projectDir) {
-    // Not a protocol error: the person has to read this and change a file, so
-    // it goes where they will see it — in the agent's own hands.
+  const sessionId = header(request, 'mcp-session-id')
+  if (!sessionId) {
     reply(response, id, {
       isError: true,
       content: [{
         type: 'text',
-        text: 'Naoba does not know which project this agent is working in. The MCP entry for naoba needs a ' +
-          'header: "headers": { "X-Project": "${PWD}" }. Naoba\'s settings window prints the whole line to paste.',
+        text: 'This request carried no Mcp-Session-Id. Naoba hands one out in its answer to initialize, and ' +
+          'every request after that has to echo it — it is what tells two agents in one repository apart.',
       }],
     })
     return null
   }
-
-  const complaint = unusable(projectDir)
+  const complaint = unusable(dir)
   if (complaint) {
     reply(response, id, { isError: true, content: [{ type: 'text', text: complaint }] })
     return null
   }
-
-  const sessionId = header(request, 'mcp-session-id') ?? null
-  const key = keyFor(sessionId, projectDir, header(request, 'x-agent'))
-  const known = sessions.get(key)
-  if (known) {
-    known.lastSeen = Date.now()
-    return known
-  }
   const ide = header(request, 'x-ide') ?? 'agent'
-  const fresh = new Session(
-    nextConnectionId++,
-    key,
-    sessionId,
-    projectDir,
-    ide,
-    // `X-Agent` is for somebody running two agents in one project who wants to
-    // tell them apart in the panel. Most clients send nothing, and the project
-    // they are working in is the useful half of the name anyway.
-    header(request, 'x-agent') ?? `${ide} · ${basename(projectDir)}`,
-    options.testDoor === true,
-  )
-  sessions.set(key, fresh)
+  const fresh = new Session(nextConnectionId++, sessionId, dir, ide, `${ide} · ${basename(dir)}`, options.testDoor === true)
+  sessions.set(sessionId, fresh)
   options.join(fresh)
   return fresh
 }
 
-/**
- * The key a session is kept under.
- *
- * The project is part of it rather than merely remembered: a client that keeps
- * one MCP session while its working directory changes, or shares one client
- * across two workspaces, would otherwise be handed the first project's browser
- * — its cookies and its logins — under the second project's name. That is the
- * one promise the whole application is built on.
- */
-function keyFor(sessionId: string | null, projectDir: string, agent: string | undefined): string {
-  if (sessionId) return `${sessionId}\u0000${projectDir}`
-  // Without a session header there is one session per project, and two agents
-  // working in one repository would be one agent — one row in the panel, one
-  // tab, and each of them able to walk into the other's half-finished
-  // scenario. `X-Agent` is the only thing left that tells them apart, so when
-  // a client bothers to send it, it counts.
-  return agent ? `project:${projectDir}\u0000${agent}` : `project:${projectDir}`
-}
-
-/**
- * The sessions this request speaks for.
- *
- * A client that echoes the session header is asking about one session. A client
- * that ignores it has one session per project, so the header naming the project
- * is what says which.
- */
+/** The sessions this request speaks for — none before `begin`, one after it. */
 function ours(request: IncomingMessage): Session[] {
-  const sessionId = header(request, 'mcp-session-id')
-  if (sessionId) return [...sessions.values()].filter((session) => session.sessionId === sessionId)
-  const projectDir = header(request, 'x-project')
-  const known = projectDir ? sessions.get(keyFor(null, projectDir, header(request, 'x-agent'))) : undefined
+  const known = sessionOf(request)
   return known ? [known] : []
 }
 
 /**
  * Why this is not a directory an agent could be working in, if it is not one.
  *
- * A client that does not expand `${PWD}` sends it literally, and that string
- * is a perfectly good map key — so without this check
- * every agent in every such client lands in one project and shares one
- * browser's cookies between repositories that have nothing to do with each
- * other.
+ * Every one of these would otherwise be a perfectly good map key, and an agent
+ * that lands under a key of its own gets a browser of its own — so two agents
+ * naming the same repository two ways would work in two windows, and one
+ * nonsense string would collect every agent that sent it into one.
  */
 function unusable(projectDir: string): string | null {
   const named = `Naoba was told this agent works in “${projectDir}”`
   if (/[$][({]/.test(projectDir)) {
-    return `${named}, which is the text of the header rather than a path: this client does not expand \${PWD} in a ` +
-      'header. Put the project directory in the MCP entry literally instead.'
+    return `${named}, which is a shell expression rather than a path. Nothing expands it on the way here: pass ` +
+      'the working directory itself, as in begin({ dir: "/Users/you/code/thing" }).'
   }
-  if (!projectDir.startsWith('/')) return `${named}, which is not an absolute path.`
+  if (!projectDir.startsWith('/')) {
+    return `${named}, which is not an absolute path. begin takes the full path from the root, as in ` +
+      'begin({ dir: "/Users/you/code/thing" }).'
+  }
   try {
     if (statSync(projectDir).isDirectory()) return null
   } catch {

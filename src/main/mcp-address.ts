@@ -28,14 +28,11 @@ export function mcpUrl(port: number): string {
 /**
  * The whole line that connects an agent.
  *
- * `${PWD}` is not ours to expand: the IDE does it, once per session, and that
- * is how one line written today answers for every repository the person works
- * in tomorrow.
+ * An address and nothing else. Everything that used to travel in a header —
+ * which project, which agent — is said by the agent itself in `begin`, so this
+ * line is written once and is right for every repository afterwards, in every
+ * client, whether or not it expands anything.
  */
 export function connectCommand(port: number): string {
-  return [
-    'claude mcp add --transport http naoba',
-    mcpUrl(port),
-    '--header "X-Project: ${PWD}"',
-  ].join(' ')
+  return `claude mcp add --transport http naoba ${mcpUrl(port)}`
 }

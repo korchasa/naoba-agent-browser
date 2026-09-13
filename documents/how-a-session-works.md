@@ -26,10 +26,10 @@ sequenceDiagram
     HTTP-->>IDE: 200, header Mcp-Session-Id
     Note over IDE,HTTP: No Session yet. The id is the name<br/>the client echoes back from now on.
 
-    IDE->>HTTP: POST /mcp — tools/call begin { name, url? }<br/>Mcp-Session-Id, X-Project, X-Agent, X-IDE
+    IDE->>HTTP: POST /mcp — tools/call begin { name, dir, url? }<br/>Mcp-Session-Id, X-IDE
     HTTP->>HTTP: lastSeen for this session
-    HTTP->>HTTP: admitted(): is X-Project there,<br/>and is it a directory on this Mac?
-    HTTP->>S: new Session, keyed by session id AND X-Project
+    HTTP->>HTTP: opened(): is the session id there,<br/>and is dir an absolute directory on this Mac?
+    HTTP->>S: new Session, keyed by the session id
     HTTP->>Hub: join(session)
     HTTP->>S: greet(name) — the promise is remembered, not a flag
     S->>Hub: hello { projectDir, agent: { label: name } }
@@ -58,20 +58,20 @@ sequenceDiagram
     HTTP-->>IDE: 200 { content: prose the model reads }
 ```
 
-Later calls skip the middle: `admitted()` finds the session by its key, `greet()` returns the promise it already has,
-and the call goes straight to the hub.
+Later calls skip the middle: `sessionOf()` finds the session by the echoed id, `greet()` returns the promise it already
+has, and the call goes straight to the hub.
 
 ## What decides which browser an agent gets
 
-- **The project comes from `X-Project`**, one header per session, expanded by the IDE from one line of configuration.
-  `identify()` walks up to the nearest repository root, resolves symlinks and lowercases the result, so two spellings of
-  one directory are one project.
-- **A session is keyed by the session id and the project together.** A client that keeps one MCP session while its
-  working directory changes gets a second session and a second browser, not the first project's cookies.
-- **A client that echoes no session id** is keyed by the project, and by `X-Agent` when it sends one — two agents in one
-  repository that name themselves stay two agents.
-- **A project directory that is not on this Mac is refused** with a sentence in the agent's own hands. An unexpanded
-  `${PWD}` is what that usually means.
+- **The project comes from `dir`, an argument of `begin`**, the absolute path the agent is working in. `identify()`
+  walks up to the nearest repository root, resolves symlinks and lowercases the result, so two spellings of one
+  directory are one project. It used to be a header carrying `${PWD}`, which only worked in clients that expand it.
+- **A session is keyed by the `Mcp-Session-Id` alone.** It is minted at `initialize` and echoed from then on, so one id
+  is one agent, and two agents in one repository are two ids and two rows.
+- **An id that calls `begin` again naming a different project moves to it**, and the session it had in the first
+  project is closed — never the first project's cookies under the second project's name.
+- **A `dir` that is relative, that is a shell expression, or that is not a directory on this Mac is refused** with a
+  sentence in the agent's own hands saying which of the three it is.
 - **An unknown project is asked about once**, and the answer is kept in `projects.json`. The dialogs are serialised, so
   five agents starting at once in one checkout produce one question.
 

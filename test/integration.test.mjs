@@ -317,11 +317,10 @@ test('a frame is reachable: read it, type in it, click in it', async () => {
 
 test('a tab an agent opened leaves with the agent', async () => {
   const watcher = await app.agent(PROJECT_A, 'tab-watcher')
-  const leaver = await app.agent(PROJECT_A, 'tab-leaver')
-
-  // The watcher runs first so that its own tab is part of the baseline: what is
-  // measured here is what the leaver adds and what it takes away with it.
+  // The baseline is taken before the leaver exists: `begin` opens its tab, so
+  // by the time it runs a scenario the tab this test is about is already there.
   const baseline = await watcher.run(`return (await api.getTabs()).map((tab) => tab.id)`)
+  const leaver = await app.agent(PROJECT_A, 'tab-leaver')
   const opened = await leaver.run(`
     const tab = await api.newTab(${JSON.stringify(origin + '/second.html')})
     return tab.id
@@ -381,63 +380,72 @@ test('an Authorization header left over from an older configuration is ignored',
   assert.equal(response.status, 200)
 })
 
-/** One `begin` call, with whatever headers the test wants to say something about. */
-async function ask(headers, name = 'a test agent') {
+let sessionCounter = 0
+
+/** One `begin` call, exactly as an agent makes it. */
+async function begins({ session, dir = PROJECT_A, name = 'a test agent', url } = {}) {
   const response = await fetch(app.url, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', ...headers },
+    headers: {
+      'content-type': 'application/json',
+      ...(session === null ? {} : { 'mcp-session-id': session ?? `test-session-${++sessionCounter}` }),
+    },
     body: JSON.stringify({
       jsonrpc: '2.0',
       id: 1,
       method: 'tools/call',
-      params: { name: 'begin', arguments: { name } },
+      params: { name: 'begin', arguments: { name, ...(dir === null ? {} : { dir }), ...(url ? { url } : {}) } },
     }),
   })
   return await response.json()
 }
 
+/** What `begin` answered, parsed. */
+const pictureOf = (answer) => JSON.parse(answer.result.content[0].text)
+
 test('an agent that does not say which project it is in is told what to add', async () => {
-  // Not a protocol error: a person has to read this and edit a file, so it
-  // comes back where the agent will show it to them.
-  const response = await fetch(app.url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'tools/call',
-      params: { name: 'status', arguments: {} },
-    }),
-  })
-  const answer = await response.json()
+  // Not a protocol error: the model is what has to act on it, and the next
+  // thing it does should be the call this asks for.
+  const answer = await begins({ dir: null })
   assert.equal(answer.result.isError, true)
-  assert.match(answer.result.content[0].text, /X-Project/)
+  assert.match(answer.result.content[0].text, /begin needs the project/)
 })
 
-test('a project directory that is not there is refused, and the sentence says why', async () => {
-  // What a client that does not expand ${PWD} in a header sends. It is a
-  // perfectly good map key, so without this every agent in every such client
-  // would land in one project and share one browser's cookies between
-  // repositories that have nothing to do with each other.
-  const answer = await ask({ 'x-project': '${PWD}' })
+test('a request that never echoed the session header is told to', async () => {
+  // The id is minted at initialize and the specification has every request
+  // after that carry it back. It is the whole identity of an agent here.
+  const answer = await begins({ session: null })
   assert.equal(answer.result.isError, true)
-  assert.match(answer.result.content[0].text, /does not expand/)
+  assert.match(answer.result.content[0].text, /Mcp-Session-Id/)
+})
 
-  const missing = await ask({ 'x-project': '/tmp/naoba-tests/never-made-this' })
+test('a project directory that is not a directory is refused, and the sentence says why', async () => {
+  // Every one of these is a perfectly good map key, so an agent that got past
+  // this would have a browser of its own under a name that means nothing.
+  const shell = await begins({ dir: '${PWD}' })
+  assert.equal(shell.result.isError, true)
+  assert.match(shell.result.content[0].text, /shell expression/)
+
+  const relative = await begins({ dir: 'projects/naoba' })
+  assert.equal(relative.result.isError, true)
+  assert.match(relative.result.content[0].text, /not an absolute path/)
+
+  const missing = await begins({ dir: '/tmp/naoba-tests/never-made-this' })
   assert.equal(missing.result.isError, true)
   assert.match(missing.result.content[0].text, /no such directory/)
 })
 
-test('one session id used in two projects gets two browsers, not one', async () => {
+test('one session id that names a second project moves to it, and keeps nothing', async () => {
   // A client that keeps its session while its working directory changes, or
   // shares one client across two workspaces. Handing it the first project's
-  // browser would break the one promise the whole application makes.
+  // browser under the second project's name would break the one promise the
+  // whole application makes.
   const id = 'a-session-used-twice'
-  const here = await ask({ 'x-project': PROJECT_A, 'mcp-session-id': id })
-  const there = await ask({ 'x-project': PROJECT_B, 'mcp-session-id': id })
-  const nameOf = (answer) => JSON.parse(answer.result.content[0].text).project.name
-  assert.equal(nameOf(here), 'project-a')
-  assert.equal(nameOf(there), 'project-b')
+  const here = await begins({ session: id, dir: PROJECT_A })
+  const there = await begins({ session: id, dir: PROJECT_B })
+  assert.equal(pictureOf(here).project.name, 'project-a')
+  assert.equal(pictureOf(there).project.name, 'project-b')
+  assert.notEqual(pictureOf(here).you.id, pictureOf(there).you.id)
 })
 
 test('two calls that arrive together introduce one agent, not two', async () => {
@@ -447,28 +455,27 @@ test('two calls that arrive together introduce one agent, not two', async () => 
   // from ever being freed.
   const id = 'two-calls-at-once'
   const both = await Promise.all([
-    ask({ 'x-project': PROJECT_C, 'mcp-session-id': id }),
-    ask({ 'x-project': PROJECT_C, 'mcp-session-id': id }),
+    begins({ session: id, dir: PROJECT_C }),
+    begins({ session: id, dir: PROJECT_C }),
   ])
-  const others = JSON.parse(both[1].result.content[0].text).others
+  const others = pictureOf(both[1]).others
   assert.equal(others.length, 0, `the project has ${others.length + 1} agents for one session`)
 })
 
-test('two agents in one project that echo no session header stay two agents', async () => {
-  // A client that ignores the session header has one session per project. Two
-  // of them in one repository used to be one agent: one row in the panel, one
-  // tab, and each able to walk into the other's half-finished scenario.
-  const one = await ask({ 'x-project': PROJECT_C, 'x-agent': 'headerless-one' })
-  const two = await ask({ 'x-project': PROJECT_C, 'x-agent': 'headerless-two' })
-  const idOf = (answer) => JSON.parse(answer.result.content[0].text).you.id
-  assert.ok(idOf(one))
-  assert.notEqual(idOf(one), idOf(two))
+test('two session ids in one project stay two agents', async () => {
+  // One repository, two agents. They share the window and can see each other's
+  // tabs — what they must not share is an identity: one row in the panel and
+  // one tab would let each walk into the other's half-finished scenario.
+  const one = await begins({ dir: PROJECT_C, name: 'the first one here' })
+  const two = await begins({ dir: PROJECT_C, name: 'the second one here' })
+  assert.ok(pictureOf(one).you.id)
+  assert.notEqual(pictureOf(one).you.id, pictureOf(two).you.id)
 })
 
 test('a tool called before begin is told to call begin, and what to say in it', async () => {
   const response = await fetch(app.url, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-project': PROJECT_A },
+    headers: { 'content-type': 'application/json', 'mcp-session-id': 'never-began' },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'status', arguments: {} } }),
   })
   const answer = await response.json()
@@ -477,37 +484,28 @@ test('a tool called before begin is told to call begin, and what to say in it', 
 })
 
 test('begin without a name is refused, because the name is the whole point of it', async () => {
-  const answer = await ask({ 'x-project': PROJECT_A }, '   ')
+  const answer = await begins({ name: '   ' })
   assert.equal(answer.result.isError, true)
   assert.match(answer.result.content[0].text, /begin needs a name/)
 })
 
 test('two agents in one project are listed under the names they chose', async () => {
-  const first = await ask({ 'x-project': PROJECT_A, 'mcp-session-id': 'named-one' }, 'reading the release notes')
-  const second = await ask({ 'x-project': PROJECT_A, 'mcp-session-id': 'named-two' }, 'filling in the signup form')
-  const mine = JSON.parse(second.result.content[0].text)
+  const first = await begins({ dir: PROJECT_A, name: 'reading the release notes' })
+  const second = await begins({ dir: PROJECT_A, name: 'filling in the signup form' })
+  const mine = pictureOf(second)
   assert.equal(mine.you.label, 'filling in the signup form')
   const names = mine.others.map((other) => other.label)
   assert.ok(names.includes('reading the release notes'), names.join(', '))
   // The agent that went first sees nobody yet, which is the point of asking
   // again rather than trusting the first answer.
-  assert.equal(JSON.parse(first.result.content[0].text).you.label, 'reading the release notes')
+  assert.equal(pictureOf(first).you.label, 'reading the release notes')
 })
 
 test('begin opens the tab, and takes it to the address it was given', async () => {
   // The saving is a round trip: an agent that knows where it is going says so
   // here instead of calling begin and then a scenario that only navigates.
-  const response = await fetch(app.url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-project': PROJECT_A, 'mcp-session-id': 'begin-with-a-url' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'tools/call',
-      params: { name: 'begin', arguments: { name: 'looking at the fixture page', url: origin + '/page.html' } },
-    }),
-  })
-  const { tab } = JSON.parse((await response.json()).result.content[0].text)
+  const answer = await begins({ dir: PROJECT_A, name: 'looking at the fixture page', url: origin + '/page.html' })
+  const { tab } = pictureOf(answer)
   assert.ok(tab.id, 'begin should answer with a tab')
   assert.match(tab.url, /\/page\.html$/)
 })

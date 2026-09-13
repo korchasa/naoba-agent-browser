@@ -70,10 +70,11 @@ export async function startApp(
     port: listening,
     userData,
     url: `http://127.0.0.1:${listening}/mcp`,
-    /** Connect as one agent working in `projectDir`. */
+    /** Connect as one agent working in `projectDir`, `begin` and all. */
     async agent(projectDir, label = 'test-agent') {
-      const session = await connect(listening, projectDir, label)
+      const session = await connect(listening, label)
       open.push(session)
+      await session.tool('begin', { name: label, dir: projectDir })
       const status = await session.call('status', {})
       return {
         session,
@@ -103,10 +104,10 @@ export async function startApp(
  * `naoba/call` and `naoba/events` are the test door the application opens only
  * under `--admit-everything`: a tool call comes back as prose for a model to
  * read, and an assertion needs the value the browser produced. Everything else
- * here — the address, `X-Project`, the session header — is exactly what Claude
- * Code sends.
+ * here — the address and the session header — is exactly what Claude Code
+ * sends.
  */
-export async function connect(port, projectDir, label = 'test-agent') {
+export async function connect(port, label = 'test-agent') {
   const url = `http://127.0.0.1:${port}/mcp`
   const events = []
   let id = 1
@@ -117,8 +118,7 @@ export async function connect(port, projectDir, label = 'test-agent') {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        ...(projectDir ? { 'x-project': projectDir } : {}),
-        ...(label ? { 'x-agent': label, 'x-ide': 'test' } : {}),
+        ...(label ? { 'x-ide': 'test' } : {}),
         ...(sessionKey ? { 'mcp-session-id': sessionKey } : {}),
         ...headers,
       },
