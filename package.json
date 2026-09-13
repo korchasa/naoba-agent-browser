@@ -1,6 +1,6 @@
 {
   "name": "naoba",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "description": "Naoba — blazing-fast browser for agents. Many AI agents drive it at once, isolated per project.",
   "license": "SEE LICENSE IN LICENSE",
