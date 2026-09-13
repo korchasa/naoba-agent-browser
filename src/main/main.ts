@@ -5,15 +5,15 @@ import { Hub } from './hub.ts'
 import { iconMenu, installTray, waitingForPerson } from './tray.ts'
 import { installDock } from './dock.ts'
 import { readSettings, writeSettings } from './settings.ts'
-import { DEFAULT_PORT } from './protocol.ts'
 import { normalizeUrl } from './tab.ts'
 import { userAgentFor } from './disguise.ts'
 import { appName, isDevVariant } from './variant.ts'
 import { accepted, decideLoginItem, describeLoginItem } from './login.ts'
 import { asPresence, type LoginItemState, type Presence, presenceOf, type SettingsSnapshot } from './preferences.ts'
 import { SettingsWindow } from './settings-window.ts'
-import { clearHandshake, writeHandshake } from './handshake.ts'
-import { mcpServerEntry, INSTALLED_MCP_SERVER } from './mcp-server-path.ts'
+import { startMcpServer, stopMcpServer } from './mcp-http.ts'
+import { mcpToken } from './mcp-token.ts'
+import { connectCommand, mcpPort } from './mcp-address.ts'
 import {
   activate as activateLicence,
   check as checkLicence,
@@ -76,7 +76,13 @@ if (!app.requestSingleInstanceLock()) {
 async function start(): Promise<void> {
   await app.whenReady()
 
+  // Fixed, not found: the address sits in an IDE's configuration, so it has to
+  // survive a restart. The flag is for a test run, which needs a port of its
+  // own so it never reaches the browser the owner is using.
+  const port = numberFlag('--port', mcpPort(isDevVariant()))
+
   const hub = new Hub({
+    port,
     preload: join(__dirname, 'preload.js'),
     chromeHtml: join(__dirname, 'chrome.html'),
     idleUnloadMs: numberFlag('--idle-unload-ms', 10 * 60_000),
@@ -102,7 +108,7 @@ async function start(): Promise<void> {
 
   const snapshotDir = stringFlag('--snapshot')
   if (snapshotDir) {
-    await hub.start(numberFlag('--port', DEFAULT_PORT + 40))
+    hub.start()
     const { writeSnapshots } = await import('./snapshot.ts')
     await writeSnapshots(hub, snapshotDir, `file://${join(__dirname, 'demo.html')}`, settings)
     app.exit(0)
@@ -110,12 +116,18 @@ async function start(): Promise<void> {
   }
 
   try {
-    const port = await hub.start(numberFlag('--port', DEFAULT_PORT))
-    // How an MCP server reaches this copy: the port it listens on, and the token it
-    // will demand on the first message. Written before the line below, so a
-    // MCP server that starts the moment it sees that line finds the file there.
-    writeHandshake(port, hub.mcpToken)
-    // The MCP server reads this line when it starts the app itself.
+    hub.start()
+    // The application is the MCP server now. A port already taken means another
+    // copy of this same variant is running, and the dialog below says so rather
+    // than this one quietly moving to a port no configuration names.
+    await startMcpServer({
+      port,
+      token: mcpToken(),
+      version: app.getVersion(),
+      join: (session) => hub.join(session),
+      testDoor: isTestRun,
+    })
+    // Read by a test harness waiting for the application to come up.
     process.stdout.write(`naoba listening on 127.0.0.1:${port}\n`)
   } catch (error) {
     dialog.showErrorBox(`${appName()} cannot start`, String(error))
@@ -167,7 +179,7 @@ async function start(): Promise<void> {
     leaving = true
     event.preventDefault()
     hub.stop()
-    clearHandshake()
+    stopMcpServer()
     stopLicenceChecks()
     stopWatchingForUpdates()
     dockHandle?.()
@@ -308,6 +320,7 @@ function settingsFor(hub: Hub): SettingsSnapshot {
     // it will never fill in as if something were missing.
     licence: admitsWithoutKey(isTestRun, isDevVariant()) ? describeFreeCopy() : licenceState(),
     update: updateState(),
+    connect: posingForPictures ? connectCommand(hub.port, 'YOUR-TOKEN') : connectCommand(hub.port, mcpToken()),
   }
 }
 
@@ -459,9 +472,11 @@ function wireChrome(hub: Hub, settings: SettingsAccess): void {
   /** Everything the panel draws, for every project, the moment it starts. */
   ipcMain.handle('ab:state', () => ({
     port: hub.port,
-    // The panel prints the line that connects an agent, and it has to name this
-    // copy's own MCP server — the one in the bundle, or the one in the checkout.
-    mcpServer: posingForPictures ? INSTALLED_MCP_SERVER : mcpServerEntry(app.isPackaged, process.resourcesPath, app.getAppPath()),
+    // The panel prints the line that connects an agent, and it carries this
+    // copy's own token. The pictures of the application must not: they are
+    // published, and that line would be a working key to the photographer's
+    // browser.
+    connect: posingForPictures ? connectCommand(hub.port, 'YOUR-TOKEN') : connectCommand(hub.port, mcpToken()),
     projects: [...hub.contexts.values()].map((context) => ({
       id: context.identity.id,
       name: context.identity.name,
@@ -593,6 +608,8 @@ function wireChrome(hub: Hub, settings: SettingsAccess): void {
       throw error
     }
   })
+  /** The connect line is long and holds a token; nobody should be retyping it. */
+  ipcMain.handle('ab:copy', (_event, text: string) => clipboard.writeText(String(text)))
   /** Quit and come back as the version that is already downloaded. */
   ipcMain.handle('ab:install-update', () => installUpdate())
   ipcMain.handle('ab:deactivate-licence', async () => {

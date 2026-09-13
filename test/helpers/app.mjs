@@ -3,7 +3,6 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { AppClient } from '../../packages/mcp-server/client.mjs'
 
 const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))))
 
@@ -65,39 +64,130 @@ export async function startApp(
     })
   })
 
-  // The application demands this on the first message of every connection, and
-  // writes it into the state directory before it says it is listening.
-  const { token } = JSON.parse(await readFile(join(userData, 'mcp-server.json'), 'utf8'))
+  // The application demands this on every request, and writes it into the state
+  // directory before it says it is listening.
+  const token = (await readFile(join(userData, 'mcp-token'), 'utf8')).trim()
 
-  const clients = []
+  const open = []
 
   return {
     port: listening,
     userData,
     token,
+    url: `http://127.0.0.1:${listening}/mcp`,
     /** Connect as one agent working in `projectDir`. */
     async agent(projectDir, label = 'test-agent') {
-      const client = new AppClient()
-      const events = []
-      client.onEvent((event) => events.push(event))
-      await client.connect(listening, token)
-      const welcome = await client.hello(projectDir, { label, ide: 'test', pid: process.pid })
-      clients.push(client)
+      const session = await connect(listening, token, projectDir, label)
+      open.push(session)
+      const status = await session.call('status', {})
       return {
-        client,
-        events,
-        project: welcome.project,
-        agentId: welcome.agentId,
-        run: (code, timeout = 20_000) => client.call('eval', { code, timeout }),
-        status: () => client.call('status', {}),
-        close: () => client.close(),
+        session,
+        project: status.project,
+        agentId: status.agents.find((agent) => agent.self)?.id ?? null,
+        /** Every event this session has been sent, oldest first. */
+        get events() {
+          return session.events
+        },
+        run: (code, timeout = 20_000) => session.call('eval', { code, timeout }),
+        status: () => session.call('status', {}),
+        close: () => void session.close(),
       }
     },
     async stop() {
-      for (const client of clients) client.close()
+      for (const session of open) await session.close()
       child.kill('SIGTERM')
       await new Promise((resolve) => child.on('exit', resolve))
       if (!keepState) await rm(userData, { recursive: true, force: true })
+    },
+  }
+}
+
+/**
+ * One agent's session, over the endpoint a real IDE uses.
+ *
+ * `naoba/call` and `naoba/events` are the test door the application opens only
+ * under `--admit-everything`: a tool call comes back as prose for a model to
+ * read, and an assertion needs the value the browser produced. Everything else
+ * here — the address, the token, `X-Project`, the session header — is exactly
+ * what Claude Code sends.
+ */
+export async function connect(port, token, projectDir, label = 'test-agent') {
+  const url = `http://127.0.0.1:${port}/mcp`
+  const events = []
+  let id = 1
+  let sessionKey = null
+
+  async function rpc(method, params, headers = {}) {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${token}`,
+        ...(projectDir ? { 'x-project': projectDir } : {}),
+        ...(label ? { 'x-agent': label, 'x-ide': 'test' } : {}),
+        ...(sessionKey ? { 'mcp-session-id': sessionKey } : {}),
+        ...headers,
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', id: id++, method, params }),
+    })
+    if (!response.ok) {
+      throw Object.assign(new Error(`the browser answered ${response.status}`), { status: response.status })
+    }
+    const answer = await response.json()
+    if (answer.error) {
+      const { code, details } = answer.error.data ?? {}
+      throw Object.assign(new Error(answer.error.message), { code, details })
+    }
+    return { result: answer.result, sessionKey: response.headers.get('mcp-session-id') }
+  }
+
+  const start = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {} })
+  sessionKey = start.sessionKey
+
+  // Nothing is pushed over HTTP, so the events a socket used to deliver are
+  // collected by asking. Often enough that a test waiting on one does not
+  // notice, and only in a test run — the door is shut in a shipped build.
+  let closed = false
+  const poller = setInterval(() => void collect(), 100)
+  poller.unref?.()
+
+  async function collect() {
+    if (closed) return
+    try {
+      const { result } = await rpc('naoba/events', {})
+      events.push(...result.events)
+    } catch {
+      // The application is going away, or this session already has. Either way
+      // there are no more events to read and nothing here to report.
+    }
+  }
+
+  return {
+    /** Every event this session has been sent, oldest first. */
+    get events() {
+      return events
+    },
+    get sessionKey() {
+      return sessionKey
+    },
+    /** The hub's own call, with the value it produced rather than prose about it. */
+    async call(method, params) {
+      const { result } = await rpc('naoba/call', { method, params })
+      return result.value
+    },
+    /** A tool call as an agent makes it, prose and all. */
+    async tool(name, args) {
+      const { result } = await rpc('tools/call', { name, arguments: args })
+      return result
+    },
+    list: () => rpc('tools/list', {}).then(({ result }) => result),
+    async close() {
+      closed = true
+      clearInterval(poller)
+      await fetch(url, {
+        method: 'DELETE',
+        headers: { authorization: `Bearer ${token}`, ...(sessionKey ? { 'mcp-session-id': sessionKey } : {}) },
+      }).catch(() => undefined)
     },
   }
 }

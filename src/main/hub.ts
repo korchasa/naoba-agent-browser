@@ -9,16 +9,17 @@ import { identify, normalizeRoot, type ProjectIdentity } from './project.ts'
 import type { AdmissionRecord } from './preferences.ts'
 import {
   type ClientMessage,
+  type Connection,
   type ErrorCode,
   type ProjectDescriptor,
-  PROTOCOL_VERSION,
   type ServerMessage,
 } from './protocol.ts'
 import { runScript, ScriptError } from './runner.ts'
-import { McpListener, type Connection } from './server.ts'
 import { pause } from './tab.ts'
 
 export interface HubOptions extends ShellPaths {
+  /** The port agents reach this copy on. Told, not discovered: the hub no longer listens itself. */
+  port: number
   /** How long a project may sit with no agent and no interaction before its renderers are freed. */
   idleUnloadMs: number
   /** How long a departed agent's tabs stay open, in case its session comes back. */
@@ -54,7 +55,6 @@ export class Hub {
   readonly #admissions = new Map<string, AdmissionRecord>()
   /** Told whenever the register changes, so an open settings window redraws it. */
   #onAdmissions: (() => void) | null = null
-  readonly #server: McpListener
   readonly #agentsByConnection = new Map<number, { agentId: string; projectId: string }>()
   #idleTimer: NodeJS.Timeout | null = null
   #admissionInFlight: Promise<unknown> = Promise.resolve()
@@ -71,17 +71,12 @@ export class Hub {
     this.shell.onFrontChange(() => {
       for (const context of this.contexts.values()) context.notifyTabs()
     })
-    this.#server = new McpListener((connection) => this.#onConnection(connection))
     this.#loadAdmissions()
   }
 
+  /** Where agents reach this copy. The `status` call reports it back to them. */
   get port(): number {
-    return this.#server.port
-  }
-
-  /** What an MCP server must present to be let in. New on every start. */
-  get mcpToken(): string {
-    return this.#server.token
+    return this.#options.port
   }
 
   /** Whether pages are told that a program drives the browser. One switch for every project. */
@@ -104,11 +99,19 @@ export class Hub {
     for (const context of this.contexts.values()) context.setOrphanCloseMs(ms)
   }
 
-  async start(preferredPort?: number): Promise<number> {
-    const port = await this.#server.listen(preferredPort)
+  /**
+   * Take a session the MCP endpoint has already admitted.
+   *
+   * The hub does not care what carried it. A socket used to; an HTTP session
+   * does now, and it wears the same shape.
+   */
+  join(connection: Connection): void {
+    this.#onConnection(connection)
+  }
+
+  start(): void {
     this.#idleTimer = setInterval(() => this.#sweepIdle(), 60_000)
     this.#idleTimer.unref?.()
-    return port
   }
 
   /** Write every project's session to disk, and never fail the shutdown for it. */
@@ -118,7 +121,6 @@ export class Hub {
 
   stop(): void {
     if (this.#idleTimer) clearInterval(this.#idleTimer)
-    this.#server.close()
   }
 
   /** The projects the panel lists, in the order they first connected. */
@@ -310,18 +312,6 @@ export class Hub {
     message: Extract<ClientMessage, { type: 'hello' }>,
     slot: { attach(agent: AgentHandle, context: ProjectContext): void },
   ): Promise<void> {
-    if (message.protocol !== PROTOCOL_VERSION) {
-      connection.send({
-        type: 'denied',
-        id: message.id,
-        code: 'protocol',
-        reason:
-          `this app speaks protocol ${PROTOCOL_VERSION}, the MCP server speaks ${message.protocol}; update the MCP server`,
-      })
-      connection.close()
-      return
-    }
-
     const licensed = this.#options.licensed?.() ?? true
     if (!licensed) {
       connection.send({

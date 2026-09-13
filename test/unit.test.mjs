@@ -9,18 +9,15 @@ import { resolveUploadPaths, resolveWritePath, within } from '../src/main/files.
 import { KeyedQueue, QueueTimeout } from '../src/main/queue.ts'
 import { LeaseTable } from '../src/main/lease.ts'
 import { toTransferable } from '../src/main/serialize.ts'
-import { decodeLines } from '../src/main/protocol.ts'
 import { CommandLog } from '../src/main/commands.ts'
 import { describeVisits, VISIT_LIMIT, VisitLog } from '../src/main/visits.ts'
 import { CallTrail, recordCalls, TRAIL_LIMIT, TRAIL_LIMITS } from '../src/main/trail.ts'
-import { renderError, renderOutcome } from '../packages/mcp-server/render.mjs'
+import { renderError, renderOutcome } from '../src/main/render.mjs'
 import { describePattern, matcherFor } from '../src/main/urls.ts'
 import { buildTree, expandNew, groupKey, projectKey, sortGroups, tabKey } from '../src/renderer/tree.ts'
-import { documentedNames, fullReference, helpFor, namesIn, TOOL_DESCRIPTION } from '../packages/mcp-server/reference.mjs'
-import { TOOLS } from '../packages/mcp-server/tools.mjs'
-import { noTokenFound, stateDirs, tokensForPort } from '../packages/mcp-server/handshake.mjs'
-import { candidates, owningBundle } from '../packages/mcp-server/launch.mjs'
-import { mcpServerCommand, mcpServerEntry } from '../src/main/mcp-server-path.ts'
+import { documentedNames, fullReference, helpFor, namesIn, TOOL_DESCRIPTION } from '../src/main/reference.mjs'
+import { TOOLS } from '../src/main/tools.mjs'
+import { connectCommand, mcpPort, mcpUrl } from '../src/main/mcp-address.ts'
 import {
   activateRequest,
   admitsWithoutKey,
@@ -408,12 +405,28 @@ test('a value that cannot be read costs its own key, never the result', () => {
   assert.deepEqual(fromScenario, { ok: 1, bad: { $type: 'unserialisable', reason: 'boom' } })
 })
 
-test('the wire splits on lines and keeps the unfinished tail', () => {
-  const first = decodeLines('{"type":"a"}\n{"type":"b"}\n{"ty')
-  assert.deepEqual(first.messages, [{ type: 'a' }, { type: 'b' }])
-  assert.equal(first.rest, '{"ty')
-  const second = decodeLines(first.rest + 'pe":"c"}\n')
-  assert.deepEqual(second.messages, [{ type: 'c' }])
+// ------------------------------------------------------ the address to paste
+
+test('the development copy and the copy people download answer on different ports', () => {
+  // Both are installed on this machine at once, and an agent pointed at one
+  // must never land in the other: different ports, different state, different
+  // tokens.
+  assert.equal(mcpPort(false), 8899)
+  assert.equal(mcpPort(true), 8900)
+  assert.notEqual(mcpUrl(mcpPort(false)), mcpUrl(mcpPort(true)))
+})
+
+test('the line a person pastes carries the project, the token and nothing to install', () => {
+  const line = connectCommand(8899, 'f'.repeat(64))
+  assert.match(line, /--transport http/)
+  assert.match(line, /http:\/\/127\.0\.0\.1:8899\/mcp/)
+  // `${PWD}` is the IDE's to expand, once per session — that is what lets one
+  // line written today answer for every repository the person works in.
+  assert.ok(line.includes('--header "X-Project: ${PWD}"'), line)
+  assert.match(line, /Authorization: Bearer f{64}/)
+  // Nothing to launch: no `node`, no path into a bundle, nothing that stops
+  // working when the application replaces itself.
+  assert.ok(!line.includes('node '), line)
 })
 
 // ------------------------------------------------------- the panel's own tree
@@ -562,26 +575,6 @@ test('a tab keeps its newest calls and drops the oldest', () => {
   const log = new CommandLog(3)
   for (const text of ['one', 'two', 'three', 'four']) log.add(said('agent-1', 'claude', text))
   assert.deepEqual(log.entries.map((entry) => entry.text), ['four', 'three', 'two'])
-})
-
-test('the MCP server tries the release copy, then the development copy, then a checkout', async () => {
-  const { candidates } = await import('../packages/mcp-server/launch.mjs')
-  const kinds = candidates({ HOME: '/Users/x', NAOBA_DEV_ROOT: '/checkout' }).map((c) => c.kind)
-  assert.deepEqual(kinds, [
-    'bundle-id',
-    'applications',
-    'home-applications',
-    'dev-bundle-id',
-    'dev-applications',
-    'dev-home-applications',
-    'dev',
-  ])
-  const paths = candidates({ HOME: '/Users/x' }).map((c) => c.path)
-  assert.ok(paths.includes('/Applications/Naoba Dev.app'))
-  assert.ok(paths.includes('dev.korchasa.Naoba.dev'))
-  // An explicit path wins over everything, and a missing checkout adds nothing.
-  assert.equal(candidates({ HOME: '/Users/x', NAOBA_APP: '/x/Naoba.app' })[0].kind, 'explicit')
-  assert.ok(!candidates({ HOME: '/Users/x' }).some((c) => c.kind === 'dev'))
 })
 
 test('the login item is registered once, by an installed copy, and never by a test or a checkout', async () => {
@@ -1192,69 +1185,6 @@ test('a call that has not come back is in the trail, marked as running', () => {
   assert.equal(running.ok, false)
 })
 
-test('the MCP server takes the token from the copy listening on that port', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'naoba-state-'))
-  writeFileSync(join(dir, 'mcp-server.json'), JSON.stringify({ port: 8899, token: 'a'.repeat(64), pid: process.pid }))
-  const env = { NAOBA_STATE_DIR: dir }
-  assert.deepEqual(tokensForPort(8899, env).candidates.map((c) => c.token), ['a'.repeat(64)])
-  // A file naming a different port belongs to a different copy, whatever else
-  // it holds.
-  assert.deepEqual(tokensForPort(8900, env).candidates, [])
-})
-
-test('a file left behind by a killed copy does not shadow the copy that answers', () => {
-  // The failure this fixes. A copy is killed rather than quit, so its file
-  // stays and keeps naming a port; another copy starts and takes that port. The
-  // release directory is read first, so the dead copy's token used to be the
-  // one presented — and the application, rightly, refused it.
-  const home = mkdtempSync(join(tmpdir(), 'naoba-home-'))
-  const dead = join(home, 'Library', 'Application Support', 'Naoba')
-  const live = join(home, 'Library', 'Application Support', 'Naoba Dev')
-  mkdirSync(dead, { recursive: true })
-  mkdirSync(live, { recursive: true })
-  // A process id nothing is using: the highest macOS hands out is 99998.
-  writeFileSync(join(dead, 'mcp-server.json'), JSON.stringify({ port: 8899, token: 'dead'.repeat(16), pid: 99999 }))
-  writeFileSync(join(live, 'mcp-server.json'), JSON.stringify({ port: 8899, token: 'live'.repeat(16), pid: process.pid }))
-
-  const { candidates } = tokensForPort(8899, { HOME: home })
-  assert.equal(candidates[0].token, 'live'.repeat(16), 'the running copy goes first')
-  // The dead one is kept rather than dropped: a process id can be reused, and
-  // the MCP server tries the whole list before giving up.
-  assert.equal(candidates[1].token, 'dead'.repeat(16))
-})
-
-test('a file from a copy that wrote no process id is tried, after the living', () => {
-  const home = mkdtempSync(join(tmpdir(), 'naoba-home-'))
-  const older = join(home, 'Library', 'Application Support', 'Naoba')
-  const live = join(home, 'Library', 'Application Support', 'Naoba Dev')
-  mkdirSync(older, { recursive: true })
-  mkdirSync(live, { recursive: true })
-  // Written by a version before the process id existed.
-  writeFileSync(join(older, 'mcp-server.json'), JSON.stringify({ port: 8899, token: 'old0'.repeat(16) }))
-  writeFileSync(join(live, 'mcp-server.json'), JSON.stringify({ port: 8899, token: 'live'.repeat(16), pid: process.pid }))
-
-  const tokens = tokensForPort(8899, { HOME: home }).candidates.map((c) => c.token)
-  assert.deepEqual(tokens, ['live'.repeat(16), 'old0'.repeat(16)])
-})
-
-test('an MCP server that cannot find the token says where it looked', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'naoba-state-'))
-  const { candidates, looked } = tokensForPort(8899, { NAOBA_STATE_DIR: dir })
-  assert.deepEqual(candidates, [])
-  const error = noTokenFound(8899, looked)
-  assert.equal(error.code, 'token-not-found')
-  assert.match(error.message, new RegExp(dir))
-})
-
-test('the copies the MCP server knows to look in are the three a person can have', () => {
-  const dirs = stateDirs({ HOME: '/home/someone' })
-  assert.deepEqual(dirs, [
-    '/home/someone/Library/Application Support/Naoba',
-    '/home/someone/Library/Application Support/Naoba Dev',
-    '/home/someone/Library/Application Support/Electron',
-  ])
-})
-
 // ------------------------------------------------------------------- licence
 
 const DAY = 24 * 60 * 60 * 1000
@@ -1458,35 +1388,4 @@ test('the settings window is told what happened, not only that something did', (
   // A key the person can still recognise stays on the row even once it is no
   // good, so they can tell the dead key from one they have not tried yet.
   assert.equal(describe(stored({ cancelled: true }), NOW).tail, '1234')
-})
-
-test('an MCP server shipped inside the application starts that application', () => {
-  // The path a bought copy carries. Somebody who downloaded the DMG points
-  // their IDE at this file and has nothing else to install, so the MCP server must
-  // recognise the bundle it is sitting in rather than asking the system which
-  // Naoba it prefers.
-  const inside = 'file:///Applications/Naoba.app/Contents/Resources/mcp-server/launch.mjs'
-  assert.equal(owningBundle(inside), '/Applications/Naoba.app')
-
-  const kinds = candidates({}, owningBundle(inside)).map((c) => c.kind)
-  assert.equal(kinds[0], 'own-bundle')
-  assert.equal(candidates({}, owningBundle(inside))[0].path, '/Applications/Naoba.app')
-
-  // A checkout is not inside a bundle, and must not invent one.
-  assert.equal(owningBundle('file:///Users/someone/www/naoba/packages/mcp-server/launch.mjs'), null)
-  assert.equal(candidates({}, null)[0].kind, 'bundle-id')
-
-  // NAOBA_APP still wins: it is the one a person set on purpose.
-  assert.equal(candidates({ NAOBA_APP: '/tmp/Other.app' }, owningBundle(inside))[0].kind, 'explicit')
-})
-
-test('the panel tells a person where this copy keeps its MCP server', () => {
-  // An installed application carries the MCP server; the line the panel prints has
-  // to name that file, because somebody who bought the application has no
-  // checkout to substitute for it.
-  const installed = mcpServerEntry(true, '/Applications/Naoba.app/Contents/Resources', '/whatever/app.asar')
-  assert.equal(installed, '/Applications/Naoba.app/Contents/Resources/mcp-server/index.mjs')
-  assert.equal(mcpServerCommand(installed), `claude mcp add naoba -- node ${installed}`)
-
-  assert.equal(mcpServerEntry(false, '', '/Users/someone/www/naoba'), '/Users/someone/www/naoba/packages/mcp-server/index.mjs')
 })

@@ -1,13 +1,11 @@
 /**
  * The manual, in one place, because it is read in two.
  *
- * The MCP server builds the `evalInBrowser` description from it, and the
- * application answers `api.help()` from it. Neither can reach the other: the
- * MCP server is a standalone package an IDE launches on its own, and the app is a
- * bundle that does not carry it — so whatever the MCP server needs has to live
- * inside `packages/mcp-server/`, and the app imports this one module and lets
- * esbuild bundle it. Two copies of this text would drift the first time a
- * helper was added.
+ * `tools.mjs` builds the `evalInBrowser` description from it, and the
+ * application answers `api.help()` from it. Both live in this bundle now; they
+ * did not always, and the rule that kept them together is what made moving
+ * them easy. Two copies of this text would drift the first time a helper was
+ * added.
  *
  * The description is a budget, not a manual: the client cuts it at about 2040
  * characters and appends "… [truncated]", which is how the whole second half of

@@ -35,7 +35,6 @@ import {
   type TreeProject,
   type TreeTab,
 } from './tree.ts'
-import { mcpServerCommand, mcpServerEntry } from '../main/mcp-server-path.ts'
 
 interface ProjectSnapshot extends ProjectDescriptor {
   tabs: TabDescriptor[]
@@ -46,7 +45,7 @@ interface ProjectSnapshot extends ProjectDescriptor {
 declare const ab: {
   state(): Promise<{
     port: number
-    mcpServer: string
+    connect: string
     projects: ProjectSnapshot[]
   }>
   openSettings(): Promise<unknown>
@@ -69,11 +68,11 @@ const projects = new Map<string, ProjectState>()
 /** Where agents connect; shown in the foot once the main process has said. */
 let port: number | null = null
 /**
- * This copy's own MCP server. The panel draws before the main process has answered,
- * so it starts on the checkout path and is corrected the moment the answer
- * arrives — an installed copy names the file inside its bundle instead.
+ * The line that connects an agent to this copy, token and all. Empty until the
+ * main process answers: it is the only side that knows the token, and printing
+ * a guess would send somebody to a browser that refuses them.
  */
-let mcpServerFile = mcpServerEntry(false, '', '<checkout>')
+let connectLine = ''
 
 /** The project's slot, made on first mention so a push about it never has nowhere to land. */
 function project(descriptor: ProjectDescriptor): ProjectState {
@@ -303,7 +302,7 @@ function renderTree(forest: TreeProject[]): HTMLElement {
     empty.append(
       el('p', '', 'Point one at a project and it will show up here, with every tab it opens and every call it makes.'),
     )
-    empty.append(el('code', '', mcpServerCommand(mcpServerFile)))
+    if (connectLine) empty.append(el('code', '', connectLine))
     root.append(empty)
   }
 
@@ -594,7 +593,7 @@ ab.on('commands', (payload) => {
 
 void ab.state().then((state) => {
   port = state.port
-  if (state.mcpServer) mcpServerFile = state.mcpServer
+  connectLine = state.connect
   for (const snapshot of state.projects) {
     const slot = project(snapshot)
     slot.tabs = snapshot.tabs

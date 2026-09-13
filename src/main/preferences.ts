@@ -65,6 +65,8 @@ export interface SettingsSnapshot extends PreferenceValues {
   licence: LicenceState
   /** Whether a newer version is on its way. Not a preference either. */
   update: UpdateSummary
+  /** The line that connects an agent to this copy, token included. */
+  connect: string
 }
 
 /** What a row looks like once a value has been put in it. */

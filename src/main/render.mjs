@@ -1,10 +1,10 @@
 /**
  * What the agent actually reads: the text an `evalInBrowser` call comes back as.
  *
- * It lives apart from `index.mjs` so a test can assert the words themselves.
- * The MCP server is launched standalone by an IDE and can reach nothing outside
- * `packages/mcp-server/`, so the shapes below are known here by their wire form —
- * `src/main/runner.ts` builds them, and nothing is imported across.
+ * It lives apart from the endpoint that sends it so a test can assert the words
+ * themselves. The shapes below are known by their form rather than by their
+ * type: `runner.ts` builds them, and this module reads them without importing
+ * anything from it.
  */
 
 export function renderOutcome(outcome) {

@@ -104,6 +104,22 @@ button:active {
   color: var(--text-dim);
 }
 
+/* The connect line. It is one long unbreakable string with a token at the end,
+   so it wraps anywhere rather than pushing the window wider than the screen. */
+code.connect {
+  display: block;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--sunken, rgba(127, 127, 127, 0.12));
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
 /* The number and the unit it is typed in, so the field itself carries no words. */
 .amount {
   flex: none;

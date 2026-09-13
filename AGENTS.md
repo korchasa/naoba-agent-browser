@@ -4,8 +4,8 @@
 
 An Electron application that gives AI coding agents a browser, isolated per
 project. The main process owns everything: the projects, their sessions, their
-tabs, and the port the agents' MCP servers connect to. The renderer draws the
-window's own chrome and nothing else.
+tabs, and the MCP endpoint the agents call. The renderer draws the window's own
+chrome and nothing else.
 
 ## The rule that outranks the others
 
@@ -32,13 +32,14 @@ state must go through the project's own session, never through
 - `src/main/trail.ts` — what a scenario had already done when it failed
 - `src/main/lease.ts`, `queue.ts` — who may act on a tab, and in what order
 - `src/main/hub.ts` — admission and routing
-- `src/main/server.ts`, `protocol.ts` — the wire, and the token every
-  connection shows before the hub hears of it
-- `src/main/handshake.ts`, `packages/mcp-server/handshake.mjs` — the two halves of
-  the file that tells an MCP server which port to dial and what to show on it
-- `packages/mcp-server/` — the MCP server an IDE launches, one per agent
-- `packages/mcp-server/reference.mjs` — the manual an agent reads, in the one
-  place both sides can reach it
+- `src/main/mcp-http.ts` — the MCP endpoint: the application answers agents
+  itself, over HTTP on loopback, and hands the hub a session per agent
+- `src/main/protocol.ts` — the shapes a session and the hub speak in, and
+  `Connection`, the seam that let the transport change without touching routing
+- `src/main/mcp-token.ts`, `mcp-address.ts` — the token this copy demands, and
+  the line a person pastes into their IDE
+- `src/main/reference.mjs` — the manual an agent reads, in the one place both
+  the tool description and `api.help()` are built from
 - `src/renderer/chrome.ts` — the window's chrome: the address bar and the tree
   of agents, their tabs and the calls made in them
 - `src/renderer/settings.ts` — the settings window's page: the preferences, and
@@ -65,19 +66,19 @@ state must go through the project's own session, never through
   moved into, or the person is holding, is not closed.
 - **The tool description is a budget, not a manual.** The client cuts the
   `evalInBrowser` description at about 2040 characters and appends
-  `… [truncated]` — nothing in the MCP server can see that happen. The whole helper
+  `… [truncated]` — nothing here can see that happen. The whole helper
   reference used to live there, 3922 characters of it, so everything from
   *Moving around* on reached no agent at all: the tabs, the cookies, the
   screenshots, `sleep`, `waitForLoad` and `requestHuman`. One session paid 281 s
   of hand-written pauses for the two missing waits. Both texts now come from
-  `packages/mcp-server/reference.mjs`: `TOOL_DESCRIPTION` is a summary that names
+  `src/main/reference.mjs`: `TOOL_DESCRIPTION` is a summary that names
   `api.help()`, `MANUAL` is everything, and a unit test fails at 1800 characters
   — early, because the cap is the client's to move. A new helper gets a line in
   `MANUAL` and a mention in the description only if it earns one. The module
-  stays plain `.mjs` with no imports of its own, because the application reads
-  it too (`allowJs` in `tsconfig.json`, bundled by esbuild) while the MCP server is
-  launched standalone by an IDE and can reach nothing outside
-  `packages/mcp-server/`. An integration test compares `Object.keys(api)` with the
+  stays plain `.mjs` (`allowJs` in `tsconfig.json`, bundled by esbuild) because
+  it was written to be read from a standalone package as well as from the
+  application; the package is gone and the file stayed as it was. An
+  integration test compares `Object.keys(api)` with the
   names the manual documents, both ways, so a helper with no line in it fails
   the suite.
 - **Icons come from the `lucide` package**, bundled into the panel by esbuild
@@ -416,9 +417,9 @@ hunting for one.
 
 `deno task fmt` formats everything the project owns, and three of those files
 have been unformatted for longer than anyone has looked:
-`packages/mcp-server/index.mjs`, `src/main/snapshot.ts`, and one line of
-`test/integration.test.mjs`. Running it to tidy up after an edit therefore
-rewrites two files nobody asked about and carries them into the commit. Check
+`src/main/snapshot.ts` and one line of `test/integration.test.mjs`. Running it
+to tidy up after an edit therefore rewrites files nobody asked about and carries
+them into the commit. Check
 your own work with `deno fmt --check` and read past those three. Checking it
 anywhere else does not work: a copy of a file in a scratch directory is
 formatted without this project's `deno.json`, so it comes back with every line

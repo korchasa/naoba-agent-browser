@@ -50,7 +50,8 @@ building can be watched firing. The choice is kept across restarts;
 
 ## Requirements
 
-macOS, and Node 20 or newer for the MCP server.
+macOS. Nothing else: an agent reaches the application over HTTP, so there is no
+second program to install and no Node on your PATH for it to need.
 
 ## Install
 
@@ -67,15 +68,16 @@ npm start
 
 ## Connect an agent
 
-An installed application carries the MCP server, so point your
-IDE at `/Applications/Naoba.app/Contents/Resources/mcp-server/index.mjs`; working
-from this checkout, point it at `packages/mcp-server/index.mjs` instead. Either way
-it is one file and needs nothing installed beyond Node.
+The application is the MCP server. There is nothing to install beside it and no
+path into its bundle to keep current — an agent reaches it over HTTP on
+loopback, at a fixed address, with a token it presents on every request.
 
-Claude Code:
+Its settings window prints the whole line, token and all. It reads like this:
 
 ```sh
-claude mcp add naoba -- node /absolute/path/to/packages/mcp-server/index.mjs
+claude mcp add --transport http naoba http://127.0.0.1:8899/mcp \
+  --header "X-Project: ${PWD}" \
+  --header "Authorization: Bearer <the token from the settings window>"
 ```
 
 Or in a project's `.mcp.json`:
@@ -84,46 +86,52 @@ Or in a project's `.mcp.json`:
 {
   "mcpServers": {
     "naoba": {
-      "command": "node",
-      "args": ["/absolute/path/to/packages/mcp-server/index.mjs"]
+      "type": "http",
+      "url": "http://127.0.0.1:8899/mcp",
+      "headers": {
+        "X-Project": "${PWD}",
+        "Authorization": "Bearer <the token from the settings window>"
+      }
     }
   }
 }
 ```
 
-The MCP server takes the agent's working directory, walks up to the repository root,
-and that is the project. The first time a folder appears, the application asks
-whether to let it open a browser; the answer is remembered.
+`X-Project` is what makes the isolation automatic. The IDE expands `${PWD}` per
+session, so one configuration written once says which repository each agent is
+working in; the application walks up from there to the repository root, and that
+is the project. The first time a folder appears, the application asks whether to
+let it open a browser; the answer is remembered.
 
-When nothing is listening, the MCP server starts the application itself. It looks
-for the release copy first (bundle id `dev.korchasa.Naoba`, then
-`/Applications/Naoba.app` and `~/Applications/Naoba.app`), then for the
-development copy (`dev.korchasa.Naoba.dev`, `Naoba Dev.app` in the same two
-places), and last at a bare checkout named by `NAOBA_DEV_ROOT`:
+A configuration with no `X-Project` is not refused silently: the first tool call
+comes back saying which header to add.
 
-```sh
-export NAOBA_DEV_ROOT=/absolute/path/to/this/checkout
-```
+### The port
 
-`NAOBA_APP=/path/to/Some.app` names one bundle explicitly and wins over all of
-them.
+The copy people download listens on 8899 and the development copy on 8900, so
+both can be installed at once and an agent pointed at one never lands in the
+other. The port is fixed rather than found: it sits in a configuration file and
+has to mean the same thing after a restart. When it is already taken, the
+application says so and stops instead of moving to a port nothing names.
 
 ### The token
 
 Loopback is not a boundary between the programs running on one machine, and the
-browser on the other side of that port holds your logged-in sessions. So the
-application admits only something that can read a file of its own: at every
-start it writes `mcp-server.json` into its state directory — the port it listens on,
-a token for this run and its process id, readable by the owner alone — and it
-closes any connection whose first message does not carry that token. A token
-from an earlier run is worth nothing.
+browser on the other side of that port holds your logged-in sessions. So every
+request carries a token, and one that does not is answered with 401 before it
+reaches a project, a tab or a cookie.
 
-The MCP server reads that file itself, so there is nothing to set up. It may find
-more than one: several copies can be installed at once, and a copy that was
-killed rather than quit leaves its file behind still naming a port the next copy
-may take. So the MCP server tries every token claiming that port, the copies still
-running first, and reports a refusal only when all of them are refused. When the
-application runs with a state directory of its own, `NAOBA_STATE_DIR` names it.
+The token is made once and kept in the application's state directory at mode
+0600, so reading it means already being you. It outlives a restart, because the
+IDE reads no state directory — the only way it reaches a configuration is
+through you, which is why the settings window has a button that copies the whole
+line.
+
+### Starting the application
+
+An installed copy registers itself as a login item on first start and is
+normally running. When it is not, the IDE reports a connection it could not
+make; open Naoba and the agent's next call goes through.
 
 ## The development copy
 

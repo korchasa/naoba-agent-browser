@@ -1,25 +1,29 @@
 /**
- * The wire between an agent's MCP server and the application.
+ * The seam between an MCP session and the hub.
  *
- * Both ends are Node processes, so there is no WebSocket here: a plain TCP
- * connection on the loopback interface carrying newline-delimited JSON does the
- * same job with no dependency and no handshake to get wrong. FoxCode needed a
- * WebSocket only because its client was a browser extension.
+ * These messages used to cross a socket: a relay process spoke MCP to the IDE
+ * and this protocol to the application. The application answers MCP itself now,
+ * so nothing here is serialised and nothing here is a wire — but the shapes
+ * stayed, because the hub is written against them and a session is easier to
+ * reason about as something that sends messages than as a pile of callbacks.
  *
- * The first message of a connection carries the token the application wrote
- * into its state directory at startup; a connection that shows anything else is
- * closed before the hub ever hears of it.
+ * `Connection` is what a session looks like to the hub. Whatever carried it —
+ * a socket once, an HTTP request now — the hub cannot tell the difference, and
+ * that is what let the transport change without touching the routing.
  */
-export const PROTOCOL_VERSION = 1
 
-/** First port tried; the app walks up this range when one is taken. */
-export const DEFAULT_PORT = 8899
-export const PORT_RANGE = 12
+export interface Connection {
+  readonly id: number
+  send(message: ServerMessage): void
+  close(): void
+  onMessage(handler: (message: ClientMessage) => void): void
+  onClose(handler: () => void): void
+}
 
 export interface AgentDescriptor {
   /** What the person sees in the agent list, e.g. "claude · checkout". */
   label: string
-  /** Which IDE launched the MCP server, when it says. */
+  /** Which IDE the agent is working in, when it says. */
   ide: string
   pid: number
 }
@@ -74,7 +78,7 @@ export interface AgentCommand {
 }
 
 export type ClientMessage =
-  | { type: 'hello'; id: number; protocol: number; projectDir: string; agent: AgentDescriptor; token: string }
+  | { type: 'hello'; id: number; projectDir: string; agent: AgentDescriptor }
   | { type: 'call'; id: number; method: string; params?: unknown }
   | { type: 'cancel'; id: number; target: number }
   | { type: 'bye'; id: number }
@@ -87,20 +91,14 @@ export type ServerMessage =
   | { type: 'event'; event: AppEvent }
 
 /**
- * Why a connection was turned away, for an MCP server that must decide what to do
+ * Why a session was turned away, for a caller that has to decide what to do
  * next rather than print prose.
- *
- * `bad-token` is the only one worth another attempt: several copies of the
- * application can be installed at once, and an MCP server that guessed the wrong
- * one's token has another to try. The other three are settled — trying again
- * with a different token changes nothing about a licence, a refused project or
- * an MCP server from another version.
  */
-export type DenialCode = 'bad-token' | 'protocol' | 'unlicensed' | 'project-refused'
+export type DenialCode = 'unlicensed' | 'project-refused'
 
 export interface WireError {
   message: string
-  /** Machine-readable so an MCP server can react without parsing prose. */
+  /** Machine-readable, so a caller can react without parsing prose. */
   code: ErrorCode
   details?: unknown
 }
@@ -128,26 +126,3 @@ export type AppEvent =
   | { type: 'human-done'; tabId: string }
   | { type: 'agent-joined'; agentId: string; label: string }
   | { type: 'agent-left'; agentId: string }
-
-/** Split a byte stream into JSON lines. Returns parsed messages plus the unfinished tail. */
-export function decodeLines(buffer: string): { messages: unknown[]; rest: string } {
-  const messages: unknown[] = []
-  let rest = buffer
-  for (;;) {
-    const at = rest.indexOf('\n')
-    if (at < 0) break
-    const line = rest.slice(0, at).trim()
-    rest = rest.slice(at + 1)
-    if (!line) continue
-    try {
-      messages.push(JSON.parse(line))
-    } catch {
-      messages.push({ type: 'malformed', line })
-    }
-  }
-  return { messages, rest }
-}
-
-export function encodeMessage(message: ServerMessage | ClientMessage): string {
-  return JSON.stringify(message) + '\n'
-}

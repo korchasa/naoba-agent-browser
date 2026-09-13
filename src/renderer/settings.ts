@@ -24,6 +24,7 @@ declare const ab: {
   activateLicence(key: string, buyer: Buyer | null): Promise<unknown>
   deactivateLicence(): Promise<unknown>
   installUpdate(): Promise<unknown>
+  copy(text: string): Promise<unknown>
   announceAutomation(on: boolean): Promise<unknown>
   orphanCloseMs(ms: number): Promise<unknown>
   presence(value: string): Promise<unknown>
@@ -44,6 +45,9 @@ function render(): void {
   }
   root.append(el('h6', '', 'Licence'))
   root.append(renderLicence(snapshot))
+
+  root.append(el('h6', '', 'Connecting an agent'))
+  root.append(renderConnect(snapshot))
 
   root.append(el('h6', '', 'General'))
   const general = el('div', 'group')
@@ -110,6 +114,47 @@ function renderLicence(values: SettingsSnapshot): HTMLElement {
   }
   group.append(renderUpdate(values))
   return group
+}
+
+/**
+ * The one line a person has to put somewhere else.
+ *
+ * It carries the token, so it is shown rather than hidden: an IDE reads no
+ * state directory, and the only way the key reaches its configuration is
+ * through the person. Copying it is a button because retyping 64 hex
+ * characters by hand is how a working configuration becomes a broken one.
+ */
+function renderConnect(values: SettingsSnapshot): HTMLElement {
+  const group = el('div', 'group')
+  const node = el('div', 'setting')
+  const text = el('div', 'text')
+  text.append(
+    el('span', 'label', 'Command'),
+    el(
+      'span',
+      'hint',
+      'Run this once in a terminal to let Claude Code reach this copy. Other agents take the same address, ' +
+        'the same two headers and the same token.',
+    ),
+    el('code', 'connect', values.connect),
+  )
+  node.append(text)
+  node.append(button(copied ? 'Copied' : 'Copy', () => void copyConnect(values.connect), 'Copies the whole line'))
+  group.append(node)
+  return group
+}
+
+/** Says so for a moment, because a copy that leaves no trace looks like a button that did nothing. */
+let copied = false
+
+async function copyConnect(line: string): Promise<void> {
+  await ab.copy(line)
+  copied = true
+  render()
+  setTimeout(() => {
+    copied = false
+    render()
+  }, 2000)
 }
 
 /**

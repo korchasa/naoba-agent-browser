@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { nextPort, startApp } from './helpers/app.mjs'
 import { startFixtureServer } from './fixtures/server.mjs'
-import { documentedNames } from '../packages/mcp-server/reference.mjs'
+import { documentedNames } from '../src/main/reference.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
@@ -350,76 +350,85 @@ test('a tab an agent opened leaves with the agent', async () => {
   watcher.close()
 })
 
-test('connecting when the browser is not running says exactly that', async () => {
-  const { AppClient } = await import('../packages/mcp-server/client.mjs')
-  // Passing a null port straight to node gives ERR_INVALID_ARG_TYPE about
-  // `options.port`, which reads as a bug in the caller rather than as a browser
-  // that is not up.
-  await assert.rejects(() => new AppClient().connect(null), /Naoba is not running/)
+test('a request without the token is refused', async () => {
+  // Loopback is not a boundary between the programs on this machine, and the
+  // browser behind this port holds the owner's logged-in sessions.
+  const response = await fetch(app.url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+  })
+  assert.equal(response.status, 401)
+  const answer = await response.json()
+  assert.match(answer.error, /did not carry the token/)
 })
 
-test('a connection that does not show the token is refused and closed', async () => {
-  const { AppClient } = await import('../packages/mcp-server/client.mjs')
-  const client = new AppClient()
-  await client.connect(app.port)
-  await assert.rejects(
-    () => client.hello('/tmp/naoba-tests/no-token', { label: 'stranger', ide: 'test', pid: process.pid }),
-    // The code, not the prose: it is what tells an MCP server another copy's token
-    // is worth trying, and a licence refusal is not.
-    (error) => error.code === 'denied' && error.denial === 'bad-token',
-  )
-  // Refusing the message is half of it; the connection must not stay open for a
-  // second attempt.
-  await waitFor(() => !client.connected, 2000)
-  client.close()
-})
-
-test('a token from another run is refused', async () => {
-  const { AppClient } = await import('../packages/mcp-server/client.mjs')
-  const client = new AppClient()
+test('a token from another copy is refused', async () => {
   // The same shape as a real token, so what is being tested is the comparison
   // and not a length check somewhere before it.
-  await client.connect(app.port, 'f'.repeat(app.token.length))
-  await assert.rejects(
-    () => client.hello('/tmp/naoba-tests/stale-token', { label: 'stale', ide: 'test', pid: process.pid }),
-    (error) => error.denial === 'bad-token' && /no longer running/.test(error.message),
-  )
-  client.close()
-})
-
-test('an MCP server that guessed the wrong copy may try again and be let in', async () => {
-  // What the retry in `index.mjs` rests on. Several copies can be installed at
-  // once and a killed one leaves its file behind, so the first token an MCP server
-  // finds is not always this copy's. Being refused must cost it the connection
-  // and nothing else — no ban, no delay before a second attempt.
-  const { AppClient } = await import('../packages/mcp-server/client.mjs')
-  const wrong = new AppClient()
-  await wrong.connect(app.port, 'f'.repeat(app.token.length))
-  await assert.rejects(
-    () => wrong.hello('/tmp/naoba-tests/second-try', { label: 'guesser', ide: 'test', pid: process.pid }),
-    (error) => error.denial === 'bad-token',
-  )
-  wrong.close()
-
-  const right = new AppClient()
-  await right.connect(app.port, app.token)
-  const welcome = await right.hello('/tmp/naoba-tests/second-try', {
-    label: 'guesser',
-    ide: 'test',
-    pid: process.pid,
+  const response = await fetch(app.url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${'f'.repeat(64)}` },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
   })
-  assert.equal(welcome.type, 'welcome')
-  right.close()
+  assert.equal(response.status, 401)
 })
 
-test('the token is written for this run only, and only the owner can read it', async () => {
-  const path = join(app.userData, 'mcp-server.json')
-  const record = JSON.parse(await readFile(path, 'utf8'))
-  assert.equal(record.port, app.port)
-  assert.equal(record.token, app.token)
-  assert.match(record.token, /^[0-9a-f]{64}$/)
+test("the token is this copy's alone, and only its owner can read it", async () => {
+  const path = join(app.userData, 'mcp-token')
+  const kept = (await readFile(path, 'utf8')).trim()
+  assert.equal(kept, app.token)
+  assert.match(kept, /^[0-9a-f]{64}$/)
   const mode = (await stat(path)).mode & 0o777
   assert.equal(mode, 0o600, `the token file is ${mode.toString(8)}, not 600`)
+})
+
+test('an agent that does not say which project it is in is told what to add', async () => {
+  // Not a protocol error: a person has to read this and edit a file, so it
+  // comes back where the agent will show it to them.
+  const response = await fetch(app.url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${app.token}` },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'status', arguments: {} },
+    }),
+  })
+  const answer = await response.json()
+  assert.equal(answer.result.isError, true)
+  assert.match(answer.result.content[0].text, /X-Project/)
+})
+
+test('the tools an agent is offered are the two the manual describes', async () => {
+  const agent = await app.agent(PROJECT_A, 'lister')
+  const { tools } = await agent.session.list()
+  assert.deepEqual(tools.map((tool) => tool.name).sort(), ['evalInBrowser', 'status'])
+  agent.close()
+})
+
+test('a tool call comes back as prose the model can read', async () => {
+  const agent = await app.agent(PROJECT_A, 'prose')
+  const result = await agent.session.tool('evalInBrowser', {
+    code: `console.log('said out loud'); return 6 * 7`,
+    timeout: 10_000,
+  })
+  assert.equal(result.isError, undefined)
+  assert.match(result.content[0].text, /said out loud/)
+  assert.match(result.content[0].text, /42/)
+  agent.close()
+})
+
+test('a failing tool call explains itself in the result rather than in the protocol', async () => {
+  const agent = await app.agent(PROJECT_A, 'prose-failure')
+  const result = await agent.session.tool('evalInBrowser', {
+    code: `await api.click('#nothing-matches-this', { timeout: 300 })`,
+    timeout: 10_000,
+  })
+  assert.equal(result.isError, true)
+  assert.match(result.content[0].text, /#nothing-matches-this/)
+  agent.close()
 })
 
 test('opening a tab without an address says what is missing', async () => {
@@ -626,7 +635,7 @@ test('an agent can hand a tab to the person and carry on afterwards', async () =
   assert.equal(tabs.value.length, 1)
   assert.equal(tabs.value[0].waitingForHuman, 'log into the fixture')
 
-  await watcher.client.call('test:human-done', { tabId: request.tabId })
+  await watcher.session.call('test:human-done', { tabId: request.tabId })
   const outcome = await asked
   assert.equal(outcome.value, 'Fixture')
   agent.close()
@@ -657,7 +666,7 @@ async function handOver(agent, watcher, code, until) {
   `,
     30_000,
   )
-  await watcher.client.call('test:human-done', { tabId: request.tabId })
+  await watcher.session.call('test:human-done', { tabId: request.tabId })
   return { asked, arrived: arrived.value, tabId: request.tabId }
 }
 
