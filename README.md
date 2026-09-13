@@ -70,14 +70,13 @@ npm start
 
 The application is the MCP server. There is nothing to install beside it and no
 path into its bundle to keep current — an agent reaches it over HTTP on
-loopback, at a fixed address, with a token it presents on every request.
+loopback, at a fixed address.
 
-Its settings window prints the whole line, token and all. It reads like this:
+Its settings window prints the whole line. It reads like this:
 
 ```sh
 claude mcp add --transport http naoba http://127.0.0.1:8899/mcp \
-  --header "X-Project: ${PWD}" \
-  --header "Authorization: Bearer <the token from the settings window>"
+  --header "X-Project: ${PWD}"
 ```
 
 Or in a project's `.mcp.json`:
@@ -89,8 +88,7 @@ Or in a project's `.mcp.json`:
       "type": "http",
       "url": "http://127.0.0.1:8899/mcp",
       "headers": {
-        "X-Project": "${PWD}",
-        "Authorization": "Bearer <the token from the settings window>"
+        "X-Project": "${PWD}"
       }
     }
   }
@@ -124,18 +122,18 @@ lives in the state directory, and each variant has its own. So a taken port is
 always somebody else's program — most often a Naoba older than 1.0.4, which
 took whatever it found between 8899 and 8910.
 
-### The token
+### There is no token
 
-Loopback is not a boundary between the programs running on one machine, and the
-browser on the other side of that port holds your logged-in sessions. So every
-request carries a token, and one that does not is answered with 401 before it
-reaches a project, a tab or a cookie.
+The port answers any request that reaches it, and reaching it means already
+running on this Mac as you. A program that far in could read whatever a secret
+were kept in, so demanding one protected nothing and cost every agent a header
+to get wrong. Naoba asked for a token in earlier versions and no longer does;
+an `Authorization` header left in an old configuration is ignored.
 
-The token is made once and kept in the application's state directory at mode
-0600, so reading it means already being you. It outlives a restart, because the
-IDE reads no state directory — the only way it reaches a configuration is
-through you, which is why the settings window has a button that copies the whole
-line.
+The browser itself is not open to the network: the endpoint listens on
+127.0.0.1 only, so nothing outside this Mac can reach it at all. A web page
+cannot either — browsers ask their user before a page may touch a loopback
+address.
 
 ### Starting the application
 

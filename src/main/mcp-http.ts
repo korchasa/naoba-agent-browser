@@ -119,8 +119,8 @@ class Session implements Connection {
   /**
    * Say who this agent is, once, the first time it wants a browser.
    *
-   * There is no token here: the hub is being handed a session the endpoint
-   * already admitted, and admitting it is what the token did.
+   * The hub is being handed a session the endpoint already admitted, and
+   * admitting it is what the project header did.
    */
   greet(): Promise<void> {
     // The promise is what is remembered, not a flag set after the await: a
@@ -160,7 +160,6 @@ let nextConnectionId = 1
 
 export interface McpOptions {
   port: number
-  token: string
   /** Reported in `serverInfo`, so an agent can say which copy answered it. */
   version: string
   /** Hands a new session to the hub, exactly as a socket used to be handed over. */
@@ -180,8 +179,9 @@ export function startMcpServer(options: McpOptions): Promise<number> {
     const listener = createServer((request, response) => void answer(request, response, options))
     const refuse = (error: Error) => reject(error)
     listener.once('error', refuse)
-    // Loopback only. The token is what keeps the other programs on this machine
-    // out; the address is what keeps the network out.
+    // Loopback only: the address is what keeps the network out. Nothing on
+    // this Mac is kept out, because nothing here could be — a program running
+    // as this person reads whatever a secret would be kept in.
     listener.listen(options.port, '127.0.0.1', () => {
       listener.off('error', refuse)
       // Past this point there is no promise left to reject, so a failure that
@@ -226,20 +226,6 @@ function forgetTheQuiet(): void {
 }
 
 async function answer(request: IncomingMessage, response: ServerResponse, options: McpOptions): Promise<void> {
-  if (!presents(request, options.token)) {
-    // `Bearer` and nothing more: a client that reads a bare 401 as the start of
-    // an authorization dance goes looking for metadata this endpoint does not
-    // serve, and the person never sees the sentence below.
-    response.writeHead(401, {
-      'content-type': 'application/json',
-      'www-authenticate': 'Bearer realm="naoba", error="invalid_token"',
-    })
-    response.end(JSON.stringify({
-      error: "this request did not carry this copy of Naoba's token; its settings window prints the whole line to " +
-        'paste, token and all',
-    }))
-    return
-  }
   // Any request at all says the client is still there. Only `tools/call` used to
   // say it, so a client doing exactly what the specification suggests for
   // liveness — a `ping` every minute — was swept anyway.
@@ -470,11 +456,6 @@ function unusable(projectDir: string): string | null {
     // both is the one below.
   }
   return `${named}, and there is no such directory on this Mac.`
-}
-
-function presents(request: IncomingMessage, token: string): boolean {
-  const shown = header(request, 'authorization')?.replace(/^Bearer\s+/i, '')
-  return shown === token
 }
 
 function header(request: IncomingMessage, name: string): string | undefined {

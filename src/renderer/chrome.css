@@ -501,7 +501,7 @@ input.url:focus {
   background: var(--fill);
   padding: 9px 12px;
   user-select: all;
-  /* A command has no spaces to break at in the middle of a URL or a token, so
+  /* A command has no spaces to break at in the middle of a URL, so
      without this the line runs off the edge and takes the whole panel with it:
      the installed copy's path did exactly that. It is read as one line to
      copy, not as a sentence, so it sets to the left while the words above it

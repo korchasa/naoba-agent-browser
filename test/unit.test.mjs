@@ -409,21 +409,22 @@ test('a value that cannot be read costs its own key, never the result', () => {
 
 test('the development copy and the copy people download answer on different ports', () => {
   // Both are installed on this machine at once, and an agent pointed at one
-  // must never land in the other: different ports, different state, different
-  // tokens.
+  // must never land in the other: different ports and different state.
   assert.equal(mcpPort(false), 8899)
   assert.equal(mcpPort(true), 8900)
   assert.notEqual(mcpUrl(mcpPort(false)), mcpUrl(mcpPort(true)))
 })
 
-test('the line a person pastes carries the project, the token and nothing to install', () => {
-  const line = connectCommand(8899, 'f'.repeat(64))
+test('the line a person pastes carries the project and nothing to install', () => {
+  const line = connectCommand(8899)
   assert.match(line, /--transport http/)
   assert.match(line, /http:\/\/127\.0\.0\.1:8899\/mcp/)
   // `${PWD}` is the IDE's to expand, once per session — that is what lets one
   // line written today answer for every repository the person works in.
   assert.ok(line.includes('--header "X-Project: ${PWD}"'), line)
-  assert.match(line, /Authorization: Bearer f{64}/)
+  // Nothing to keep secret, so the line is safe to paste into an issue or a
+  // screenshot.
+  assert.ok(!/authorization/i.test(line), line)
   // Nothing to launch: no `node`, no path into a bundle, nothing that stops
   // working when the application replaces itself.
   assert.ok(!line.includes('node '), line)

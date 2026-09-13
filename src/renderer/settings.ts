@@ -119,10 +119,9 @@ function renderLicence(values: SettingsSnapshot): HTMLElement {
 /**
  * The one line a person has to put somewhere else.
  *
- * It carries the token, so it is shown rather than hidden: an IDE reads no
- * state directory, and the only way the key reaches its configuration is
- * through the person. Copying it is a button because retyping 64 hex
- * characters by hand is how a working configuration becomes a broken one.
+ * It holds no secret, so it can be shown, photographed and pasted into an
+ * issue. Copying it is still a button, because a mistyped address is how a
+ * working configuration becomes a broken one.
  */
 function renderConnect(values: SettingsSnapshot): HTMLElement {
   const group = el('div', 'group')
@@ -133,8 +132,8 @@ function renderConnect(values: SettingsSnapshot): HTMLElement {
     el(
       'span',
       'hint',
-      'Run this once in a terminal to let Claude Code reach this copy. Other agents take the same address, ' +
-        'the same two headers and the same token.',
+      'Run this once in a terminal to let Claude Code reach this copy. Other agents take the same address ' +
+        'and the same header.',
     ),
     el('code', 'connect', values.connect),
   )

@@ -68,9 +68,9 @@ const projects = new Map<string, ProjectState>()
 /** Where agents connect; shown in the foot once the main process has said. */
 let port: number | null = null
 /**
- * The line that connects an agent to this copy, token and all. Empty until the
- * main process answers: it is the only side that knows the token, and printing
- * a guess would send somebody to a browser that refuses them.
+ * The line that connects an agent to this copy. Empty until the main process
+ * answers: it is the only side that knows which port this copy took, and
+ * printing a guess would send somebody to a browser that is not there.
  */
 let connectLine = ''
 

@@ -26,18 +26,16 @@ export function mcpUrl(port: number): string {
 }
 
 /**
- * The whole line that connects an agent, token included.
+ * The whole line that connects an agent.
  *
  * `${PWD}` is not ours to expand: the IDE does it, once per session, and that
  * is how one line written today answers for every repository the person works
- * in tomorrow. The token is here because there is nowhere else for it — the
- * IDE reads no state directory, so the secret has to sit in its configuration.
+ * in tomorrow.
  */
-export function connectCommand(port: number, token: string): string {
+export function connectCommand(port: number): string {
   return [
     'claude mcp add --transport http naoba',
     mcpUrl(port),
     '--header "X-Project: ${PWD}"',
-    `--header "Authorization: Bearer ${token}"`,
   ].join(' ')
 }

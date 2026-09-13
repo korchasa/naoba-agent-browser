@@ -12,7 +12,6 @@ import { accepted, decideLoginItem, describeLoginItem } from './login.ts'
 import { asPresence, type LoginItemState, type Presence, presenceOf, type SettingsSnapshot } from './preferences.ts'
 import { SettingsWindow } from './settings-window.ts'
 import { startMcpServer, stopMcpServer } from './mcp-http.ts'
-import { mcpToken } from './mcp-token.ts'
 import { connectCommand, mcpPort } from './mcp-address.ts'
 import {
   activate as activateLicence,
@@ -63,8 +62,6 @@ const isTestRun = flags.has('--admit-everything') && !app.isPackaged
 // single-instance lock lives inside it: set it later and a test run fights the
 // copy the owner is actually using for a lock neither of them wants to share.
 const userDataDir = stringFlag('--user-data-dir')
-/** A run that exists only to photograph the window. */
-const posingForPictures = stringFlag('--snapshot') !== null
 if (userDataDir) app.setPath('userData', userDataDir)
 else if (isDevVariant()) seedDevStateDirectory()
 
@@ -133,7 +130,6 @@ async function start(): Promise<void> {
     // port nothing names.
     await startMcpServer({
       port,
-      token: mcpToken(),
       version: app.getVersion(),
       join: (session) => hub.join(session),
       testDoor: isTestRun,
@@ -261,10 +257,10 @@ function seedStateDirectory(names: string[]): void {
   cpSync(source, current, {
     recursive: true,
     force: true,
-    // Chromium's own lock files belong to a process, and the token belongs to
-    // one copy: carrying it over would make two copies answer to one secret,
-    // and deleting either file would then revoke nothing.
-    filter: (path) => !/\/(Singleton(Lock|Cookie|Socket)|mcp-token)$/.test(path),
+    // Chromium's own lock files belong to a process, not to a copy of the
+    // application, so they are the one thing a new state directory must not
+    // inherit.
+    filter: (path) => !/\/Singleton(Lock|Cookie|Socket)$/.test(path),
   })
 }
 
@@ -348,7 +344,7 @@ function settingsFor(hub: Hub): SettingsSnapshot {
     // it will never fill in as if something were missing.
     licence: admitsWithoutKey(isTestRun, isDevVariant()) ? describeFreeCopy() : licenceState(),
     update: updateState(),
-    connect: posingForPictures ? connectCommand(hub.port, 'YOUR-TOKEN') : connectCommand(hub.port, mcpToken()),
+    connect: connectCommand(hub.port),
   }
 }
 
@@ -500,11 +496,9 @@ function wireChrome(hub: Hub, settings: SettingsAccess): void {
   /** Everything the panel draws, for every project, the moment it starts. */
   ipcMain.handle('ab:state', () => ({
     port: hub.port,
-    // The panel prints the line that connects an agent, and it carries this
-    // copy's own token. The pictures of the application must not: they are
-    // published, and that line would be a working key to the photographer's
-    // browser.
-    connect: posingForPictures ? connectCommand(hub.port, 'YOUR-TOKEN') : connectCommand(hub.port, mcpToken()),
+    // The line that connects an agent. It holds no secret, so the pictures of
+    // the application can show it as it is.
+    connect: connectCommand(hub.port),
     projects: [...hub.contexts.values()].map((context) => ({
       id: context.identity.id,
       name: context.identity.name,
@@ -636,7 +630,7 @@ function wireChrome(hub: Hub, settings: SettingsAccess): void {
       throw error
     }
   })
-  /** The connect line is long and holds a token; nobody should be retyping it. */
+  /** The connect line is long; nobody should be retyping it. */
   ipcMain.handle('ab:copy', (_event, text: string) => clipboard.writeText(String(text)))
   /** Quit and come back as the version that is already downloaded. */
   ipcMain.handle('ab:install-update', () => installUpdate())

@@ -36,8 +36,8 @@ state must go through the project's own session, never through
   itself, over HTTP on loopback, and hands the hub a session per agent
 - `src/main/protocol.ts` — the shapes a session and the hub speak in, and
   `Connection`, the seam that let the transport change without touching routing
-- `src/main/mcp-token.ts`, `mcp-address.ts` — the token this copy demands, and
-  the line a person pastes into their IDE
+- `src/main/mcp-address.ts` — where this copy answers, and the line a person
+  pastes into their IDE
 - `src/main/reference.mjs` — the manual an agent reads, in the one place both
   the tool description and `api.help()` are built from
 - `src/renderer/chrome.ts` — the window's chrome: the address bar and the tree

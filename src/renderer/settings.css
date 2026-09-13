@@ -104,8 +104,8 @@ button:active {
   color: var(--text-dim);
 }
 
-/* The connect line. It is one long unbreakable string with a token at the end,
-   so it wraps anywhere rather than pushing the window wider than the screen. */
+/* The connect line. It is one long string with no spaces to break at, so it
+   wraps anywhere rather than pushing the window wider than the screen. */
 code.connect {
   display: block;
   margin-top: 6px;

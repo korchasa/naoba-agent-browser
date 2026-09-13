@@ -22,12 +22,12 @@ sequenceDiagram
     participant Ctx as ProjectContext
     participant Tab as tab.ts
 
-    IDE->>HTTP: POST /mcp — initialize (Authorization: Bearer)
+    IDE->>HTTP: POST /mcp — initialize
     HTTP-->>IDE: 200, header Mcp-Session-Id
     Note over IDE,HTTP: No Session yet. The id is the name<br/>the client echoes back from now on.
 
     IDE->>HTTP: POST /mcp — tools/call evalInBrowser<br/>Mcp-Session-Id, X-Project, X-Agent, X-IDE
-    HTTP->>HTTP: the token, then lastSeen for this session
+    HTTP->>HTTP: lastSeen for this session
     HTTP->>HTTP: admitted(): is X-Project there,<br/>and is it a directory on this Mac?
     HTTP->>S: new Session, keyed by session id AND X-Project
     HTTP->>Hub: join(session)
@@ -148,7 +148,7 @@ sequenceDiagram
     participant OS as macOS
 
     Main->>Main: register SIGTERM and SIGINT first
-    Main->>HTTP: startMcpServer({ port, token })
+    Main->>HTTP: startMcpServer({ port })
     HTTP-->>Main: EADDRINUSE
     Main->>OS: the reason, and the lsof line, to standard error
     Main->>OS: a notification — never a modal dialog

@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -64,20 +64,15 @@ export async function startApp(
     })
   })
 
-  // The application demands this on every request, and writes it into the state
-  // directory before it says it is listening.
-  const token = (await readFile(join(userData, 'mcp-token'), 'utf8')).trim()
-
   const open = []
 
   return {
     port: listening,
     userData,
-    token,
     url: `http://127.0.0.1:${listening}/mcp`,
     /** Connect as one agent working in `projectDir`. */
     async agent(projectDir, label = 'test-agent') {
-      const session = await connect(listening, token, projectDir, label)
+      const session = await connect(listening, projectDir, label)
       open.push(session)
       const status = await session.call('status', {})
       return {
@@ -108,10 +103,10 @@ export async function startApp(
  * `naoba/call` and `naoba/events` are the test door the application opens only
  * under `--admit-everything`: a tool call comes back as prose for a model to
  * read, and an assertion needs the value the browser produced. Everything else
- * here — the address, the token, `X-Project`, the session header — is exactly
- * what Claude Code sends.
+ * here — the address, `X-Project`, the session header — is exactly what Claude
+ * Code sends.
  */
-export async function connect(port, token, projectDir, label = 'test-agent') {
+export async function connect(port, projectDir, label = 'test-agent') {
   const url = `http://127.0.0.1:${port}/mcp`
   const events = []
   let id = 1
@@ -122,7 +117,6 @@ export async function connect(port, token, projectDir, label = 'test-agent') {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        authorization: `Bearer ${token}`,
         ...(projectDir ? { 'x-project': projectDir } : {}),
         ...(label ? { 'x-agent': label, 'x-ide': 'test' } : {}),
         ...(sessionKey ? { 'mcp-session-id': sessionKey } : {}),
@@ -186,7 +180,7 @@ export async function connect(port, token, projectDir, label = 'test-agent') {
       clearInterval(poller)
       await fetch(url, {
         method: 'DELETE',
-        headers: { authorization: `Bearer ${token}`, ...(sessionKey ? { 'mcp-session-id': sessionKey } : {}) },
+        headers: sessionKey ? { 'mcp-session-id': sessionKey } : {},
       }).catch(() => undefined)
     },
   }

@@ -358,47 +358,34 @@ test('a tab an agent opened leaves with the agent', async () => {
   watcher.close()
 })
 
-test('a request without the token is refused', async () => {
-  // Loopback is not a boundary between the programs on this machine, and the
-  // browser behind this port holds the owner's logged-in sessions.
+test('a request carrying no authorization at all is answered', async () => {
+  // There is no secret to present. A program on this Mac runs as this person
+  // and could read whatever a secret were kept in, so demanding one bought
+  // nothing and cost every agent a header to get wrong.
   const response = await fetch(app.url, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
   })
-  assert.equal(response.status, 401)
+  assert.equal(response.status, 200)
   const answer = await response.json()
-  assert.match(answer.error, /did not carry this copy of Naoba's token/)
-  // Said in the header too, so a client that reads a bare 401 as the start of
-  // an authorization dance does not go looking for metadata we do not serve.
-  assert.match(response.headers.get('www-authenticate') ?? '', /^Bearer/)
+  assert.ok(answer.result.tools.length > 0, 'the tool list should come back')
 })
 
-test('a token from another copy is refused', async () => {
-  // The same shape as a real token, so what is being tested is the comparison
-  // and not a length check somewhere before it.
+test('an Authorization header left over from an older configuration is ignored', async () => {
   const response = await fetch(app.url, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${'f'.repeat(64)}` },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
   })
-  assert.equal(response.status, 401)
-})
-
-test("the token is this copy's alone, and only its owner can read it", async () => {
-  const path = join(app.userData, 'mcp-token')
-  const kept = (await readFile(path, 'utf8')).trim()
-  assert.equal(kept, app.token)
-  assert.match(kept, /^[0-9a-f]{64}$/)
-  const mode = (await stat(path)).mode & 0o777
-  assert.equal(mode, 0o600, `the token file is ${mode.toString(8)}, not 600`)
+  assert.equal(response.status, 200)
 })
 
 /** One `status` call, with whatever headers the test wants to say something about. */
 async function ask(headers) {
   const response = await fetch(app.url, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${app.token}`, ...headers },
+    headers: { 'content-type': 'application/json', ...headers },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'status', arguments: {} } }),
   })
   return await response.json()
@@ -409,7 +396,7 @@ test('an agent that does not say which project it is in is told what to add', as
   // comes back where the agent will show it to them.
   const response = await fetch(app.url, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${app.token}` },
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       jsonrpc: '2.0',
       id: 1,
