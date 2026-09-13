@@ -196,7 +196,7 @@ One call carries the whole flow:
 
 ```js
 await api.navigate('https://example.com')
-await api.fill('#search', 'agent browser')
+await api.fill('#search', 'headless chromium')
 await api.press('Enter')
 await api.waitFor('.results', { timeout: 5000 })
 return await api.snapshot()
