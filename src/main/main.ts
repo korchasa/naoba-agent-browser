@@ -67,7 +67,6 @@ const userDataDir = stringFlag('--user-data-dir')
 const posingForPictures = stringFlag('--snapshot') !== null
 if (userDataDir) app.setPath('userData', userDataDir)
 else if (isDevVariant()) seedDevStateDirectory()
-else adoptOldStateDirectory()
 
 /**
  * One application, one server, many agents. A second launch must never start a
@@ -229,17 +228,6 @@ async function cannotStart(port: number, error: unknown): Promise<void> {
 }
 
 /**
- * The application used to be called Agent Browser, and Electron keeps the state
- * under the application's name — so the rename alone would have started every
- * project signed out and asked again about every folder. The old directory is
- * copied once, whole, and only while nothing has been written under the new
- * name yet; after that this is a no-op forever.
- */
-function adoptOldStateDirectory(): void {
-  seedStateDirectory(['agent-browser'])
-}
-
-/**
  * The development copy keeps its own state, like every " Dev" copy of the other
  * applications — but it is installed on a machine where the person has been
  * signing in through the checkout for weeks, and starting it signed out of
@@ -249,7 +237,7 @@ function adoptOldStateDirectory(): void {
  * proof the directory is this application's and not some other Electron app's.
  */
 function seedDevStateDirectory(): void {
-  seedStateDirectory(['Naoba', 'Electron', 'agent-browser'])
+  seedStateDirectory(['Naoba', 'Electron'])
 }
 
 /**
