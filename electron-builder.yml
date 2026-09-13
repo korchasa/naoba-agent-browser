@@ -14,6 +14,16 @@ directories:
   output: build
   buildResources: build-resources
 
+# Nothing here is run by this application. Until 1.0.4 an IDE launched a relay
+# from these two paths — `bridge` before the 1.0.2 rename, `mcp-server` after —
+# and those entries live in people's own configuration files, where no update
+# reaches them. What ships now is one file that says where MCP went.
+extraResources:
+  - from: compat/relay-gone.mjs
+    to: mcp-server/index.mjs
+  - from: compat/relay-gone.mjs
+    to: bridge/index.mjs
+
 # Only what the application actually runs.
 files:
   - dist/**/*

@@ -46,6 +46,9 @@ state must go through the project's own session, never through
   the register of projects the person has been asked about
 - `src/renderer/tree.ts` — how that tree is built, and the only part of the
   chrome a test can reach
+- `compat/relay-gone.mjs` — nothing runs it here. It ships at the two paths the
+  relay used to occupy, so a configuration written before 1.0.4 fails with a
+  sentence instead of `ERR_MODULE_NOT_FOUND`
 
 ## Things learned the hard way
 
