@@ -13,7 +13,7 @@ import { accepted, decideLoginItem, describeLoginItem } from './login.ts'
 import { asPresence, type LoginItemState, type Presence, presenceOf, type SettingsSnapshot } from './preferences.ts'
 import { SettingsWindow } from './settings-window.ts'
 import { clearHandshake, writeHandshake } from './handshake.ts'
-import { bridgeEntry, INSTALLED_BRIDGE } from './bridge-path.ts'
+import { mcpServerEntry, INSTALLED_MCP_SERVER } from './mcp-server-path.ts'
 import {
   activate as activateLicence,
   check as checkLicence,
@@ -111,11 +111,11 @@ async function start(): Promise<void> {
 
   try {
     const port = await hub.start(numberFlag('--port', DEFAULT_PORT))
-    // How a bridge reaches this copy: the port it listens on, and the token it
+    // How an MCP server reaches this copy: the port it listens on, and the token it
     // will demand on the first message. Written before the line below, so a
-    // bridge that starts the moment it sees that line finds the file there.
-    writeHandshake(port, hub.bridgeToken)
-    // The bridge reads this line when it starts the app itself.
+    // MCP server that starts the moment it sees that line finds the file there.
+    writeHandshake(port, hub.mcpToken)
+    // The MCP server reads this line when it starts the app itself.
     process.stdout.write(`naoba listening on 127.0.0.1:${port}\n`)
   } catch (error) {
     dialog.showErrorBox(`${appName()} cannot start`, String(error))
@@ -460,8 +460,8 @@ function wireChrome(hub: Hub, settings: SettingsAccess): void {
   ipcMain.handle('ab:state', () => ({
     port: hub.port,
     // The panel prints the line that connects an agent, and it has to name this
-    // copy's own bridge — the one in the bundle, or the one in the checkout.
-    bridge: posingForPictures ? INSTALLED_BRIDGE : bridgeEntry(app.isPackaged, process.resourcesPath, app.getAppPath()),
+    // copy's own MCP server — the one in the bundle, or the one in the checkout.
+    mcpServer: posingForPictures ? INSTALLED_MCP_SERVER : mcpServerEntry(app.isPackaged, process.resourcesPath, app.getAppPath()),
     projects: [...hub.contexts.values()].map((context) => ({
       id: context.identity.id,
       name: context.identity.name,

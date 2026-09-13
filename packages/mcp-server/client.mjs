@@ -63,7 +63,7 @@ export class AppClient {
     this.#socket.on('data', (chunk) => this.#onData(chunk))
     // A connection can end badly as well as politely — the application killed
     // mid-write gives a reset, not a clean close. Without a listener here Node
-    // turns that into an uncaught exception and the bridge dies with it, which
+    // turns that into an uncaught exception and the MCP server dies with it, which
     // an IDE reads as "the browser is gone" rather than "reconnect".
     this.#socket.on('error', () => {
       this.#closed = true

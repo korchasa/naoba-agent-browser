@@ -5,7 +5,7 @@ import type { Tab } from './tab.ts'
 import { pause } from './tab.ts'
 import type { Holder } from './lease.ts'
 import { describeVisits, VisitLog } from './visits.ts'
-import { fullReference, helpFor } from '../../packages/bridge/reference.mjs'
+import { fullReference, helpFor } from '../../packages/mcp-server/reference.mjs'
 import { app } from 'electron'
 import { join } from 'node:path'
 
@@ -610,7 +610,7 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
     /**
      * The manual. The tool description reaches an agent unasked and the client
      * cuts it at about 2040 characters, so only a summary fits there; this is
-     * where the rest of it lives. One text, in `packages/bridge/reference.mjs`,
+     * where the rest of it lives. One text, in `packages/mcp-server/reference.mjs`,
      * because a second copy would drift at the next helper.
      */
     help(name?: string): string {

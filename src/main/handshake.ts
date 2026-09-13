@@ -3,24 +3,24 @@ import { chmodSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 /**
- * Where a bridge learns how to reach this copy of the application.
+ * Where an MCP server learns how to reach this copy of the application.
  *
  * The file names the port, the token and the process of the running copy. It
  * sits in the state directory, so the release copy, the development copy and a
- * checkout each have one of their own and a bridge that finds this copy's file
+ * checkout each have one of their own and an MCP server that finds this copy's file
  * cannot talk to another copy with it. Mode 0600: the token is the whole reason
  * the port is not open to everything on the machine.
  *
  * The process id is there because the port alone does not say which copy a file
  * belongs to. The file is removed when the application quits politely; a copy
  * that was killed, that crashed, or that was replaced by an update leaves its
- * file behind, still naming a port another copy may take next. A bridge that
+ * file behind, still naming a port another copy may take next. An MCP server that
  * believed it would present a dead copy's token and be turned away.
  *
- * `packages/bridge/handshake.mjs` is the other half of this, and the file name
+ * `packages/mcp-server/handshake.mjs` is the other half of this, and the file name
  * is the contract between them.
  */
-const FILE = 'bridge.json'
+const FILE = 'mcp-server.json'
 
 export function handshakePath(): string {
   return join(app.getPath('userData'), FILE)

@@ -91,7 +91,7 @@ const tasks: Record<string, () => Promise<number>> = {
     const copied = await run('rsync', ['-a', '--delete', `${source}/`, `${target}/`])
     if (copied !== 0) return copied
     // Launch Services learned the bundle id from the build directory first and
-    // would keep answering `open -b` with that copy — the bridge launches by
+    // would keep answering `open -b` with that copy — the MCP server launches by
     // bundle id — so the build copy is struck off and the installed one
     // registered in its place.
     await run(LSREGISTER, ['-u', source])

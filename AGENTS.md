@@ -4,7 +4,7 @@
 
 An Electron application that gives AI coding agents a browser, isolated per
 project. The main process owns everything: the projects, their sessions, their
-tabs, and the server the agents' bridges connect to. The renderer draws the
+tabs, and the port the agents' MCP servers connect to. The renderer draws the
 window's own chrome and nothing else.
 
 ## The rule that outranks the others
@@ -34,10 +34,10 @@ state must go through the project's own session, never through
 - `src/main/hub.ts` — admission and routing
 - `src/main/server.ts`, `protocol.ts` — the wire, and the token every
   connection shows before the hub hears of it
-- `src/main/handshake.ts`, `packages/bridge/handshake.mjs` — the two halves of
-  the file that tells a bridge which port to dial and what to show on it
-- `packages/bridge/` — the MCP server an IDE launches, one per agent
-- `packages/bridge/reference.mjs` — the manual an agent reads, in the one
+- `src/main/handshake.ts`, `packages/mcp-server/handshake.mjs` — the two halves of
+  the file that tells an MCP server which port to dial and what to show on it
+- `packages/mcp-server/` — the MCP server an IDE launches, one per agent
+- `packages/mcp-server/reference.mjs` — the manual an agent reads, in the one
   place both sides can reach it
 - `src/renderer/chrome.ts` — the window's chrome: the address bar and the tree
   of agents, their tabs and the calls made in them
@@ -65,19 +65,19 @@ state must go through the project's own session, never through
   moved into, or the person is holding, is not closed.
 - **The tool description is a budget, not a manual.** The client cuts the
   `evalInBrowser` description at about 2040 characters and appends
-  `… [truncated]` — nothing in the bridge can see that happen. The whole helper
+  `… [truncated]` — nothing in the MCP server can see that happen. The whole helper
   reference used to live there, 3922 characters of it, so everything from
   *Moving around* on reached no agent at all: the tabs, the cookies, the
   screenshots, `sleep`, `waitForLoad` and `requestHuman`. One session paid 281 s
   of hand-written pauses for the two missing waits. Both texts now come from
-  `packages/bridge/reference.mjs`: `TOOL_DESCRIPTION` is a summary that names
+  `packages/mcp-server/reference.mjs`: `TOOL_DESCRIPTION` is a summary that names
   `api.help()`, `MANUAL` is everything, and a unit test fails at 1800 characters
   — early, because the cap is the client's to move. A new helper gets a line in
   `MANUAL` and a mention in the description only if it earns one. The module
   stays plain `.mjs` with no imports of its own, because the application reads
-  it too (`allowJs` in `tsconfig.json`, bundled by esbuild) while the bridge is
+  it too (`allowJs` in `tsconfig.json`, bundled by esbuild) while the MCP server is
   launched standalone by an IDE and can reach nothing outside
-  `packages/bridge/`. An integration test compares `Object.keys(api)` with the
+  `packages/mcp-server/`. An integration test compares `Object.keys(api)` with the
   names the manual documents, both ways, so a helper with no line in it fails
   the suite.
 - **Icons come from the `lucide` package**, bundled into the panel by esbuild
@@ -416,7 +416,7 @@ hunting for one.
 
 `deno task fmt` formats everything the project owns, and three of those files
 have been unformatted for longer than anyone has looked:
-`packages/bridge/index.mjs`, `src/main/snapshot.ts`, and one line of
+`packages/mcp-server/index.mjs`, `src/main/snapshot.ts`, and one line of
 `test/integration.test.mjs`. Running it to tidy up after an edit therefore
 rewrites two files nobody asked about and carries them into the commit. Check
 your own work with `deno fmt --check` and read past those three. Checking it

@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { AppClient } from '../../packages/bridge/client.mjs'
+import { AppClient } from '../../packages/mcp-server/client.mjs'
 
 const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))))
 
@@ -67,7 +67,7 @@ export async function startApp(
 
   // The application demands this on the first message of every connection, and
   // writes it into the state directory before it says it is listening.
-  const { token } = JSON.parse(await readFile(join(userData, 'bridge.json'), 'utf8'))
+  const { token } = JSON.parse(await readFile(join(userData, 'mcp-server.json'), 'utf8'))
 
   const clients = []
 

@@ -19,14 +19,20 @@ files:
   - dist/**/*
   - package.json
 
-# The bridge rides along, outside the asar, because an IDE launches it with
+# The MCP server rides along, outside the asar, because an IDE launches it with
 # `node` and cannot read an archive. Somebody who downloads the application has
-# it already: `Naoba.app/Contents/Resources/bridge/index.mjs` is the path their
+# it already: `Naoba.app/Contents/Resources/mcp-server/index.mjs` is the path their
 # MCP configuration points at, and there is nothing else to install or clone.
 # It imports node builtins and nothing else, so copying the directory is all it
 # takes.
 extraResources:
-  - from: packages/bridge
+  - from: packages/mcp-server
+    to: mcp-server
+  # The same files under the name they had until 1.0.2. Every configuration
+  # written before then names `Resources/bridge`, and an IDE pointed at a path
+  # that stopped existing says only that the server failed to start. Remove this
+  # once the copies that predate the rename are gone.
+  - from: packages/mcp-server
     to: bridge
 
 mac:

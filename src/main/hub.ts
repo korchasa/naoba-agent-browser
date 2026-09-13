@@ -15,7 +15,7 @@ import {
   type ServerMessage,
 } from './protocol.ts'
 import { runScript, ScriptError } from './runner.ts'
-import { BridgeServer, type Connection } from './server.ts'
+import { McpListener, type Connection } from './server.ts'
 import { pause } from './tab.ts'
 
 export interface HubOptions extends ShellPaths {
@@ -54,7 +54,7 @@ export class Hub {
   readonly #admissions = new Map<string, AdmissionRecord>()
   /** Told whenever the register changes, so an open settings window redraws it. */
   #onAdmissions: (() => void) | null = null
-  readonly #server: BridgeServer
+  readonly #server: McpListener
   readonly #agentsByConnection = new Map<number, { agentId: string; projectId: string }>()
   #idleTimer: NodeJS.Timeout | null = null
   #admissionInFlight: Promise<unknown> = Promise.resolve()
@@ -71,7 +71,7 @@ export class Hub {
     this.shell.onFrontChange(() => {
       for (const context of this.contexts.values()) context.notifyTabs()
     })
-    this.#server = new BridgeServer((connection) => this.#onConnection(connection))
+    this.#server = new McpListener((connection) => this.#onConnection(connection))
     this.#loadAdmissions()
   }
 
@@ -79,8 +79,8 @@ export class Hub {
     return this.#server.port
   }
 
-  /** What a bridge must present to be let in. New on every start. */
-  get bridgeToken(): string {
+  /** What an MCP server must present to be let in. New on every start. */
+  get mcpToken(): string {
     return this.#server.token
   }
 
@@ -316,7 +316,7 @@ export class Hub {
         id: message.id,
         code: 'protocol',
         reason:
-          `this app speaks protocol ${PROTOCOL_VERSION}, the bridge speaks ${message.protocol}; update the bridge`,
+          `this app speaks protocol ${PROTOCOL_VERSION}, the MCP server speaks ${message.protocol}; update the MCP server`,
       })
       connection.close()
       return

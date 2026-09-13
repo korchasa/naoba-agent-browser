@@ -1,5 +1,5 @@
 /**
- * The wire between an agent's bridge and the application.
+ * The wire between an agent's MCP server and the application.
  *
  * Both ends are Node processes, so there is no WebSocket here: a plain TCP
  * connection on the loopback interface carrying newline-delimited JSON does the
@@ -19,7 +19,7 @@ export const PORT_RANGE = 12
 export interface AgentDescriptor {
   /** What the person sees in the agent list, e.g. "claude · checkout". */
   label: string
-  /** Which IDE launched the bridge, when it says. */
+  /** Which IDE launched the MCP server, when it says. */
   ide: string
   pid: number
 }
@@ -87,20 +87,20 @@ export type ServerMessage =
   | { type: 'event'; event: AppEvent }
 
 /**
- * Why a connection was turned away, for a bridge that must decide what to do
+ * Why a connection was turned away, for an MCP server that must decide what to do
  * next rather than print prose.
  *
  * `bad-token` is the only one worth another attempt: several copies of the
- * application can be installed at once, and a bridge that guessed the wrong
+ * application can be installed at once, and an MCP server that guessed the wrong
  * one's token has another to try. The other three are settled — trying again
  * with a different token changes nothing about a licence, a refused project or
- * a bridge from another version.
+ * an MCP server from another version.
  */
 export type DenialCode = 'bad-token' | 'protocol' | 'unlicensed' | 'project-refused'
 
 export interface WireError {
   message: string
-  /** Machine-readable so a bridge can react without parsing prose. */
+  /** Machine-readable so an MCP server can react without parsing prose. */
   code: ErrorCode
   details?: unknown
 }

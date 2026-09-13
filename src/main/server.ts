@@ -21,7 +21,7 @@ export interface Connection {
 const HANDSHAKE_DEADLINE_MS = 10_000
 
 /**
- * The application listens; every agent's bridge dials in. FoxCode had this the
+ * The application listens; every agent's MCP server dials in. FoxCode had this the
  * other way round — a server per agent session, and a browser holding N
  * connections — which is why it needed a port file and a reconnect ladder. One
  * listener needs neither.
@@ -31,7 +31,7 @@ const HANDSHAKE_DEADLINE_MS = 10_000
  * can either unless it can read the token out of the state directory. The token
  * is new on every start, so a copy of it from a previous run is worth nothing.
  */
-export class BridgeServer {
+export class McpListener {
   #server: Server | null = null
   #port = 0
   #nextId = 1
@@ -47,7 +47,7 @@ export class BridgeServer {
     return this.#port
   }
 
-  /** What a bridge must present on its first message. Written to disk once the port is known. */
+  /** What an MCP server must present on its first message. Written to disk once the port is known. */
   get token(): string {
     return this.#token
   }
@@ -123,8 +123,8 @@ export class BridgeServer {
               type: 'denied',
               id: idOf(message),
               code: 'bad-token',
-              // Not a word about the bridge's version, which is what this used
-              // to say: a bridge of the right version reaches this line every
+              // Not a word about the MCP server's version, which is what this used
+              // to say: an MCP server of the right version reaches this line every
               // time it picks the wrong copy's token, and several copies of the
               // application can be installed at once.
               reason: 'this token is not this copy of Naoba; it may belong to a copy that is no longer running',

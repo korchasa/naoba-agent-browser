@@ -2,9 +2,9 @@ import { readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
 /**
- * How the bridge learns the token the application demands.
+ * How the MCP server learns the token the application demands.
  *
- * The application writes `bridge.json` — the port it listens on, the token for
+ * The application writes `mcp-server.json` — the port it listens on, the token for
  * this run and its process id — into its state directory, mode 0600. Every copy
  * has a state directory of its own.
  *
@@ -18,7 +18,16 @@ import { join } from 'node:path'
  *
  * `src/main/handshake.ts` in the application is the other half of this.
  */
-const FILE = 'bridge.json'
+/**
+ * The file, and the name it had until 1.0.2.
+ *
+ * A copy installed before the rename writes the old name and knows nothing of
+ * the new one, and an IDE points at whichever MCP server it was given — often
+ * one from a checkout, newer than the application it talks to. Reading both
+ * names is what keeps those two in step. Remove the old one once no copy that
+ * writes it is still in use.
+ */
+const FILES = ['mcp-server.json', 'bridge.json']
 
 /**
  * Where a copy of the application keeps its state. `Naoba` is the release copy,
@@ -60,18 +69,20 @@ export function tokensForPort(port, env = process.env) {
   const looked = []
   const found = []
   for (const dir of stateDirs(env)) {
-    const path = join(dir, FILE)
-    looked.push(path)
-    let record
-    let writtenAt = 0
-    try {
-      record = JSON.parse(readFileSync(path, 'utf8'))
-      writtenAt = statSync(path).mtimeMs
-    } catch {
-      continue
+    for (const name of FILES) {
+      const path = join(dir, name)
+      looked.push(path)
+      let record
+      let writtenAt = 0
+      try {
+        record = JSON.parse(readFileSync(path, 'utf8'))
+        writtenAt = statSync(path).mtimeMs
+      } catch {
+        continue
+      }
+      if (record?.port !== port || typeof record.token !== 'string') continue
+      found.push({ path, token: record.token, running: stillRunning(record.pid), writtenAt })
     }
-    if (record?.port !== port || typeof record.token !== 'string') continue
-    found.push({ path, token: record.token, running: stillRunning(record.pid), writtenAt })
   }
   // A live copy first; between two of the same standing, the newer file.
   found.sort((a, b) => RANK[String(a.running)] - RANK[String(b.running)] || b.writtenAt - a.writtenAt)

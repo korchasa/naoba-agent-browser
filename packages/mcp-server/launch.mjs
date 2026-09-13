@@ -17,25 +17,25 @@ export const DEV_APP_NAME = 'Naoba Dev.app'
 /**
  * The bundle this file was shipped inside, if it was.
  *
- * A bought copy carries its bridge at `Naoba.app/Contents/Resources/bridge`,
- * so the bridge can name the exact application it belongs to — which beats
+ * A bought copy carries its MCP server at `Naoba.app/Contents/Resources/mcp-server`,
+ * so the MCP server can name the exact application it belongs to — which beats
  * asking the system for a bundle id when two copies are installed, or when the
  * one a person is pointing at does not live in /Applications at all.
  */
 export function owningBundle(url = import.meta.url) {
   const here = dirname(fileURLToPath(url))
-  // …/Naoba.app/Contents/Resources/bridge -> …/Naoba.app
+  // …/Naoba.app/Contents/Resources/mcp-server -> …/Naoba.app
   const bundle = dirname(dirname(dirname(here)))
   return bundle.endsWith('.app') ? bundle : null
 }
 
 /**
  * Where the application might be, in the order worth trying: the copy this
- * bridge was shipped inside, then the release copy, then the development copy,
+ * MCP server was shipped inside, then the release copy, then the development copy,
  * then a bare checkout.
  *
  * The last entry is the one that matters while the app itself is being built:
- * there is no bundle in /Applications yet, and a bridge that only knows the
+ * there is no bundle in /Applications yet, and an MCP server that only knows the
  * installed path fails in exactly the situation where it is needed most.
  */
 export function candidates(env = process.env, own = owningBundle()) {

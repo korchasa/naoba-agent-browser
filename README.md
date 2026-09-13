@@ -50,7 +50,7 @@ building can be watched firing. The choice is kept across restarts;
 
 ## Requirements
 
-macOS, and Node 20 or newer for the bridge.
+macOS, and Node 20 or newer for the MCP server.
 
 ## Install
 
@@ -67,15 +67,15 @@ npm start
 
 ## Connect an agent
 
-The bridge is an MCP server. An installed application carries it, so point your
-IDE at `/Applications/Naoba.app/Contents/Resources/bridge/index.mjs`; working
-from this checkout, point it at `packages/bridge/index.mjs` instead. Either way
+An installed application carries the MCP server, so point your
+IDE at `/Applications/Naoba.app/Contents/Resources/mcp-server/index.mjs`; working
+from this checkout, point it at `packages/mcp-server/index.mjs` instead. Either way
 it is one file and needs nothing installed beyond Node.
 
 Claude Code:
 
 ```sh
-claude mcp add naoba -- node /absolute/path/to/packages/bridge/index.mjs
+claude mcp add naoba -- node /absolute/path/to/packages/mcp-server/index.mjs
 ```
 
 Or in a project's `.mcp.json`:
@@ -85,17 +85,17 @@ Or in a project's `.mcp.json`:
   "mcpServers": {
     "naoba": {
       "command": "node",
-      "args": ["/absolute/path/to/packages/bridge/index.mjs"]
+      "args": ["/absolute/path/to/packages/mcp-server/index.mjs"]
     }
   }
 }
 ```
 
-The bridge takes the agent's working directory, walks up to the repository root,
+The MCP server takes the agent's working directory, walks up to the repository root,
 and that is the project. The first time a folder appears, the application asks
 whether to let it open a browser; the answer is remembered.
 
-When nothing is listening, the bridge starts the application itself. It looks
+When nothing is listening, the MCP server starts the application itself. It looks
 for the release copy first (bundle id `dev.korchasa.Naoba`, then
 `/Applications/Naoba.app` and `~/Applications/Naoba.app`), then for the
 development copy (`dev.korchasa.Naoba.dev`, `Naoba Dev.app` in the same two
@@ -113,15 +113,15 @@ them.
 Loopback is not a boundary between the programs running on one machine, and the
 browser on the other side of that port holds your logged-in sessions. So the
 application admits only something that can read a file of its own: at every
-start it writes `bridge.json` into its state directory — the port it listens on,
+start it writes `mcp-server.json` into its state directory — the port it listens on,
 a token for this run and its process id, readable by the owner alone — and it
 closes any connection whose first message does not carry that token. A token
 from an earlier run is worth nothing.
 
-The bridge reads that file itself, so there is nothing to set up. It may find
+The MCP server reads that file itself, so there is nothing to set up. It may find
 more than one: several copies can be installed at once, and a copy that was
 killed rather than quit leaves its file behind still naming a port the next copy
-may take. So the bridge tries every token claiming that port, the copies still
+may take. So the MCP server tries every token claiming that port, the copies still
 running first, and reports a refusal only when all of them are refused. When the
 application runs with a state directory of its own, `NAOBA_STATE_DIR` names it.
 

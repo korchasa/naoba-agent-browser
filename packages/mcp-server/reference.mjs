@@ -1,11 +1,11 @@
 /**
  * The manual, in one place, because it is read in two.
  *
- * The bridge builds the `evalInBrowser` description from it, and the
+ * The MCP server builds the `evalInBrowser` description from it, and the
  * application answers `api.help()` from it. Neither can reach the other: the
- * bridge is a standalone package an IDE launches on its own, and the app is a
- * bundle that does not carry it — so whatever the bridge needs has to live
- * inside `packages/bridge/`, and the app imports this one module and lets
+ * MCP server is a standalone package an IDE launches on its own, and the app is a
+ * bundle that does not carry it — so whatever the MCP server needs has to live
+ * inside `packages/mcp-server/`, and the app imports this one module and lets
  * esbuild bundle it. Two copies of this text would drift the first time a
  * helper was added.
  *

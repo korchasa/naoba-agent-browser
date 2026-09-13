@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { nextPort, startApp } from './helpers/app.mjs'
 import { startFixtureServer } from './fixtures/server.mjs'
-import { documentedNames } from '../packages/bridge/reference.mjs'
+import { documentedNames } from '../packages/mcp-server/reference.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
@@ -351,7 +351,7 @@ test('a tab an agent opened leaves with the agent', async () => {
 })
 
 test('connecting when the browser is not running says exactly that', async () => {
-  const { AppClient } = await import('../packages/bridge/client.mjs')
+  const { AppClient } = await import('../packages/mcp-server/client.mjs')
   // Passing a null port straight to node gives ERR_INVALID_ARG_TYPE about
   // `options.port`, which reads as a bug in the caller rather than as a browser
   // that is not up.
@@ -359,12 +359,12 @@ test('connecting when the browser is not running says exactly that', async () =>
 })
 
 test('a connection that does not show the token is refused and closed', async () => {
-  const { AppClient } = await import('../packages/bridge/client.mjs')
+  const { AppClient } = await import('../packages/mcp-server/client.mjs')
   const client = new AppClient()
   await client.connect(app.port)
   await assert.rejects(
     () => client.hello('/tmp/naoba-tests/no-token', { label: 'stranger', ide: 'test', pid: process.pid }),
-    // The code, not the prose: it is what tells a bridge another copy's token
+    // The code, not the prose: it is what tells an MCP server another copy's token
     // is worth trying, and a licence refusal is not.
     (error) => error.code === 'denied' && error.denial === 'bad-token',
   )
@@ -375,7 +375,7 @@ test('a connection that does not show the token is refused and closed', async ()
 })
 
 test('a token from another run is refused', async () => {
-  const { AppClient } = await import('../packages/bridge/client.mjs')
+  const { AppClient } = await import('../packages/mcp-server/client.mjs')
   const client = new AppClient()
   // The same shape as a real token, so what is being tested is the comparison
   // and not a length check somewhere before it.
@@ -387,12 +387,12 @@ test('a token from another run is refused', async () => {
   client.close()
 })
 
-test('a bridge that guessed the wrong copy may try again and be let in', async () => {
+test('an MCP server that guessed the wrong copy may try again and be let in', async () => {
   // What the retry in `index.mjs` rests on. Several copies can be installed at
-  // once and a killed one leaves its file behind, so the first token a bridge
+  // once and a killed one leaves its file behind, so the first token an MCP server
   // finds is not always this copy's. Being refused must cost it the connection
   // and nothing else — no ban, no delay before a second attempt.
-  const { AppClient } = await import('../packages/bridge/client.mjs')
+  const { AppClient } = await import('../packages/mcp-server/client.mjs')
   const wrong = new AppClient()
   await wrong.connect(app.port, 'f'.repeat(app.token.length))
   await assert.rejects(
@@ -413,7 +413,7 @@ test('a bridge that guessed the wrong copy may try again and be let in', async (
 })
 
 test('the token is written for this run only, and only the owner can read it', async () => {
-  const path = join(app.userData, 'bridge.json')
+  const path = join(app.userData, 'mcp-server.json')
   const record = JSON.parse(await readFile(path, 'utf8'))
   assert.equal(record.port, app.port)
   assert.equal(record.token, app.token)

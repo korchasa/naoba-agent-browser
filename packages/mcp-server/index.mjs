@@ -7,11 +7,11 @@ import { TOOLS } from './tools.mjs'
 import { renderError, renderOutcome } from './render.mjs'
 
 /**
- * The bridge an IDE launches as its MCP server.
+ * The MCP server an IDE launches for this project.
  *
  * It holds no browser state of its own: it finds the application, says which
  * project it is speaking for, and forwards calls. Every agent gets its own
- * bridge process; they all reach one application, and the application decides
+ * MCP server process; they all reach one application, and the application decides
  * what each of them may see.
  */
 const PROTOCOL = '2025-06-18'

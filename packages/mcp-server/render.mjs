@@ -2,8 +2,8 @@
  * What the agent actually reads: the text an `evalInBrowser` call comes back as.
  *
  * It lives apart from `index.mjs` so a test can assert the words themselves.
- * The bridge is launched standalone by an IDE and can reach nothing outside
- * `packages/bridge/`, so the shapes below are known here by their wire form —
+ * The MCP server is launched standalone by an IDE and can reach nothing outside
+ * `packages/mcp-server/`, so the shapes below are known here by their wire form —
  * `src/main/runner.ts` builds them, and nothing is imported across.
  */
 
