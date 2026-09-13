@@ -298,15 +298,15 @@ async function callTool(
   const args = message.params?.arguments ?? {}
 
   if (name === 'begin') {
-    const chosen = typeof args.name === 'string' ? args.name.trim() : ''
+    const chosen = typeof args.session_name === 'string' ? args.session_name.trim() : ''
     if (!chosen) {
       return void reply(response, id, {
         isError: true,
         content: [{
           type: 'text',
-          text: 'begin needs a name for this agent — a few words about what you are here to do, as in ' +
-            'begin({ name: "rewriting the checkout tests", dir: "/Users/you/code/thing" }). Other agents in this ' +
-            'project are listed under theirs, and so will you be.',
+          text: 'begin needs a session_name — a few words about what this session is doing, as in ' +
+            'begin({ session_name: "rewriting the checkout tests", dir: "/Users/you/code/thing" }). The other ' +
+            'sessions in this project are listed under theirs, and so will this one be.',
         }],
       })
     }
@@ -316,9 +316,9 @@ async function callTool(
         isError: true,
         content: [{
           type: 'text',
-          text: 'begin needs the project this agent is working in: dir, the absolute path of the directory, as ' +
-            'in begin({ name: "...", dir: "/Users/you/code/thing" }). It is what decides whose browser you get, ' +
-            'so agents in two repositories never share one.',
+          text: 'begin needs the project this session is working in: dir, the absolute path of the directory, ' +
+            'as in begin({ session_name: "...", dir: "/Users/you/code/thing" }). It is what decides whose ' +
+            'browser you get, so sessions in two repositories never share one.',
         }],
       })
     }
@@ -349,9 +349,9 @@ async function callTool(
       content: [{
         type: 'text',
         text: 'begin has not been called yet, so this project\'s window does not know who you are. Call ' +
-          'begin({ name: "...", dir: "..." }) first — a few words about what you are here to do, and the ' +
-          'absolute path of the project you are working in. It opens your tab and answers with the project, ' +
-          'your tab and whoever else is working here.',
+          'begin({ session_name: "...", dir: "..." }) first — a few words about what this session is doing, ' +
+          'and the absolute path of the project it works in. It opens your tab and answers with the project, ' +
+          'your tab and the other sessions working here.',
       }],
     })
   }

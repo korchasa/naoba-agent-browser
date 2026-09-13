@@ -383,7 +383,7 @@ test('an Authorization header left over from an older configuration is ignored',
 let sessionCounter = 0
 
 /** One `begin` call, exactly as an agent makes it. */
-async function begins({ session, dir = PROJECT_A, name = 'a test agent', url } = {}) {
+async function begins({ session, dir = PROJECT_A, name = 'a test session', url } = {}) {
   const response = await fetch(app.url, {
     method: 'POST',
     headers: {
@@ -394,7 +394,14 @@ async function begins({ session, dir = PROJECT_A, name = 'a test agent', url } =
       jsonrpc: '2.0',
       id: 1,
       method: 'tools/call',
-      params: { name: 'begin', arguments: { name, ...(dir === null ? {} : { dir }), ...(url ? { url } : {}) } },
+      params: {
+        name: 'begin',
+        arguments: {
+          ...(name === null ? {} : { session_name: name }),
+          ...(dir === null ? {} : { dir }),
+          ...(url ? { url } : {}),
+        },
+      },
     }),
   })
   return await response.json()
@@ -445,7 +452,8 @@ test('one session id that names a second project moves to it, and keeps nothing'
   const there = await begins({ session: id, dir: PROJECT_B })
   assert.equal(pictureOf(here).project.name, 'project-a')
   assert.equal(pictureOf(there).project.name, 'project-b')
-  assert.notEqual(pictureOf(here).you.id, pictureOf(there).you.id)
+  // The session that moved took nothing with it: in project-b it is alone.
+  assert.deepEqual(pictureOf(there).others, [])
 })
 
 test('two calls that arrive together introduce one agent, not two', async () => {
@@ -462,14 +470,18 @@ test('two calls that arrive together introduce one agent, not two', async () => 
   assert.equal(others.length, 0, `the project has ${others.length + 1} agents for one session`)
 })
 
-test('two session ids in one project stay two agents', async () => {
-  // One repository, two agents. They share the window and can see each other's
-  // tabs — what they must not share is an identity: one row in the panel and
-  // one tab would let each walk into the other's half-finished scenario.
+test('two session ids in one project stay two sessions', async () => {
+  // One repository, two sessions. They share the window and can see each
+  // other's tabs — what they must not share is an identity: one row in the
+  // panel and one tab would let each walk into the other's half-finished
+  // scenario.
   const one = await begins({ dir: PROJECT_C, name: 'the first one here' })
   const two = await begins({ dir: PROJECT_C, name: 'the second one here' })
-  assert.ok(pictureOf(one).you.id)
-  assert.notEqual(pictureOf(one).you.id, pictureOf(two).you.id)
+  // Earlier tests left sessions of their own in this project, so what is
+  // measured is the pair: the second sees the first, and neither sees itself.
+  assert.ok(!pictureOf(one).others.some((other) => other.session_name === 'the first one here'))
+  assert.ok(pictureOf(two).others.some((other) => other.session_name === 'the first one here'))
+  assert.ok(!pictureOf(two).others.some((other) => other.session_name === 'the second one here'))
 })
 
 test('a tool called before begin is told to call begin, and what to say in it', async () => {
@@ -486,19 +498,17 @@ test('a tool called before begin is told to call begin, and what to say in it', 
 test('begin without a name is refused, because the name is the whole point of it', async () => {
   const answer = await begins({ name: '   ' })
   assert.equal(answer.result.isError, true)
-  assert.match(answer.result.content[0].text, /begin needs a name/)
+  assert.match(answer.result.content[0].text, /begin needs a session_name/)
 })
 
-test('two agents in one project are listed under the names they chose', async () => {
-  const first = await begins({ dir: PROJECT_A, name: 'reading the release notes' })
+test('the other sessions in a project are listed under the names they chose', async () => {
+  await begins({ dir: PROJECT_A, name: 'reading the release notes' })
   const second = await begins({ dir: PROJECT_A, name: 'filling in the signup form' })
-  const mine = pictureOf(second)
-  assert.equal(mine.you.label, 'filling in the signup form')
-  const names = mine.others.map((other) => other.label)
+  const names = pictureOf(second).others.map((other) => other.session_name)
   assert.ok(names.includes('reading the release notes'), names.join(', '))
-  // The agent that went first sees nobody yet, which is the point of asking
-  // again rather than trusting the first answer.
-  assert.equal(pictureOf(first).you.label, 'reading the release notes')
+  // The caller is not in its own list: it is a session, so it already knows
+  // what it called itself a moment ago.
+  assert.ok(!names.includes('filling in the signup form'), names.join(', '))
 })
 
 test('begin opens the tab, and takes it to the address it was given', async () => {

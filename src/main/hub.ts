@@ -409,11 +409,13 @@ export class Hub {
         if (url) await this.#runEval(context, agent, `return await api.navigate(${JSON.stringify(url)})`, 60_000)
         return {
           project: { id: context.identity.id, name: context.identity.name, root: context.identity.root },
-          you: { id: agent.id, label: agent.label },
           tab: context.describeTab(context.tab(tab.id) ?? tab),
+          // No entry for the caller: an agent is a session, so it already
+          // knows its own name — it chose it a moment ago — and its id is the
+          // session header it has been echoing since `initialize`.
           others: [...context.agents.values()]
             .filter((other) => other.id !== agent.id)
-            .map((other) => ({ id: other.id, label: other.label, ide: other.descriptor.ide })),
+            .map((other) => ({ session_name: other.label, ide: other.descriptor.ide })),
         }
       }
 

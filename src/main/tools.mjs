@@ -11,17 +11,17 @@ export const TOOLS = [
     name: 'begin',
     description:
       'Call this first, before any other tool here. Say which project you are working in and, in a few words, ' +
-      'what you are doing there: the project decides whose browser you get, and the name is what the person ' +
-      'sees in the window beside your tab. Opens your tab — at `url` if you give one — and answers with the ' +
-      'project, your tab and whoever else is here.',
+      'what this session of yours is doing there: the project decides whose browser you get, and the session ' +
+      'name is what the person sees in the window beside your tab. Opens your tab — at `url` if you give one — ' +
+      'and answers with the project, your tab and the other sessions working here.',
     inputSchema: {
       type: 'object',
       properties: {
-        name: {
+        session_name: {
           type: 'string',
           description:
-            'What you are here to do, in a few words — "rewriting the checkout tests", not "agent 2". Shown ' +
-            'to the person beside your tab.',
+            'What this session is doing, in a few words — "rewriting the checkout tests", not "agent 2". ' +
+            'Shown to the person beside your tab, and to the other sessions in this project.',
         },
         dir: {
           type: 'string',
@@ -35,7 +35,7 @@ export const TOOLS = [
           description: 'Where to open your tab. Left out, the tab opens empty and waits for your first scenario.',
         },
       },
-      required: ['name', 'dir'],
+      required: ['session_name', 'dir'],
     },
   },
   {

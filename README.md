@@ -102,7 +102,7 @@ Everything a header used to carry, the agent now says itself, in the first call
 it makes:
 
 ```
-begin({ name: "rewriting the checkout tests", dir: "/Users/you/code/thing" })
+begin({ session_name: "rewriting the checkout tests", dir: "/Users/you/code/thing" })
 ```
 
 `dir` is the absolute path of the project — the agent's working directory, or
@@ -113,19 +113,23 @@ directory, or that is still a shell expression is refused with a sentence
 saying which of the three it is. The first time a project appears, the
 application asks whether to let it open a browser, and remembers the answer.
 
-`name` is a few words about what the agent is doing — "rewriting the checkout
-tests", not "agent 2". Two agents in one repository are two sessions with two
-tabs, and this is what tells them apart on screen: the row in the panel beside
-the agent's tab, the question asking whether to admit a new project, and the
-message another agent gets when this one is holding a tab it wants.
+`session_name` is a few words about what this session is doing — "rewriting the
+checkout tests", not "agent 2". An agent is a session: one session in Claude or
+in another client is one row in the window, with one tab. Two of them in one
+repository are told apart by nothing else, and the name is what the person
+reads — beside the tab, in the question asking whether to admit a new project,
+and in the message another session gets when this one is holding a tab it
+wants.
 
-`begin` opens the agent's tab at the same time, at a `url` if it was given one,
-and answers with the project, that tab, and whoever else is working here — so
-one round trip does what used to take three. Every other tool waits for it:
-called first, they come back asking for `begin`.
+`begin` opens the session's tab at the same time, at a `url` if it was given
+one, and answers with the project, that tab, and the other sessions working
+here — so one round trip does what used to take three. The answer says nothing
+about the caller: it chose its own name a moment ago, and its id is the header
+it has been echoing all along. Every other tool waits for `begin`: called
+first, they come back asking for it.
 
-The agent is known by the `Mcp-Session-Id` the application hands out at
-`initialize` and the client echoes from then on. One id is one agent in one
+A session is known by the `Mcp-Session-Id` the application hands out at
+`initialize` and the client echoes from then on. One id is one session in one
 project. An id that calls `begin` again naming a different project moves there,
 and takes nothing from the first one with it.
 

@@ -26,13 +26,13 @@ sequenceDiagram
     HTTP-->>IDE: 200, header Mcp-Session-Id
     Note over IDE,HTTP: No Session yet. The id is the name<br/>the client echoes back from now on.
 
-    IDE->>HTTP: POST /mcp — tools/call begin { name, dir, url? }<br/>Mcp-Session-Id, X-IDE
+    IDE->>HTTP: POST /mcp — tools/call begin { session_name, dir, url? }<br/>Mcp-Session-Id, X-IDE
     HTTP->>HTTP: lastSeen for this session
     HTTP->>HTTP: opened(): is the session id there,<br/>and is dir an absolute directory on this Mac?
     HTTP->>S: new Session, keyed by the session id
     HTTP->>Hub: join(session)
-    HTTP->>S: greet(name) — the promise is remembered, not a flag
-    S->>Hub: hello { projectDir, agent: { label: name } }
+    HTTP->>S: greet(session_name) — the promise is remembered, not a flag
+    S->>Hub: hello { projectDir, agent: { label: session_name } }
     Hub->>Hub: licensed()?
     Hub->>Hub: identify(projectDir), then ask about<br/>an unknown project once,<br/>naming the agent by what it called itself
     Hub->>Ctx: contextFor(identity).addAgent(agent)
@@ -40,7 +40,7 @@ sequenceDiagram
     HTTP->>S: call('begin', { url })
     S->>Hub: call
     Hub->>Ctx: tabFor(agent) — the tab exists from here on
-    Hub-->>HTTP: { project, you, tab, others }
+    Hub-->>HTTP: { project, tab, others }
     HTTP-->>IDE: 200 { the picture, as JSON }
 
     Note over IDE,HTTP: Every later call is the same,<br/>minus the introduction.
@@ -63,7 +63,7 @@ has, and the call goes straight to the hub.
 
 ## What decides which browser an agent gets
 
-- **The project comes from `dir`, an argument of `begin`**, the absolute path the agent is working in. `identify()`
+- **The project comes from `dir`, an argument of `begin`**, the absolute path the session is working in. `identify()`
   walks up to the nearest repository root, resolves symlinks and lowercases the result, so two spellings of one
   directory are one project. It used to be a header carrying `${PWD}`, which only worked in clients that expand it.
 - **A session is keyed by the `Mcp-Session-Id` alone.** It is minted at `initialize` and echoed from then on, so one id
