@@ -104,7 +104,12 @@ is the project. The first time a folder appears, the application asks whether to
 let it open a browser; the answer is remembered.
 
 A configuration with no `X-Project` is not refused silently: the first tool call
-comes back saying which header to add.
+comes back saying which header to add. A directory that is not on this Mac is
+refused the same way, which is what an unexpanded `${PWD}` looks like from here.
+
+What happens between that first call and the moment an agent's tabs are let go,
+in four sequence diagrams:
+[documents/how-a-session-works.md](documents/how-a-session-works.md).
 
 ### The port
 
