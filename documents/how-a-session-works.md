@@ -26,20 +26,29 @@ sequenceDiagram
     HTTP-->>IDE: 200, header Mcp-Session-Id
     Note over IDE,HTTP: No Session yet. The id is the name<br/>the client echoes back from now on.
 
-    IDE->>HTTP: POST /mcp — tools/call evalInBrowser<br/>Mcp-Session-Id, X-Project, X-Agent, X-IDE
+    IDE->>HTTP: POST /mcp — tools/call begin { name, url? }<br/>Mcp-Session-Id, X-Project, X-Agent, X-IDE
     HTTP->>HTTP: lastSeen for this session
     HTTP->>HTTP: admitted(): is X-Project there,<br/>and is it a directory on this Mac?
     HTTP->>S: new Session, keyed by session id AND X-Project
     HTTP->>Hub: join(session)
-    HTTP->>S: greet() — the promise is remembered, not a flag
-    S->>Hub: hello { projectDir, agent }
+    HTTP->>S: greet(name) — the promise is remembered, not a flag
+    S->>Hub: hello { projectDir, agent: { label: name } }
     Hub->>Hub: licensed()?
-    Hub->>Hub: identify(projectDir), then ask about<br/>an unknown project once
+    Hub->>Hub: identify(projectDir), then ask about<br/>an unknown project once,<br/>naming the agent by what it called itself
     Hub->>Ctx: contextFor(identity).addAgent(agent)
     Hub-->>S: welcome { project, agentId }
+    HTTP->>S: call('begin', { url })
+    S->>Hub: call
+    Hub->>Ctx: tabFor(agent) — the tab exists from here on
+    Hub-->>HTTP: { project, you, tab, others }
+    HTTP-->>IDE: 200 { the picture, as JSON }
+
+    Note over IDE,HTTP: Every later call is the same,<br/>minus the introduction.
+
+    IDE->>HTTP: POST /mcp — tools/call evalInBrowser
     HTTP->>S: call('eval', { code, timeout })
     S->>Hub: call
-    Hub->>Ctx: tabFor(agent), then queue.run on that tab
+    Hub->>Ctx: queue.run on this agent's tab
     Ctx->>Tab: runScript(code, api)
     Tab-->>Ctx: outcome
     Ctx-->>Hub: outcome

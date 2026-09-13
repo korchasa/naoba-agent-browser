@@ -394,6 +394,29 @@ export class Hub {
           tabs: context.describeTabs(),
         }
 
+      /**
+       * The first call an agent makes: it has just said who it is, and this
+       * gives it the tab to work in.
+       *
+       * A tab of its own is what an agent gets anyway on its first scenario —
+       * doing it here means the agent has somewhere to look before it writes
+       * one, and the answer carries the picture it would otherwise ask
+       * `status` for.
+       */
+      case 'begin': {
+        const url = args.url === undefined ? null : String(args.url)
+        const tab = context.tabFor(agent)
+        if (url) await this.#runEval(context, agent, `return await api.navigate(${JSON.stringify(url)})`, 60_000)
+        return {
+          project: { id: context.identity.id, name: context.identity.name, root: context.identity.root },
+          you: { id: agent.id, label: agent.label },
+          tab: context.describeTab(context.tab(tab.id) ?? tab),
+          others: [...context.agents.values()]
+            .filter((other) => other.id !== agent.id)
+            .map((other) => ({ id: other.id, label: other.label, ide: other.descriptor.ide })),
+        }
+      }
+
       case 'eval': {
         const code = String(args.code ?? '')
         if (!code.trim()) throw badParams('there is no code to run')

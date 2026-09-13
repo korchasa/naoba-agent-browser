@@ -18,6 +18,7 @@
 export const TOOL_DESCRIPTION = `Run a browser scenario in this project's window and get the result. Write
 JavaScript: \`api\` is in scope, top-level await works, and whatever you return
 comes back to you. Put the whole flow in one call — navigate, act, read, return.
+Call \`begin\` first — nothing answers until you do.
 
 This is the short form. The rest is one call away:
   api.help()                         every helper, with its arguments

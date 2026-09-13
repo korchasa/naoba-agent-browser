@@ -109,6 +109,22 @@ What happens between that first call and the moment an agent's tabs are let go,
 in four sequence diagrams:
 [documents/how-a-session-works.md](documents/how-a-session-works.md).
 
+### The first call is `begin`
+
+`X-Project` says which repository an agent is in. It does not say which agent,
+and it cannot: the configuration it lives in is shared by every agent working in
+that repository. So the first thing an agent does is call `begin` and say in a
+few words what it is here to do — "rewriting the checkout tests", not "agent 2".
+
+That sentence is the name the person sees in the window beside the agent's tab,
+in the question asking whether to let a new project open a browser, and in the
+message another agent gets when this one is holding a tab it wants.
+
+`begin` opens the agent's tab at the same time, at a `url` if it was given one,
+and answers with the project, that tab, and whoever else is working here. Two
+round trips become one. Every other tool waits for it: called first, they come
+back asking for `begin` rather than guessing at a name.
+
 ### The port
 
 The copy people download listens on 8899 and the development copy on 8900, so

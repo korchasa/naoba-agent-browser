@@ -381,12 +381,17 @@ test('an Authorization header left over from an older configuration is ignored',
   assert.equal(response.status, 200)
 })
 
-/** One `status` call, with whatever headers the test wants to say something about. */
-async function ask(headers) {
+/** One `begin` call, with whatever headers the test wants to say something about. */
+async function ask(headers, name = 'a test agent') {
   const response = await fetch(app.url, {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...headers },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'status', arguments: {} } }),
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'begin', arguments: { name } },
+    }),
   })
   return await response.json()
 }
@@ -445,8 +450,8 @@ test('two calls that arrive together introduce one agent, not two', async () => 
     ask({ 'x-project': PROJECT_C, 'mcp-session-id': id }),
     ask({ 'x-project': PROJECT_C, 'mcp-session-id': id }),
   ])
-  const agents = JSON.parse(both[1].result.content[0].text).agents
-  assert.equal(agents.length, 1, `the project has ${agents.length} agents for one session`)
+  const others = JSON.parse(both[1].result.content[0].text).others
+  assert.equal(others.length, 0, `the project has ${others.length + 1} agents for one session`)
 })
 
 test('two agents in one project that echo no session header stay two agents', async () => {
@@ -455,15 +460,62 @@ test('two agents in one project that echo no session header stay two agents', as
   // tab, and each able to walk into the other's half-finished scenario.
   const one = await ask({ 'x-project': PROJECT_C, 'x-agent': 'headerless-one' })
   const two = await ask({ 'x-project': PROJECT_C, 'x-agent': 'headerless-two' })
-  const idOf = (answer) => JSON.parse(answer.result.content[0].text).agents.find((agent) => agent.self)?.id
+  const idOf = (answer) => JSON.parse(answer.result.content[0].text).you.id
   assert.ok(idOf(one))
   assert.notEqual(idOf(one), idOf(two))
 })
 
-test('the tools an agent is offered are the two the manual describes', async () => {
+test('a tool called before begin is told to call begin, and what to say in it', async () => {
+  const response = await fetch(app.url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-project': PROJECT_A },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'status', arguments: {} } }),
+  })
+  const answer = await response.json()
+  assert.equal(answer.result.isError, true)
+  assert.match(answer.result.content[0].text, /begin has not been called/)
+})
+
+test('begin without a name is refused, because the name is the whole point of it', async () => {
+  const answer = await ask({ 'x-project': PROJECT_A }, '   ')
+  assert.equal(answer.result.isError, true)
+  assert.match(answer.result.content[0].text, /begin needs a name/)
+})
+
+test('two agents in one project are listed under the names they chose', async () => {
+  const first = await ask({ 'x-project': PROJECT_A, 'mcp-session-id': 'named-one' }, 'reading the release notes')
+  const second = await ask({ 'x-project': PROJECT_A, 'mcp-session-id': 'named-two' }, 'filling in the signup form')
+  const mine = JSON.parse(second.result.content[0].text)
+  assert.equal(mine.you.label, 'filling in the signup form')
+  const names = mine.others.map((other) => other.label)
+  assert.ok(names.includes('reading the release notes'), names.join(', '))
+  // The agent that went first sees nobody yet, which is the point of asking
+  // again rather than trusting the first answer.
+  assert.equal(JSON.parse(first.result.content[0].text).you.label, 'reading the release notes')
+})
+
+test('begin opens the tab, and takes it to the address it was given', async () => {
+  // The saving is a round trip: an agent that knows where it is going says so
+  // here instead of calling begin and then a scenario that only navigates.
+  const response = await fetch(app.url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-project': PROJECT_A, 'mcp-session-id': 'begin-with-a-url' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'begin', arguments: { name: 'looking at the fixture page', url: origin + '/page.html' } },
+    }),
+  })
+  const { tab } = JSON.parse((await response.json()).result.content[0].text)
+  assert.ok(tab.id, 'begin should answer with a tab')
+  assert.match(tab.url, /\/page\.html$/)
+})
+
+test('the tools an agent is offered are the three the manual describes', async () => {
   const agent = await app.agent(PROJECT_A, 'lister')
   const { tools } = await agent.session.list()
-  assert.deepEqual(tools.map((tool) => tool.name).sort(), ['evalInBrowser', 'status'])
+  assert.deepEqual(tools.map((tool) => tool.name).sort(), ['begin', 'evalInBrowser', 'status'])
   agent.close()
 })
 
@@ -581,7 +633,7 @@ test('two projects share nothing: not cookies, not storage, not tabs', async () 
     return {
       cookies: (await api.getCookies({})).map((cookie) => cookie.name),
       storage: await api.eval('localStorage.getItem("secret")'),
-      tabs: (await api.getTabs()).length,
+      tabs: (await api.getTabs()).map((tab) => tab.url),
       project: (await api.project()).name,
     }
   `)
@@ -589,7 +641,13 @@ test('two projects share nothing: not cookies, not storage, not tabs', async () 
   assert.notEqual(a.project.id, b.project.id)
   assert.deepEqual(inB.value.cookies, [], 'a cookie from another project is visible')
   assert.equal(inB.value.storage, null, 'storage from another project is visible')
-  assert.equal(inB.value.tabs, 1, "another project's tabs are visible")
+  // Counting tabs would not say this: another agent in project-b has a tab of
+  // its own, and that one is meant to be visible. What must not be here is the
+  // page the agent in project-a opened.
+  assert.ok(
+    !inB.value.tabs.some((url) => url.includes('second.html')),
+    `another project's tabs are visible: ${inB.value.tabs.join(', ')}`,
+  )
   a.close()
   b.close()
 })

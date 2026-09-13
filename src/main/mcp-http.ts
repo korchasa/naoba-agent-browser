@@ -74,10 +74,16 @@ class Session implements Connection {
     readonly sessionId: string | null,
     readonly projectDir: string,
     readonly ide: string,
-    readonly label: string,
+    /** What the agent is called until `begin` gives it a name of its own. */
+    public label: string,
     readonly keepEvents: boolean,
   ) {
     this.id = id
+  }
+
+  /** Whether `begin` has run. Every other tool waits for it. */
+  get started(): boolean {
+    return this.#greeting !== null
   }
 
   /** Whether a call of this session's is still running, so the sweeper leaves it alone. */
@@ -117,22 +123,27 @@ class Session implements Connection {
   }
 
   /**
-   * Say who this agent is, once, the first time it wants a browser.
+   * Say who this agent is, once, with the name it chose in `begin`.
    *
-   * The hub is being handed a session the endpoint already admitted, and
-   * admitting it is what the project header did.
+   * The name has to arrive here rather than later: the window asks the person
+   * whether to let this agent into the project, and what it asks with is the
+   * label. A row saying `claude-code · naoba` twice is the thing `begin` exists
+   * to prevent.
    */
-  greet(): Promise<void> {
+  greet(label: string): Promise<void> {
     // The promise is what is remembered, not a flag set after the await: a
     // client that makes two tool calls in one turn — Claude Code does — would
     // otherwise pass the flag twice and introduce itself twice, and the hub
     // would hold an agent nobody can ever remove.
-    this.#greeting ??= this.#ask((id) => ({
-      type: 'hello',
-      id,
-      projectDir: this.projectDir,
-      agent: { label: this.label, ide: this.ide, pid: 0 },
-    })).then(() => undefined)
+    if (!this.#greeting) {
+      this.label = label
+      this.#greeting = this.#ask((id) => ({
+        type: 'hello',
+        id,
+        projectDir: this.projectDir,
+        agent: { label, ide: this.ide, pid: 0 },
+      })).then(() => undefined)
+    }
     return this.#greeting
   }
 
@@ -288,9 +299,38 @@ async function callTool(
   if (!session) return
 
   try {
-    await session.greet()
     const name = message.params?.name
     const args = message.params?.arguments ?? {}
+    if (name === 'begin') {
+      const chosen = typeof args.name === 'string' ? args.name.trim() : ''
+      if (!chosen) {
+        return void reply(response, id, {
+          isError: true,
+          content: [{
+            type: 'text',
+            text: 'begin needs a name for this agent — a few words about what you are here to do, as in ' +
+              'begin({ name: "rewriting the checkout tests" }). Other agents in this project are listed under ' +
+              'theirs, and so will you be.',
+          }],
+        })
+      }
+      await session.greet(chosen)
+      const opened = await session.call('begin', { url: args.url })
+      return void reply(response, id, { content: [{ type: 'text', text: JSON.stringify(opened, null, 2) }] })
+    }
+    if (!session.started) {
+      // Not a protocol error: the model is the one that has to act on it, and
+      // the next thing it does should be the call this asks for.
+      return void reply(response, id, {
+        isError: true,
+        content: [{
+          type: 'text',
+          text: `begin has not been called yet, so this project's window does not know who you are. Call ` +
+            'begin({ name: "..." }) first, saying in a few words what you are here to do; it opens your tab and ' +
+            'answers with the project, your tab and whoever else is working here.',
+        }],
+      })
+    }
     if (name === 'evalInBrowser') {
       const outcome = await session.call('eval', { code: args.code, timeout: args.timeout })
       return void reply(response, id, { content: [{ type: 'text', text: renderOutcome(outcome) }] })
@@ -329,7 +369,9 @@ async function testDoor(
     return void reply(response, id, { events })
   }
   try {
-    await session.greet()
+    // The door is the harness's, not an agent's: it introduces itself under the
+    // name the test put in `X-Agent` rather than going through `begin`.
+    await session.greet(session.label)
     const value = await session.call(String(message.params?.method), message.params?.params)
     reply(response, id, { value })
   } catch (error) {

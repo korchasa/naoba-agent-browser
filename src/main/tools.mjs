@@ -8,6 +8,30 @@ import { TOOL_DESCRIPTION } from './reference.mjs'
  */
 export const TOOLS = [
   {
+    name: 'begin',
+    description:
+      'Call this first, before any other tool here. Say in a few words what you are working on: that is the ' +
+      'name the person sees in the window beside your tab, and it is how they tell you from the other agents ' +
+      'working in this same project. Opens your tab — at `url` if you give one — and answers with the project, ' +
+      'your tab and whoever else is here.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description:
+            'What you are here to do, in a few words — "rewriting the checkout tests", not "agent 2". Shown ' +
+            'to the person beside your tab.',
+        },
+        url: {
+          type: 'string',
+          description: 'Where to open your tab. Left out, the tab opens empty and waits for your first scenario.',
+        },
+      },
+      required: ['name'],
+    },
+  },
+  {
     name: 'evalInBrowser',
     description: TOOL_DESCRIPTION,
     inputSchema: {
