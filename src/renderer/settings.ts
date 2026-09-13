@@ -23,6 +23,7 @@ declare const ab: {
   buyLicence(): Promise<unknown>
   activateLicence(key: string, buyer: Buyer | null): Promise<unknown>
   deactivateLicence(): Promise<unknown>
+  installUpdate(): Promise<unknown>
   announceAutomation(on: boolean): Promise<unknown>
   orphanCloseMs(ms: number): Promise<unknown>
   presence(value: string): Promise<unknown>
@@ -107,7 +108,29 @@ function renderLicence(values: SettingsSnapshot): HTMLElement {
     group.append(unlockRow())
     if (askingWho) group.append(whoRow())
   }
+  group.append(renderUpdate(values))
   return group
+}
+
+/**
+ * The version, and the newer one when there is one.
+ *
+ * It sits with the licence rather than among the preferences because it is a
+ * fact about this copy and not something set by choosing. The button quits the
+ * application, which takes every agent's tabs with it, so the row says so
+ * rather than letting a person find out.
+ */
+function renderUpdate(values: SettingsSnapshot): HTMLElement {
+  const node = el('div', 'setting')
+  const text = el('div', 'text')
+  text.append(el('span', 'label', 'Version'), el('span', 'hint', values.update.sentence))
+  node.append(text)
+  if (values.update.stage === 'ready') {
+    node.append(
+      button('Restart and update', () => void ab.installUpdate(), 'Quits Naoba and starts the new version'),
+    )
+  }
+  return node
 }
 
 /** The field a key is typed into, and the button that sends it. */

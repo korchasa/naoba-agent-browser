@@ -12,6 +12,7 @@
  * `electron`, and no colour, markup or DOM belongs in it either.
  */
 import type { LicenceState } from './licence.ts'
+import type { UpdateSummary } from './update-rules.ts'
 
 export type { LicenceState }
 
@@ -62,6 +63,8 @@ export interface SettingsSnapshot extends PreferenceValues {
   projects: AdmissionRecord[]
   /** The licence as this machine holds it. Not a preference — nothing about it is set by choosing. */
   licence: LicenceState
+  /** Whether a newer version is on its way. Not a preference either. */
+  update: UpdateSummary
 }
 
 /** What a row looks like once a value has been put in it. */

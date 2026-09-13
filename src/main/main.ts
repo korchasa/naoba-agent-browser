@@ -25,6 +25,7 @@ import {
   stopSchedule as stopLicenceChecks,
 } from './licence-store.ts'
 import { admitsWithoutKey, type Buyer, describeFreeCopy } from './licence.ts'
+import { installUpdate, stopWatchingForUpdates, updateState, watchForUpdates } from './updates.ts'
 
 /** Where a key is bought. The plan is a one-off payment; there is nothing else to sell. */
 const CHECKOUT_URL = 'https://checkout.freemius.com/product/39376/plan/67545/'
@@ -147,6 +148,10 @@ async function start(): Promise<void> {
       settings.push()
       if (!licensed() && !admitsWithoutKey(isTestRun, isDevVariant())) settings.open()
     })
+
+    // A newer version, fetched in the background and installed only when the
+    // person asks: quitting takes every agent's tabs with it.
+    watchForUpdates(settings.push)
   }
 
   // The app is a server as much as a window: closing every window leaves it
@@ -164,6 +169,7 @@ async function start(): Promise<void> {
     hub.stop()
     clearHandshake()
     stopLicenceChecks()
+    stopWatchingForUpdates()
     dockHandle?.()
     dockHandle = null
     trayHandle?.destroy()
@@ -301,6 +307,7 @@ function settingsFor(hub: Hub): SettingsSnapshot {
     // A copy that needs no key says so, rather than reporting the empty record
     // it will never fill in as if something were missing.
     licence: admitsWithoutKey(isTestRun, isDevVariant()) ? describeFreeCopy() : licenceState(),
+    update: updateState(),
   }
 }
 
@@ -586,6 +593,8 @@ function wireChrome(hub: Hub, settings: SettingsAccess): void {
       throw error
     }
   })
+  /** Quit and come back as the version that is already downloaded. */
+  ipcMain.handle('ab:install-update', () => installUpdate())
   ipcMain.handle('ab:deactivate-licence', async () => {
     const answer = await deactivateLicence()
     settings.push()

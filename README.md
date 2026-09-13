@@ -142,6 +142,17 @@ The first start of the development copy on a machine that has been running the
 checkout copies that state — the logins above all — into its own directory, so
 it is useful from day one; the checkout keeps working on the original.
 
+## Updates
+
+The copy you download replaces itself. It looks for a newer version when it
+starts and every six hours after that, fetches it in the background, and then
+waits: quitting Naoba takes every agent's tabs with it, so the settings window
+says a new version is ready and the moment to install it is yours to pick.
+
+A copy built from this source does not do that — it has no signature matching
+the one a release carries, and macOS swaps one copy for another only when they
+agree. The settings window says so instead of looking.
+
 ## Settings
 
 Everything you set by hand is in one window, and the window itself says what

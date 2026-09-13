@@ -35,6 +35,7 @@ import {
   refreshed,
   verdict,
 } from '../src/main/licence.ts'
+import { describeUpdate, updatesItself } from '../src/main/update-rules.ts'
 
 test('a project is the repository the agent is working in, not its subdirectory', () => {
   const base = mkdtempSync(join(tmpdir(), 'ab-project-'))
@@ -1365,6 +1366,44 @@ test('the service asking who you are is three complaints meaning one thing', () 
   assert.equal(asksWhoYouAre('invalid_license_key'), false)
   assert.equal(asksWhoYouAre(undefined), false)
   assert.equal(asksWhoYouAre(null), false)
+})
+
+test('only the downloaded copy replaces itself', () => {
+  // Packaged, and not the maintainer's own build: the one people buy.
+  assert.equal(updatesItself(true, false), true)
+  // The development copy is usually ahead of any release.
+  assert.equal(updatesItself(true, true), false)
+  // A run straight from the checkout has no signature to match.
+  assert.equal(updatesItself(false, false), false)
+})
+
+test('a copy that does not update itself says why, whatever the stage says', () => {
+  const summary = describeUpdate('ready', '1.2.0', null, false)
+  assert.equal(summary.watches, false)
+  assert.equal(summary.stage, 'quiet')
+  // No version is offered, so the row cannot draw a button to install one.
+  assert.equal(summary.version, null)
+  assert.match(summary.sentence, /built rather than downloaded/)
+})
+
+test('each stage of an update reads as one sentence about this copy', () => {
+  assert.match(describeUpdate('quiet', null, null, true).sentence, /up to date/)
+  assert.match(describeUpdate('checking', null, null, true).sentence, /Looking for/)
+  assert.match(describeUpdate('downloading', '1.2.0', null, true).sentence, /1\.2\.0 is downloading/)
+  const ready = describeUpdate('ready', '1.2.0', null, true)
+  assert.equal(ready.stage, 'ready')
+  assert.equal(ready.version, '1.2.0')
+  assert.match(ready.sentence, /ready/)
+  // Pressing the button quits the application, so the row says what that costs.
+  assert.match(ready.sentence, /closes every agent's tabs/)
+})
+
+test('a failed check keeps the reason, because the cause is usually not the application', () => {
+  const failed = describeUpdate('failed', null, 'net::ERR_INTERNET_DISCONNECTED', true)
+  assert.match(failed.sentence, /did not finish/)
+  assert.match(failed.sentence, /ERR_INTERNET_DISCONNECTED/)
+  // A failure with nothing to say must not leave a dangling space.
+  assert.equal(describeUpdate('failed', null, null, true).sentence.endsWith('finish.'), true)
 })
 
 test('an installation identifier is 32 characters of hexadecimal', () => {

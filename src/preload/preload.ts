@@ -27,6 +27,7 @@ const api = {
   buyLicence: () => ipcRenderer.invoke('ab:buy-licence'),
   activateLicence: (key: string, buyer: unknown = null) => ipcRenderer.invoke('ab:activate-licence', key, buyer),
   deactivateLicence: () => ipcRenderer.invoke('ab:deactivate-licence'),
+  installUpdate: () => ipcRenderer.invoke('ab:install-update'),
   orphanCloseMs: (ms: number) => ipcRenderer.invoke('ab:orphan-close-ms', ms),
   presence: (value: string) => ipcRenderer.invoke('ab:presence', value),
   tabMenu: (projectId: string, tabId: string) => ipcRenderer.invoke('ab:tab-menu', projectId, tabId),
