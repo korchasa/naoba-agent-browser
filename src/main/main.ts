@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell } from 'electron'
+import { app, BrowserWindow, clipboard, ipcMain, Menu, Notification, shell } from 'electron'
 import { dirname, join } from 'node:path'
 import { cpSync, existsSync } from 'node:fs'
 import { Hub } from './hub.ts'
@@ -51,7 +51,13 @@ let presence: Presence = 'menu-bar'
 let dockHandle: (() => void) | null = null
 
 const flags = new Set(process.argv.slice(1))
-const isTestRun = flags.has('--admit-everything')
+/**
+ * The flag the test harness runs with. It admits every project without asking,
+ * opens the test door and answers agents without a licence key — so it is read
+ * only from a checkout. In an installed copy it is one command-line word away
+ * from being a way to unlock the product, and there it means nothing.
+ */
+const isTestRun = flags.has('--admit-everything') && !app.isPackaged
 
 // The state directory has to be chosen before anything reads it, and the
 // single-instance lock lives inside it: set it later and a test run fights the
@@ -115,11 +121,17 @@ async function start(): Promise<void> {
     return
   }
 
+  // Registered before anything can fail: a start that dies with the port taken
+  // used to reach neither this line nor its own quit, and the only way to end
+  // the process was to kill it.
+  for (const signal of ['SIGTERM', 'SIGINT'] as const) process.on(signal, () => app.quit())
+
   try {
     hub.start()
-    // The application is the MCP server now. A port already taken means another
-    // copy of this same variant is running, and the dialog below says so rather
-    // than this one quietly moving to a port no configuration names.
+    // The application is the MCP server now, on a port that is written into
+    // every agent's configuration — so a port already taken is somebody else's
+    // program, and this copy says so and stops rather than quietly moving to a
+    // port nothing names.
     await startMcpServer({
       port,
       token: mcpToken(),
@@ -130,8 +142,7 @@ async function start(): Promise<void> {
     // Read by a test harness waiting for the application to come up.
     process.stdout.write(`naoba listening on 127.0.0.1:${port}\n`)
   } catch (error) {
-    dialog.showErrorBox(`${appName()} cannot start`, String(error))
-    app.quit()
+    await cannotStart(port, error)
     return
   }
 
@@ -188,10 +199,33 @@ async function start(): Promise<void> {
     trayHandle = null
     void hub.flushAll().finally(() => app.exit(0))
   })
+}
 
-  // A supervisor (or a test) ends the app with a signal; without this the
-  // sessions never get their chance to be written.
-  for (const signal of ['SIGTERM', 'SIGINT'] as const) process.on(signal, () => app.quit())
+/**
+ * Nothing can be served, so the application says why and goes.
+ *
+ * Not in a dialog. A message box with no window behind it is modal to the whole
+ * application and stops the event loop with it: the quit underneath it was
+ * unreachable, and so was the signal a supervisor or a person at a terminal
+ * sends, so the only way out of a copy that could not start was to kill it.
+ * That was measured, not guessed — a 1.0.3 copy sitting on 8900 left the new
+ * one in exactly that state on 2026-09-13. A notification says the same thing
+ * and holds nothing up.
+ */
+async function cannotStart(port: number, error: unknown): Promise<void> {
+  const busy = (error as { code?: string }).code === 'EADDRINUSE'
+  const said = busy
+    ? `Port ${port} is taken by another program, so no agent can reach this browser. ` +
+      `A copy of ${appName()} older than 1.0.4 is the likeliest holder: those took whatever port they found ` +
+      `between 8899 and 8910. Quit it and open ${appName()} again.`
+    : `${appName()} could not open port ${port}: ${String(error)}`
+  console.error(`${appName()} cannot listen on 127.0.0.1:${port}:`, error)
+  if (busy) console.error(`lsof -nP -iTCP:${port} -sTCP:LISTEN names whatever is holding it`)
+  if (Notification.isSupported()) new Notification({ title: `${appName()} cannot start`, body: said }).show()
+  // Long enough for the notification to be handed to the system, short enough
+  // that nothing waits on this process.
+  await new Promise((done) => setTimeout(done, 1_500))
+  app.exit(1)
 }
 
 /**
@@ -239,7 +273,10 @@ function seedStateDirectory(names: string[]): void {
   cpSync(source, current, {
     recursive: true,
     force: true,
-    filter: (path) => !/\/Singleton(Lock|Cookie|Socket)$/.test(path),
+    // Chromium's own lock files belong to a process, and the token belongs to
+    // one copy: carrying it over would make two copies answer to one secret,
+    // and deleting either file would then revoke nothing.
+    filter: (path) => !/\/(Singleton(Lock|Cookie|Socket)|mcp-token)$/.test(path),
   })
 }
 
@@ -250,6 +287,9 @@ function seedStateDirectory(names: string[]): void {
  * registration alone and only reads it back for the settings window.
  */
 function offerLoginItem(): void {
+  // Only the copy people download. The development copy is installed beside it
+  // and would otherwise start a second browser at every login.
+  if (isDevVariant()) return
   const decision = decideLoginItem({ packaged: app.isPackaged, offered: readSettings().loginItemOffered })
   if (decision !== 'register') return
   setLoginItem(true)

@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert'
 import { after, before, test } from 'node:test'
-import { mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -22,7 +22,18 @@ let origin
 let uploadProject
 let outsideDir
 
+const PROJECT_A = '/tmp/naoba-tests/project-a'
+const PROJECT_B = '/tmp/naoba-tests/project-b'
+/** Untouched by any other test, so counting the agents in it counts one thing. */
+const PROJECT_C = '/tmp/naoba-tests/project-c'
+
 before(async () => {
+  // An agent works in a directory that exists, and the browser now insists on
+  // it: a client that sends the text of the header instead of the directory it
+  // stands for would otherwise put every repository in one browser.
+  await mkdir(PROJECT_A, { recursive: true })
+  await mkdir(PROJECT_B, { recursive: true })
+  await mkdir(PROJECT_C, { recursive: true })
   fixture = await startFixtureServer()
   origin = fixture.origin
   app = await startApp({ port: 8951 })
@@ -41,9 +52,6 @@ after(async () => {
   await rm(uploadProject, { recursive: true, force: true })
   await rm(outsideDir, { recursive: true, force: true })
 })
-
-const PROJECT_A = '/tmp/naoba-tests/project-a'
-const PROJECT_B = '/tmp/naoba-tests/project-b'
 
 test('input reaches the page as a real event, not a synthetic one', async () => {
   const agent = await app.agent(PROJECT_A, 'trust')
@@ -360,7 +368,10 @@ test('a request without the token is refused', async () => {
   })
   assert.equal(response.status, 401)
   const answer = await response.json()
-  assert.match(answer.error, /did not carry the token/)
+  assert.match(answer.error, /did not carry this copy of Naoba's token/)
+  // Said in the header too, so a client that reads a bare 401 as the start of
+  // an authorization dance does not go looking for metadata we do not serve.
+  assert.match(response.headers.get('www-authenticate') ?? '', /^Bearer/)
 })
 
 test('a token from another copy is refused', async () => {
@@ -383,6 +394,16 @@ test("the token is this copy's alone, and only its owner can read it", async () 
   assert.equal(mode, 0o600, `the token file is ${mode.toString(8)}, not 600`)
 })
 
+/** One `status` call, with whatever headers the test wants to say something about. */
+async function ask(headers) {
+  const response = await fetch(app.url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${app.token}`, ...headers },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'status', arguments: {} } }),
+  })
+  return await response.json()
+}
+
 test('an agent that does not say which project it is in is told what to add', async () => {
   // Not a protocol error: a person has to read this and edit a file, so it
   // comes back where the agent will show it to them.
@@ -399,6 +420,57 @@ test('an agent that does not say which project it is in is told what to add', as
   const answer = await response.json()
   assert.equal(answer.result.isError, true)
   assert.match(answer.result.content[0].text, /X-Project/)
+})
+
+test('a project directory that is not there is refused, and the sentence says why', async () => {
+  // What a client that does not expand ${PWD} in a header sends. It is a
+  // perfectly good map key, so without this every agent in every such client
+  // would land in one project and share one browser's cookies between
+  // repositories that have nothing to do with each other.
+  const answer = await ask({ 'x-project': '${PWD}' })
+  assert.equal(answer.result.isError, true)
+  assert.match(answer.result.content[0].text, /does not expand/)
+
+  const missing = await ask({ 'x-project': '/tmp/naoba-tests/never-made-this' })
+  assert.equal(missing.result.isError, true)
+  assert.match(missing.result.content[0].text, /no such directory/)
+})
+
+test('one session id used in two projects gets two browsers, not one', async () => {
+  // A client that keeps its session while its working directory changes, or
+  // shares one client across two workspaces. Handing it the first project's
+  // browser would break the one promise the whole application makes.
+  const id = 'a-session-used-twice'
+  const here = await ask({ 'x-project': PROJECT_A, 'mcp-session-id': id })
+  const there = await ask({ 'x-project': PROJECT_B, 'mcp-session-id': id })
+  const nameOf = (answer) => JSON.parse(answer.result.content[0].text).project.name
+  assert.equal(nameOf(here), 'project-a')
+  assert.equal(nameOf(there), 'project-b')
+})
+
+test('two calls that arrive together introduce one agent, not two', async () => {
+  // Claude Code makes two tool calls in one turn. Both used to pass the
+  // `greeted` flag before either had set it, and the hub then held an agent
+  // nothing could ever remove — which quietly stopped that project's renderers
+  // from ever being freed.
+  const id = 'two-calls-at-once'
+  const both = await Promise.all([
+    ask({ 'x-project': PROJECT_C, 'mcp-session-id': id }),
+    ask({ 'x-project': PROJECT_C, 'mcp-session-id': id }),
+  ])
+  const agents = JSON.parse(both[1].result.content[0].text).agents
+  assert.equal(agents.length, 1, `the project has ${agents.length} agents for one session`)
+})
+
+test('two agents in one project that echo no session header stay two agents', async () => {
+  // A client that ignores the session header has one session per project. Two
+  // of them in one repository used to be one agent: one row in the panel, one
+  // tab, and each able to walk into the other's half-finished scenario.
+  const one = await ask({ 'x-project': PROJECT_C, 'x-agent': 'headerless-one' })
+  const two = await ask({ 'x-project': PROJECT_C, 'x-agent': 'headerless-two' })
+  const idOf = (answer) => JSON.parse(answer.result.content[0].text).agents.find((agent) => agent.self)?.id
+  assert.ok(idOf(one))
+  assert.notEqual(idOf(one), idOf(two))
 })
 
 test('the tools an agent is offered are the two the manual describes', async () => {

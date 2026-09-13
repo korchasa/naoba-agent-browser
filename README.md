@@ -114,6 +114,11 @@ other. The port is fixed rather than found: it sits in a configuration file and
 has to mean the same thing after a restart. When it is already taken, the
 application says so and stops instead of moving to a port nothing names.
 
+A second copy of the same variant never gets that far: the single-instance lock
+lives in the state directory, and each variant has its own. So a taken port is
+always somebody else's program — most often a Naoba older than 1.0.4, which
+took whatever it found between 8899 and 8910.
+
 ### The token
 
 Loopback is not a boundary between the programs running on one machine, and the

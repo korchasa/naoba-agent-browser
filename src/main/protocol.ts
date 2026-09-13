@@ -80,7 +80,6 @@ export interface AgentCommand {
 export type ClientMessage =
   | { type: 'hello'; id: number; projectDir: string; agent: AgentDescriptor }
   | { type: 'call'; id: number; method: string; params?: unknown }
-  | { type: 'cancel'; id: number; target: number }
   | { type: 'bye'; id: number }
 
 export type ServerMessage =

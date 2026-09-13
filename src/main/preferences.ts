@@ -145,7 +145,8 @@ export const PREFERENCES: { [K in PreferenceKey]: Entry } = {
     scale: { per: 60_000, floor: 0, unit: 'minutes' },
     draw: (values) => ({
       kind: 'number',
-      hint: 'A restarted session comes back as a new agent and still wants the page it was on.',
+      hint:
+        'A restarted session comes back as a new agent and still wants the page it was on. The clock starts when Naoba notices the agent is gone, which takes about ten quiet minutes.',
       value: asShown('orphanCloseMs', values.orphanCloseMs),
       floor: 0,
       unit: 'minutes',

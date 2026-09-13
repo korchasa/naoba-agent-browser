@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { randomUUID } from 'node:crypto'
+import { statSync } from 'node:fs'
 import type { AppEvent, ClientMessage, Connection, ServerMessage } from './protocol.ts'
 import { TOOLS } from './tools.mjs'
 import { renderError, renderOutcome } from './render.mjs'
@@ -60,7 +61,7 @@ class Session implements Connection {
   lastSeen = Date.now()
   /** Kept only for the test door; nothing over HTTP can be pushed an event. */
   readonly events: AppEvent[] = []
-  #greeted = false
+  #greeting: Promise<void> | null = null
   #nextId = 1
   #pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void }>()
   #onMessage: ((message: ClientMessage) => void) | null = null
@@ -69,12 +70,19 @@ class Session implements Connection {
   constructor(
     id: number,
     readonly key: string,
+    /** The header the client echoes back, or `null` for a client that ignores it. */
+    readonly sessionId: string | null,
     readonly projectDir: string,
     readonly ide: string,
     readonly label: string,
     readonly keepEvents: boolean,
   ) {
     this.id = id
+  }
+
+  /** Whether a call of this session's is still running, so the sweeper leaves it alone. */
+  get busy(): boolean {
+    return this.#pending.size > 0
   }
 
   send(message: ServerMessage): void {
@@ -114,15 +122,18 @@ class Session implements Connection {
    * There is no token here: the hub is being handed a session the endpoint
    * already admitted, and admitting it is what the token did.
    */
-  async greet(): Promise<void> {
-    if (this.#greeted) return
-    await this.#ask((id) => ({
+  greet(): Promise<void> {
+    // The promise is what is remembered, not a flag set after the await: a
+    // client that makes two tool calls in one turn — Claude Code does — would
+    // otherwise pass the flag twice and introduce itself twice, and the hub
+    // would hold an agent nobody can ever remove.
+    this.#greeting ??= this.#ask((id) => ({
       type: 'hello',
       id,
       projectDir: this.projectDir,
       agent: { label: this.label, ide: this.ide, pid: 0 },
-    }))
-    this.#greeted = true
+    })).then(() => undefined)
+    return this.#greeting
   }
 
   call(method: string, params: unknown): Promise<unknown> {
@@ -167,10 +178,15 @@ export interface McpOptions {
 export function startMcpServer(options: McpOptions): Promise<number> {
   return new Promise((resolve, reject) => {
     const listener = createServer((request, response) => void answer(request, response, options))
-    listener.on('error', reject)
+    const refuse = (error: Error) => reject(error)
+    listener.once('error', refuse)
     // Loopback only. The token is what keeps the other programs on this machine
     // out; the address is what keeps the network out.
     listener.listen(options.port, '127.0.0.1', () => {
+      listener.off('error', refuse)
+      // Past this point there is no promise left to reject, so a failure that
+      // would otherwise be swallowed by a settled callback is printed instead.
+      listener.on('error', (error) => console.error('the MCP endpoint failed:', error))
       server = listener
       sweeper = setInterval(forgetTheQuiet, 60_000)
       sweeper.unref?.()
@@ -200,21 +216,38 @@ function forgetTheQuiet(): void {
   const now = Date.now()
   for (const session of [...sessions.values()]) {
     if (now - session.lastSeen < FORGET_AFTER_MS) continue
+    // A scenario that waits for the person to sign in runs for ten minutes by
+    // default, exactly as long as this sweep waits. Sweeping it would release
+    // every lease it holds and schedule its tab for closing while the person
+    // is still typing, so a session with a call in flight is not quiet.
+    if (session.busy) continue
     session.close()
   }
 }
 
 async function answer(request: IncomingMessage, response: ServerResponse, options: McpOptions): Promise<void> {
   if (!presents(request, options.token)) {
-    response.writeHead(401, { 'content-type': 'application/json' })
-    response.end(JSON.stringify({ error: 'this request did not carry the token this copy of Naoba was started with' }))
+    // `Bearer` and nothing more: a client that reads a bare 401 as the start of
+    // an authorization dance goes looking for metadata this endpoint does not
+    // serve, and the person never sees the sentence below.
+    response.writeHead(401, {
+      'content-type': 'application/json',
+      'www-authenticate': 'Bearer realm="naoba", error="invalid_token"',
+    })
+    response.end(JSON.stringify({
+      error: "this request did not carry this copy of Naoba's token; its settings window prints the whole line to " +
+        'paste, token and all',
+    }))
     return
   }
+  // Any request at all says the client is still there. Only `tools/call` used to
+  // say it, so a client doing exactly what the specification suggests for
+  // liveness — a `ping` every minute — was swept anyway.
+  for (const session of ours(request)) session.lastSeen = Date.now()
   // The client saying it is done. The specification's own way to end a session,
   // and the only one that closes an agent's tabs without a ten-minute wait.
   if (request.method === 'DELETE') {
-    const key = header(request, 'mcp-session-id')
-    if (key) sessions.get(key)?.close()
+    for (const session of ours(request)) session.close()
     response.writeHead(204).end()
     return
   }
@@ -286,6 +319,10 @@ async function callTool(
     // has to read it and decide what to do next, and a JSON-RPC error would
     // hide it from the model that has to act on it.
     reply(response, id, { isError: true, content: [{ type: 'text', text: renderError(error) }] })
+  } finally {
+    // Stamped again on the way out: a scenario that ran for a quarter of an
+    // hour would otherwise be swept the moment it stopped being busy.
+    session.lastSeen = Date.now()
   }
 }
 
@@ -312,6 +349,8 @@ async function testDoor(
   } catch (error) {
     const known = error as { message?: string; code?: string; details?: unknown }
     fail(response, id, -32000, String(known.message ?? error), { code: known.code, details: known.details })
+  } finally {
+    session.lastSeen = Date.now()
   }
 }
 
@@ -343,7 +382,14 @@ function admitted(
     return null
   }
 
-  const key = header(request, 'mcp-session-id') ?? `project:${projectDir}`
+  const complaint = unusable(projectDir)
+  if (complaint) {
+    reply(response, id, { isError: true, content: [{ type: 'text', text: complaint }] })
+    return null
+  }
+
+  const sessionId = header(request, 'mcp-session-id') ?? null
+  const key = keyFor(sessionId, projectDir, header(request, 'x-agent'))
   const known = sessions.get(key)
   if (known) {
     known.lastSeen = Date.now()
@@ -353,6 +399,7 @@ function admitted(
   const fresh = new Session(
     nextConnectionId++,
     key,
+    sessionId,
     projectDir,
     ide,
     // `X-Agent` is for somebody running two agents in one project who wants to
@@ -364,6 +411,65 @@ function admitted(
   sessions.set(key, fresh)
   options.join(fresh)
   return fresh
+}
+
+/**
+ * The key a session is kept under.
+ *
+ * The project is part of it rather than merely remembered: a client that keeps
+ * one MCP session while its working directory changes, or shares one client
+ * across two workspaces, would otherwise be handed the first project's browser
+ * — its cookies and its logins — under the second project's name. That is the
+ * one promise the whole application is built on.
+ */
+function keyFor(sessionId: string | null, projectDir: string, agent: string | undefined): string {
+  if (sessionId) return `${sessionId}\u0000${projectDir}`
+  // Without a session header there is one session per project, and two agents
+  // working in one repository would be one agent — one row in the panel, one
+  // tab, and each of them able to walk into the other's half-finished
+  // scenario. `X-Agent` is the only thing left that tells them apart, so when
+  // a client bothers to send it, it counts.
+  return agent ? `project:${projectDir}\u0000${agent}` : `project:${projectDir}`
+}
+
+/**
+ * The sessions this request speaks for.
+ *
+ * A client that echoes the session header is asking about one session. A client
+ * that ignores it has one session per project, so the header naming the project
+ * is what says which.
+ */
+function ours(request: IncomingMessage): Session[] {
+  const sessionId = header(request, 'mcp-session-id')
+  if (sessionId) return [...sessions.values()].filter((session) => session.sessionId === sessionId)
+  const projectDir = header(request, 'x-project')
+  const known = projectDir ? sessions.get(keyFor(null, projectDir, header(request, 'x-agent'))) : undefined
+  return known ? [known] : []
+}
+
+/**
+ * Why this is not a directory an agent could be working in, if it is not one.
+ *
+ * A client that does not expand `${PWD}` sends it literally, and that string
+ * is a perfectly good map key — so without this check
+ * every agent in every such client lands in one project and shares one
+ * browser's cookies between repositories that have nothing to do with each
+ * other.
+ */
+function unusable(projectDir: string): string | null {
+  const named = `Naoba was told this agent works in “${projectDir}”`
+  if (/[$][({]/.test(projectDir)) {
+    return `${named}, which is the text of the header rather than a path: this client does not expand \${PWD} in a ` +
+      'header. Put the project directory in the MCP entry literally instead.'
+  }
+  if (!projectDir.startsWith('/')) return `${named}, which is not an absolute path.`
+  try {
+    if (statSync(projectDir).isDirectory()) return null
+  } catch {
+    // Unreadable and missing come to the same thing here, and the sentence for
+    // both is the one below.
+  }
+  return `${named}, and there is no such directory on this Mac.`
 }
 
 function presents(request: IncomingMessage, token: string): boolean {

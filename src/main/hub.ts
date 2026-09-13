@@ -40,6 +40,9 @@ export interface HubOptions extends ShellPaths {
   licensed?: () => boolean
 }
 
+/** How long the sessions get to reach disk before the quit stops waiting for them. */
+const FLUSH_LIMIT_MS = 5_000
+
 type Decision = 'allowed' | 'denied'
 
 /**
@@ -116,7 +119,12 @@ export class Hub {
 
   /** Write every project's session to disk, and never fail the shutdown for it. */
   async flushAll(): Promise<void> {
-    await Promise.allSettled([...this.contexts.values()].map((context) => context.flush()))
+    const written = Promise.allSettled([...this.contexts.values()].map((context) => context.flush()))
+    // Bounded, because the quit waits for this and an update waits for the
+    // quit: Squirrel cannot put the new bundle in place while this process is
+    // alive, so one flush that never settles would leave the application
+    // neither updated nor complaining.
+    await Promise.race([written, pause(FLUSH_LIMIT_MS)])
   }
 
   stop(): void {

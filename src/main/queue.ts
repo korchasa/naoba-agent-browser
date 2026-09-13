@@ -61,8 +61,24 @@ export class KeyedQueue {
       () => this.#execute(key, waiter, task, options),
     )
     // The tail must never reject, or the next task inherits a rejected promise.
-    this.#tails.set(key, result.then(() => undefined, () => undefined))
+    const tail = result.then(() => undefined, () => undefined)
+    this.#tails.set(key, tail)
+    void tail.then(() => this.#forget(key, tail))
     return result
+  }
+
+  /**
+   * A tab nobody is driving any more leaves nothing behind.
+   *
+   * Every tab ever driven used to keep an entry here for the life of the
+   * process, each one holding a resolved promise, and a browser that runs all
+   * day drives a great many tabs.
+   */
+  #forget(key: string, tail: Promise<unknown>): void {
+    if (this.#tails.get(key) !== tail) return
+    if (this.#waiting.has(key) || this.#running.has(key)) return
+    this.#tails.delete(key)
+    this.#lastRunner.delete(key)
   }
 
   async #execute<T>(key: string, waiter: Waiter, task: () => Promise<T>, options: QueueOptions): Promise<T> {
