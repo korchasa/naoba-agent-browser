@@ -122,7 +122,12 @@ export class BridgeServer {
             socket.write(encodeMessage({
               type: 'denied',
               id: idOf(message),
-              reason: 'this connection did not present the browser token; update the bridge and try again',
+              code: 'bad-token',
+              // Not a word about the bridge's version, which is what this used
+              // to say: a bridge of the right version reaches this line every
+              // time it picks the wrong copy's token, and several copies of the
+              // application can be installed at once.
+              reason: 'this token is not this copy of Naoba; it may belong to a copy that is no longer running',
             }))
             socket.end()
             return

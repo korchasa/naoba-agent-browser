@@ -113,12 +113,16 @@ them.
 Loopback is not a boundary between the programs running on one machine, and the
 browser on the other side of that port holds your logged-in sessions. So the
 application admits only something that can read a file of its own: at every
-start it writes `bridge.json` into its state directory — the port it listens on
-and a token for this run, readable by the owner alone — and it closes any
-connection whose first message does not carry that token. A token from an
-earlier run is worth nothing.
+start it writes `bridge.json` into its state directory — the port it listens on,
+a token for this run and its process id, readable by the owner alone — and it
+closes any connection whose first message does not carry that token. A token
+from an earlier run is worth nothing.
 
-The bridge reads that file itself, so there is nothing to set up. When the
+The bridge reads that file itself, so there is nothing to set up. It may find
+more than one: several copies can be installed at once, and a copy that was
+killed rather than quit leaves its file behind still naming a port the next copy
+may take. So the bridge tries every token claiming that port, the copies still
+running first, and reports a refusal only when all of them are refused. When the
 application runs with a state directory of its own, `NAOBA_STATE_DIR` names it.
 
 ## The development copy

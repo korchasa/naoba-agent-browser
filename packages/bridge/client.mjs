@@ -105,7 +105,12 @@ export class AppClient {
     this.#pending.delete(message.id)
     if (message.type === 'result') pending.resolve(message.value)
     else if (message.type === 'welcome') pending.resolve(message)
-    else if (message.type === 'denied') pending.reject(Object.assign(new Error(message.reason), { code: 'denied' }))
+    // `denial` is why the application turned us away, when it says. An older
+    // copy says nothing, and the caller then treats every refusal as one that
+    // might be about the token.
+    else if (message.type === 'denied') {
+      pending.reject(Object.assign(new Error(message.reason), { code: 'denied', denial: message.code }))
+    }
     else if (message.type === 'error') pending.reject(Object.assign(new Error(message.error.message), message.error))
   }
 

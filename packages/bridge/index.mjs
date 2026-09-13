@@ -2,7 +2,7 @@
 import { createInterface } from 'node:readline'
 import { AppClient, DEFAULT_PORT, PORT_RANGE } from './client.mjs'
 import { launchApp } from './launch.mjs'
-import { tokenForPort } from './handshake.mjs'
+import { noTokenFound, tokensForPort } from './handshake.mjs'
 import { TOOLS } from './tools.mjs'
 import { renderError, renderOutcome } from './render.mjs'
 
@@ -43,17 +43,45 @@ async function ensureConnected() {
         )
       }
     }
-    const fresh = new AppClient()
-    await fresh.connect(port, tokenForPort(port))
-    await fresh.hello(projectDir, agent)
-    client = fresh
-    return fresh
+    client = await admitted(port)
+    return client
   })()
   try {
     return await connecting
   } finally {
     connecting = null
   }
+}
+
+/**
+ * Connect as the copy on `port`, trying each token that might be its own.
+ *
+ * Several copies of the application can be installed at once, and a copy that
+ * was killed leaves behind a file still naming a port — so the first token that
+ * looks right is not always the right one. A refusal over the token is worth
+ * another attempt; a refusal over a licence, a project or the protocol is
+ * settled, and retrying it would only bury the sentence that explains it.
+ */
+async function admitted(port) {
+  const { candidates, looked } = tokensForPort(port)
+  if (candidates.length === 0) throw noTokenFound(port, looked)
+
+  let firstRefusal = null
+  for (const candidate of candidates) {
+    const attempt = new AppClient()
+    try {
+      await attempt.connect(port, candidate.token)
+      await attempt.hello(projectDir, agent)
+      return attempt
+    } catch (error) {
+      attempt.close()
+      if (error.code !== 'denied') throw error
+      firstRefusal ??= error
+      // An application that names the reason has told us retrying is pointless.
+      if (error.denial && error.denial !== 'bad-token') throw error
+    }
+  }
+  throw firstRefusal
 }
 
 async function waitForPort(timeoutMs) {

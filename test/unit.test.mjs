@@ -18,7 +18,7 @@ import { describePattern, matcherFor } from '../src/main/urls.ts'
 import { buildTree, expandNew, groupKey, projectKey, sortGroups, tabKey } from '../src/renderer/tree.ts'
 import { documentedNames, fullReference, helpFor, namesIn, TOOL_DESCRIPTION } from '../packages/bridge/reference.mjs'
 import { TOOLS } from '../packages/bridge/tools.mjs'
-import { stateDirs, tokenForPort } from '../packages/bridge/handshake.mjs'
+import { noTokenFound, stateDirs, tokensForPort } from '../packages/bridge/handshake.mjs'
 import { candidates, owningBundle } from '../packages/bridge/launch.mjs'
 import { bridgeCommand, bridgeEntry } from '../src/main/bridge-path.ts'
 import {
@@ -1194,23 +1194,56 @@ test('a call that has not come back is in the trail, marked as running', () => {
 
 test('the bridge takes the token from the copy listening on that port', () => {
   const dir = mkdtempSync(join(tmpdir(), 'naoba-state-'))
-  writeFileSync(join(dir, 'bridge.json'), JSON.stringify({ port: 8899, token: 'a'.repeat(64) }))
+  writeFileSync(join(dir, 'bridge.json'), JSON.stringify({ port: 8899, token: 'a'.repeat(64), pid: process.pid }))
   const env = { NAOBA_STATE_DIR: dir }
-  assert.equal(tokenForPort(8899, env), 'a'.repeat(64))
-  // A file left behind by a copy that is no longer the one answering must not
-  // be presented as if it were: the port is what ties a token to a copy.
-  assert.throws(() => tokenForPort(8900, env), /was not found/)
+  assert.deepEqual(tokensForPort(8899, env).candidates.map((c) => c.token), ['a'.repeat(64)])
+  // A file naming a different port belongs to a different copy, whatever else
+  // it holds.
+  assert.deepEqual(tokensForPort(8900, env).candidates, [])
+})
+
+test('a file left behind by a killed copy does not shadow the copy that answers', () => {
+  // The failure this fixes. A copy is killed rather than quit, so its file
+  // stays and keeps naming a port; another copy starts and takes that port. The
+  // release directory is read first, so the dead copy's token used to be the
+  // one presented — and the application, rightly, refused it.
+  const home = mkdtempSync(join(tmpdir(), 'naoba-home-'))
+  const dead = join(home, 'Library', 'Application Support', 'Naoba')
+  const live = join(home, 'Library', 'Application Support', 'Naoba Dev')
+  mkdirSync(dead, { recursive: true })
+  mkdirSync(live, { recursive: true })
+  // A process id nothing is using: the highest macOS hands out is 99998.
+  writeFileSync(join(dead, 'bridge.json'), JSON.stringify({ port: 8899, token: 'dead'.repeat(16), pid: 99999 }))
+  writeFileSync(join(live, 'bridge.json'), JSON.stringify({ port: 8899, token: 'live'.repeat(16), pid: process.pid }))
+
+  const { candidates } = tokensForPort(8899, { HOME: home })
+  assert.equal(candidates[0].token, 'live'.repeat(16), 'the running copy goes first')
+  // The dead one is kept rather than dropped: a process id can be reused, and
+  // the bridge tries the whole list before giving up.
+  assert.equal(candidates[1].token, 'dead'.repeat(16))
+})
+
+test('a file from a copy that wrote no process id is tried, after the living', () => {
+  const home = mkdtempSync(join(tmpdir(), 'naoba-home-'))
+  const older = join(home, 'Library', 'Application Support', 'Naoba')
+  const live = join(home, 'Library', 'Application Support', 'Naoba Dev')
+  mkdirSync(older, { recursive: true })
+  mkdirSync(live, { recursive: true })
+  // Written by a version before the process id existed.
+  writeFileSync(join(older, 'bridge.json'), JSON.stringify({ port: 8899, token: 'old0'.repeat(16) }))
+  writeFileSync(join(live, 'bridge.json'), JSON.stringify({ port: 8899, token: 'live'.repeat(16), pid: process.pid }))
+
+  const tokens = tokensForPort(8899, { HOME: home }).candidates.map((c) => c.token)
+  assert.deepEqual(tokens, ['live'.repeat(16), 'old0'.repeat(16)])
 })
 
 test('a bridge that cannot find the token says where it looked', () => {
   const dir = mkdtempSync(join(tmpdir(), 'naoba-state-'))
-  try {
-    tokenForPort(8899, { NAOBA_STATE_DIR: dir })
-    assert.fail('should have thrown')
-  } catch (error) {
-    assert.equal(error.code, 'token-not-found')
-    assert.match(error.message, new RegExp(dir))
-  }
+  const { candidates, looked } = tokensForPort(8899, { NAOBA_STATE_DIR: dir })
+  assert.deepEqual(candidates, [])
+  const error = noTokenFound(8899, looked)
+  assert.equal(error.code, 'token-not-found')
+  assert.match(error.message, new RegExp(dir))
 })
 
 test('the copies the bridge knows to look in are the three a person can have', () => {

@@ -314,6 +314,7 @@ export class Hub {
       connection.send({
         type: 'denied',
         id: message.id,
+        code: 'protocol',
         reason:
           `this app speaks protocol ${PROTOCOL_VERSION}, the bridge speaks ${message.protocol}; update the bridge`,
       })
@@ -326,6 +327,7 @@ export class Hub {
       connection.send({
         type: 'denied',
         id: message.id,
+        code: 'unlicensed',
         reason: 'Naoba is not unlocked on this Mac. Open it and enter your licence key in the settings window.',
       })
       connection.close()
@@ -338,6 +340,7 @@ export class Hub {
       connection.send({
         type: 'denied',
         id: message.id,
+        code: 'project-refused',
         reason:
           `“${identity.name}” is not allowed to open a browser here; clear the decision in the app's settings to be asked again`,
       })

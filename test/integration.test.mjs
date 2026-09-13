@@ -364,7 +364,9 @@ test('a connection that does not show the token is refused and closed', async ()
   await client.connect(app.port)
   await assert.rejects(
     () => client.hello('/tmp/naoba-tests/no-token', { label: 'stranger', ide: 'test', pid: process.pid }),
-    /did not present the browser token/,
+    // The code, not the prose: it is what tells a bridge another copy's token
+    // is worth trying, and a licence refusal is not.
+    (error) => error.code === 'denied' && error.denial === 'bad-token',
   )
   // Refusing the message is half of it; the connection must not stay open for a
   // second attempt.
@@ -380,9 +382,34 @@ test('a token from another run is refused', async () => {
   await client.connect(app.port, 'f'.repeat(app.token.length))
   await assert.rejects(
     () => client.hello('/tmp/naoba-tests/stale-token', { label: 'stale', ide: 'test', pid: process.pid }),
-    /did not present the browser token/,
+    (error) => error.denial === 'bad-token' && /no longer running/.test(error.message),
   )
   client.close()
+})
+
+test('a bridge that guessed the wrong copy may try again and be let in', async () => {
+  // What the retry in `index.mjs` rests on. Several copies can be installed at
+  // once and a killed one leaves its file behind, so the first token a bridge
+  // finds is not always this copy's. Being refused must cost it the connection
+  // and nothing else — no ban, no delay before a second attempt.
+  const { AppClient } = await import('../packages/bridge/client.mjs')
+  const wrong = new AppClient()
+  await wrong.connect(app.port, 'f'.repeat(app.token.length))
+  await assert.rejects(
+    () => wrong.hello('/tmp/naoba-tests/second-try', { label: 'guesser', ide: 'test', pid: process.pid }),
+    (error) => error.denial === 'bad-token',
+  )
+  wrong.close()
+
+  const right = new AppClient()
+  await right.connect(app.port, app.token)
+  const welcome = await right.hello('/tmp/naoba-tests/second-try', {
+    label: 'guesser',
+    ide: 'test',
+    pid: process.pid,
+  })
+  assert.equal(welcome.type, 'welcome')
+  right.close()
 })
 
 test('the token is written for this run only, and only the owner can read it', async () => {

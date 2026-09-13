@@ -81,10 +81,22 @@ export type ClientMessage =
 
 export type ServerMessage =
   | { type: 'welcome'; id: number; project: ProjectDescriptor; agentId: string; appVersion: string }
-  | { type: 'denied'; id: number; reason: string }
+  | { type: 'denied'; id: number; reason: string; code?: DenialCode }
   | { type: 'result'; id: number; value: unknown }
   | { type: 'error'; id: number; error: WireError }
   | { type: 'event'; event: AppEvent }
+
+/**
+ * Why a connection was turned away, for a bridge that must decide what to do
+ * next rather than print prose.
+ *
+ * `bad-token` is the only one worth another attempt: several copies of the
+ * application can be installed at once, and a bridge that guessed the wrong
+ * one's token has another to try. The other three are settled — trying again
+ * with a different token changes nothing about a licence, a refused project or
+ * a bridge from another version.
+ */
+export type DenialCode = 'bad-token' | 'protocol' | 'unlicensed' | 'project-refused'
 
 export interface WireError {
   message: string
