@@ -74,7 +74,7 @@ export async function startApp(
     async agent(projectDir, label = 'test-agent') {
       const session = await connect(listening, label)
       open.push(session)
-      await session.tool('begin', { session_name: label, dir: projectDir })
+      await session.tool('begin', { session_name: label, absolute_project_path: projectDir })
       const status = await session.call('status', {})
       return {
         session,

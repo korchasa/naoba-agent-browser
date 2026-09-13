@@ -102,16 +102,26 @@ Everything a header used to carry, the agent now says itself, in the first call
 it makes:
 
 ```
-begin({ session_name: "rewriting the checkout tests", dir: "/Users/you/code/thing" })
+begin({
+  session_name: "rewriting the checkout tests",
+  absolute_project_path: "/Users/you/code/thing",
+})
 ```
 
-`dir` is the absolute path of the project — the agent's working directory, or
-the repository root above it. It decides whose browser the agent gets: agents
-naming the same project share a window, its cookies and its logins, and agents
-in different projects share nothing. A path that is relative, that is not a
-directory, or that is still a shell expression is refused with a sentence
-saying which of the three it is. The first time a project appears, the
-application asks whether to let it open a browser, and remembers the answer.
+`absolute_project_path` is the project this session is working in. It decides
+whose browser the session gets: sessions naming the same project share a
+window, its cookies and its logins, and sessions in different projects share
+nothing.
+
+Which project that is, is the session's own business — Naoba takes the path it
+is given and does not look for a repository above it or check that anything is
+there. Two things are still settled here rather than left to chance. The path
+has to be absolute, because nothing expands or resolves it on the way in, so a
+relative path and a shell expression are both just text; and it is read as a
+path rather than as a string, so a trailing slash, a symlink and a different
+letter case are one project and not three. The first time a project appears,
+the application asks whether to let it open a browser, and remembers the
+answer.
 
 `session_name` is a few words about what this session is doing — "rewriting the
 checkout tests", not "agent 2". An agent is a session: one session in Claude or
@@ -122,11 +132,11 @@ and in the message another session gets when this one is holding a tab it
 wants.
 
 `begin` opens the session's tab at the same time, at a `url` if it was given
-one, and answers with the project, that tab, and the other sessions working
-here — so one round trip does what used to take three. The answer says nothing
-about the caller: it chose its own name a moment ago, and its id is the header
-it has been echoing all along. Every other tool waits for `begin`: called
-first, they come back asking for it.
+one, and answers with that tab and the other sessions working here — so one
+round trip does what used to take three. It says nothing back about the project
+or about the caller: the session named both a moment ago, and its id is the
+header it has been echoing all along. Every other tool waits for `begin`:
+called first, they come back asking for it.
 
 A session is known by the `Mcp-Session-Id` the application hands out at
 `initialize` and the client echoes from then on. One id is one session in one

@@ -26,13 +26,13 @@ sequenceDiagram
     HTTP-->>IDE: 200, header Mcp-Session-Id
     Note over IDE,HTTP: No Session yet. The id is the name<br/>the client echoes back from now on.
 
-    IDE->>HTTP: POST /mcp — tools/call begin { session_name, dir, url? }<br/>Mcp-Session-Id, X-IDE
+    IDE->>HTTP: POST /mcp — tools/call begin { session_name,<br/>absolute_project_path, url? }<br/>Mcp-Session-Id, X-IDE
     HTTP->>HTTP: lastSeen for this session
-    HTTP->>HTTP: opened(): is the session id there,<br/>and is dir an absolute directory on this Mac?
+    HTTP->>HTTP: opened(): is the session id there,<br/>and is the path absolute?
     HTTP->>S: new Session, keyed by the session id
     HTTP->>Hub: join(session)
     HTTP->>S: greet(session_name) — the promise is remembered, not a flag
-    S->>Hub: hello { projectDir, agent: { label: session_name } }
+    S->>Hub: hello { project, agent: { label: session_name } }
     Hub->>Hub: licensed()?
     Hub->>Hub: identify(projectDir), then ask about<br/>an unknown project once,<br/>naming the agent by what it called itself
     Hub->>Ctx: contextFor(identity).addAgent(agent)
@@ -40,8 +40,8 @@ sequenceDiagram
     HTTP->>S: call('begin', { url })
     S->>Hub: call
     Hub->>Ctx: tabFor(agent) — the tab exists from here on
-    Hub-->>HTTP: { project, tab, others }
-    HTTP-->>IDE: 200 { the picture, as JSON }
+    Hub-->>HTTP: { tab, others }
+    HTTP-->>IDE: 200 { the tab and the others, as JSON }
 
     Note over IDE,HTTP: Every later call is the same,<br/>minus the introduction.
 
@@ -63,15 +63,17 @@ has, and the call goes straight to the hub.
 
 ## What decides which browser an agent gets
 
-- **The project comes from `dir`, an argument of `begin`**, the absolute path the session is working in. `identify()`
-  walks up to the nearest repository root, resolves symlinks and lowercases the result, so two spellings of one
-  directory are one project. It used to be a header carrying `${PWD}`, which only worked in clients that expand it.
+- **The project comes from `absolute_project_path`, an argument of `begin`** — the path the session says it works in,
+  taken as given. Naoba no longer walks up to the nearest repository root, and does not check that the directory is
+  there: which project this is, is the session's business. `identify()` only settles spelling — it resolves symlinks
+  and lowercases the result, so a trailing slash, a symlink and a different letter case are one project.
+  It used to be a header carrying `${PWD}`, which only worked in clients that expand it.
 - **A session is keyed by the `Mcp-Session-Id` alone.** It is minted at `initialize` and echoed from then on, so one id
   is one agent, and two agents in one repository are two ids and two rows.
 - **An id that calls `begin` again naming a different project moves to it**, and the session it had in the first
   project is closed — never the first project's cookies under the second project's name.
-- **A `dir` that is relative, that is a shell expression, or that is not a directory on this Mac is refused** with a
-  sentence in the agent's own hands saying which of the three it is.
+- **A path that is not absolute is refused** with a sentence in the session's own hands. Nothing expands or resolves
+  it on the way in, so a relative path and an unexpanded `${PWD}` are both text that would key a browser of their own.
 - **An unknown project is asked about once**, and the answer is kept in `projects.json`. The dialogs are serialised, so
   five agents starting at once in one checkout produce one question.
 

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
-import { existsSync, realpathSync } from 'node:fs'
-import { basename, dirname, resolve } from 'node:path'
+import { realpathSync } from 'node:fs'
+import { basename, resolve } from 'node:path'
 
 /**
  * A project is the isolation boundary of the whole application: agents inside
@@ -16,20 +16,6 @@ export interface ProjectIdentity {
   readonly root: string
   /** Folder name, for the interface. */
   readonly name: string
-}
-
-/** Walk up from `cwd` to the nearest repository root, or return `cwd` itself. */
-export function resolveProjectRoot(cwd: string): string {
-  let dir = absolute(cwd)
-  const seen = new Set<string>()
-  while (!seen.has(dir)) {
-    seen.add(dir)
-    if (existsSync(resolve(dir, '.git'))) return dir
-    const parent = dirname(dir)
-    if (parent === dir) break
-    dir = parent
-  }
-  return absolute(cwd)
 }
 
 /** Absolute path with symlinks resolved; falls back to the plain absolute path for a missing directory. */
@@ -55,8 +41,16 @@ export function projectIdFor(root: string): string {
   return createHash('sha256').update(normalizeRoot(root)).digest('hex').slice(0, 16)
 }
 
-export function identify(cwd: string): ProjectIdentity {
-  const root = resolveProjectRoot(cwd)
+/**
+ * The project an agent named, as this application will refer to it from now on.
+ *
+ * The agent says which project it is in; nothing here second-guesses it. What
+ * is left is spelling, and spelling is not a matter of trust: a symlink, a
+ * trailing slash and a different letter case are three ways of writing one
+ * directory, and two agents writing it two ways have to land in one window.
+ */
+export function identify(project: string): ProjectIdentity {
+  const root = absolute(project)
   return { id: projectIdFor(root), root, name: basename(root) || root }
 }
 

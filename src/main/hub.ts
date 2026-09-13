@@ -332,7 +332,7 @@ export class Hub {
       return
     }
 
-    const identity = identify(message.projectDir)
+    const identity = identify(message.project)
     const decision = await this.#admit(identity, message.agent.label)
     if (decision === 'denied') {
       connection.send({
@@ -408,7 +408,8 @@ export class Hub {
         const tab = context.tabFor(agent)
         if (url) await this.#runEval(context, agent, `return await api.navigate(${JSON.stringify(url)})`, 60_000)
         return {
-          project: { id: context.identity.id, name: context.identity.name, root: context.identity.root },
+          // Nothing about the project comes back: the session named it, and
+          // this application does not turn it into something else any more.
           tab: context.describeTab(context.tab(tab.id) ?? tab),
           // No entry for the caller: an agent is a session, so it already
           // knows its own name — it chose it a moment ago — and its id is the

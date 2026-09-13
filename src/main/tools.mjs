@@ -10,10 +10,10 @@ export const TOOLS = [
   {
     name: 'begin',
     description:
-      'Call this first, before any other tool here. Say which project you are working in and, in a few words, ' +
-      'what this session of yours is doing there: the project decides whose browser you get, and the session ' +
-      'name is what the person sees in the window beside your tab. Opens your tab — at `url` if you give one — ' +
-      'and answers with the project, your tab and the other sessions working here.',
+      'Call this first, before any other tool here. Say which project you are working in, by absolute path, ' +
+      'and in a few words what this session of yours is doing there: the project decides whose browser you ' +
+      'get, and the session name is what the person sees in the window beside your tab. Opens your tab — at ' +
+      '`url` if you give one — and answers with that tab and the other sessions working here.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -23,19 +23,20 @@ export const TOOLS = [
             'What this session is doing, in a few words — "rewriting the checkout tests", not "agent 2". ' +
             'Shown to the person beside your tab, and to the other sessions in this project.',
         },
-        dir: {
+        absolute_project_path: {
           type: 'string',
           description:
-            'The absolute path of the project you are working in — your working directory, or the repository ' +
-            'root above it. Agents that name the same project share a browser; agents in different projects ' +
-            'share nothing.',
+            'The project this session is working in, as an absolute path from the root — never a relative one ' +
+            'and never a shell expression, because nothing expands or resolves it on the way here. Sessions ' +
+            'that name the same project share a browser, its tabs and its logins; sessions in different ' +
+            'projects share nothing.',
         },
         url: {
           type: 'string',
           description: 'Where to open your tab. Left out, the tab opens empty and waits for your first scenario.',
         },
       },
-      required: ['session_name', 'dir'],
+      required: ['session_name', 'absolute_project_path'],
     },
   },
   {

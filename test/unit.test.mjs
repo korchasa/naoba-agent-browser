@@ -4,7 +4,7 @@ import { createContext, Script } from 'node:vm'
 import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { identify, normalizeRoot, projectIdFor, resolveProjectRoot } from '../src/main/project.ts'
+import { identify, normalizeRoot, projectIdFor } from '../src/main/project.ts'
 import { resolveUploadPaths, resolveWritePath, within } from '../src/main/files.ts'
 import { KeyedQueue, QueueTimeout } from '../src/main/queue.ts'
 import { LeaseTable } from '../src/main/lease.ts'
@@ -34,13 +34,16 @@ import {
 } from '../src/main/licence.ts'
 import { describeUpdate, updatesItself } from '../src/main/update-rules.ts'
 
-test('a project is the repository the agent is working in, not its subdirectory', () => {
+test('a project is exactly the path the session named, subdirectory or not', () => {
+  // Naoba used to walk up to the nearest `.git` and call that the project.
+  // It does not any more: the session says which project it is in and is
+  // believed, so a subdirectory named on purpose is a project of its own.
   const base = mkdtempSync(join(tmpdir(), 'ab-project-'))
   mkdirSync(join(base, '.git'))
   mkdirSync(join(base, 'src', 'deep'), { recursive: true })
 
-  assert.equal(resolveProjectRoot(join(base, 'src', 'deep')), resolveProjectRoot(base))
-  assert.equal(identify(join(base, 'src')).id, identify(base).id)
+  assert.equal(identify(base).root, identify(base + '/').root)
+  assert.notEqual(identify(join(base, 'src')).id, identify(base).id)
 })
 
 test("a sibling whose name starts with the project's is not inside it", () => {

@@ -383,7 +383,7 @@ test('an Authorization header left over from an older configuration is ignored',
 let sessionCounter = 0
 
 /** One `begin` call, exactly as an agent makes it. */
-async function begins({ session, dir = PROJECT_A, name = 'a test session', url } = {}) {
+async function begins({ session, project = PROJECT_A, name = 'a test session', url } = {}) {
   const response = await fetch(app.url, {
     method: 'POST',
     headers: {
@@ -398,7 +398,7 @@ async function begins({ session, dir = PROJECT_A, name = 'a test session', url }
         name: 'begin',
         arguments: {
           ...(name === null ? {} : { session_name: name }),
-          ...(dir === null ? {} : { dir }),
+          ...(project === null ? {} : { absolute_project_path: project }),
           ...(url ? { url } : {}),
         },
       },
@@ -410,12 +410,22 @@ async function begins({ session, dir = PROJECT_A, name = 'a test session', url }
 /** What `begin` answered, parsed. */
 const pictureOf = (answer) => JSON.parse(answer.result.content[0].text)
 
+/** One `status` call on an existing session — `begin` no longer names the project, and this does. */
+async function statusOf(session) {
+  const response = await fetch(app.url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'mcp-session-id': session },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'status', arguments: {} } }),
+  })
+  return JSON.parse((await response.json()).result.content[0].text)
+}
+
 test('an agent that does not say which project it is in is told what to add', async () => {
   // Not a protocol error: the model is what has to act on it, and the next
   // thing it does should be the call this asks for.
-  const answer = await begins({ dir: null })
+  const answer = await begins({ project: null })
   assert.equal(answer.result.isError, true)
-  assert.match(answer.result.content[0].text, /begin needs the project/)
+  assert.match(answer.result.content[0].text, /absolute_project_path/)
 })
 
 test('a request that never echoed the session header is told to', async () => {
@@ -426,20 +436,26 @@ test('a request that never echoed the session header is told to', async () => {
   assert.match(answer.result.content[0].text, /Mcp-Session-Id/)
 })
 
-test('a project directory that is not a directory is refused, and the sentence says why', async () => {
-  // Every one of these is a perfectly good map key, so an agent that got past
-  // this would have a browser of its own under a name that means nothing.
-  const shell = await begins({ dir: '${PWD}' })
-  assert.equal(shell.result.isError, true)
-  assert.match(shell.result.content[0].text, /shell expression/)
-
-  const relative = await begins({ dir: 'projects/naoba' })
+test('a project that is not an absolute path is refused, and the sentence says why', async () => {
+  // Which project it is, is the session's business; that the path is absolute
+  // is not. Nothing expands or resolves it on the way here, so a relative path
+  // and a shell expression are both just text that would key a browser of
+  // their own.
+  const relative = await begins({ project: 'projects/naoba' })
   assert.equal(relative.result.isError, true)
   assert.match(relative.result.content[0].text, /not an absolute path/)
 
-  const missing = await begins({ dir: '/tmp/naoba-tests/never-made-this' })
-  assert.equal(missing.result.isError, true)
-  assert.match(missing.result.content[0].text, /no such directory/)
+  const shell = await begins({ project: '${PWD}' })
+  assert.equal(shell.result.isError, true)
+  assert.match(shell.result.content[0].text, /not an absolute path/)
+})
+
+test('a project Naoba has never seen is believed, and gets a browser of its own', async () => {
+  // The directory does not have to exist: the session says where it works and
+  // is taken at its word.
+  const answer = await begins({ project: '/tmp/naoba-tests/never-made-this', name: 'somewhere new' })
+  assert.notEqual(answer.result.isError, true, JSON.stringify(answer.result))
+  assert.ok(pictureOf(answer).tab.id)
 })
 
 test('one session id that names a second project moves to it, and keeps nothing', async () => {
@@ -448,10 +464,13 @@ test('one session id that names a second project moves to it, and keeps nothing'
   // browser under the second project's name would break the one promise the
   // whole application makes.
   const id = 'a-session-used-twice'
-  const here = await begins({ session: id, dir: PROJECT_A })
-  const there = await begins({ session: id, dir: PROJECT_B })
-  assert.equal(pictureOf(here).project.name, 'project-a')
-  assert.equal(pictureOf(there).project.name, 'project-b')
+  const here = await begins({ session: id, project: PROJECT_A })
+  assert.equal((await statusOf(id)).project.name, 'project-a')
+
+  const there = await begins({ session: id, project: PROJECT_B })
+  assert.equal((await statusOf(id)).project.name, 'project-b')
+  // A tab of its own in the new project, not the one it was holding in the old.
+  assert.notEqual(pictureOf(here).tab.id, pictureOf(there).tab.id)
   // The session that moved took nothing with it: in project-b it is alone.
   assert.deepEqual(pictureOf(there).others, [])
 })
@@ -463,8 +482,8 @@ test('two calls that arrive together introduce one agent, not two', async () => 
   // from ever being freed.
   const id = 'two-calls-at-once'
   const both = await Promise.all([
-    begins({ session: id, dir: PROJECT_C }),
-    begins({ session: id, dir: PROJECT_C }),
+    begins({ session: id, project: PROJECT_C }),
+    begins({ session: id, project: PROJECT_C }),
   ])
   const others = pictureOf(both[1]).others
   assert.equal(others.length, 0, `the project has ${others.length + 1} agents for one session`)
@@ -475,8 +494,8 @@ test('two session ids in one project stay two sessions', async () => {
   // other's tabs — what they must not share is an identity: one row in the
   // panel and one tab would let each walk into the other's half-finished
   // scenario.
-  const one = await begins({ dir: PROJECT_C, name: 'the first one here' })
-  const two = await begins({ dir: PROJECT_C, name: 'the second one here' })
+  const one = await begins({ project: PROJECT_C, name: 'the first one here' })
+  const two = await begins({ project: PROJECT_C, name: 'the second one here' })
   // Earlier tests left sessions of their own in this project, so what is
   // measured is the pair: the second sees the first, and neither sees itself.
   assert.ok(!pictureOf(one).others.some((other) => other.session_name === 'the first one here'))
@@ -502,8 +521,8 @@ test('begin without a name is refused, because the name is the whole point of it
 })
 
 test('the other sessions in a project are listed under the names they chose', async () => {
-  await begins({ dir: PROJECT_A, name: 'reading the release notes' })
-  const second = await begins({ dir: PROJECT_A, name: 'filling in the signup form' })
+  await begins({ project: PROJECT_A, name: 'reading the release notes' })
+  const second = await begins({ project: PROJECT_A, name: 'filling in the signup form' })
   const names = pictureOf(second).others.map((other) => other.session_name)
   assert.ok(names.includes('reading the release notes'), names.join(', '))
   // The caller is not in its own list: it is a session, so it already knows
@@ -514,7 +533,7 @@ test('the other sessions in a project are listed under the names they chose', as
 test('begin opens the tab, and takes it to the address it was given', async () => {
   // The saving is a round trip: an agent that knows where it is going says so
   // here instead of calling begin and then a scenario that only navigates.
-  const answer = await begins({ dir: PROJECT_A, name: 'looking at the fixture page', url: origin + '/page.html' })
+  const answer = await begins({ project: PROJECT_A, name: 'looking at the fixture page', url: origin + '/page.html' })
   const { tab } = pictureOf(answer)
   assert.ok(tab.id, 'begin should answer with a tab')
   assert.match(tab.url, /\/page\.html$/)

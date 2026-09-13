@@ -1,6 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { randomUUID } from 'node:crypto'
-import { statSync } from 'node:fs'
 import type { AppEvent, ClientMessage, Connection, ServerMessage } from './protocol.ts'
 import { TOOLS } from './tools.mjs'
 import { renderError, renderOutcome } from './render.mjs'
@@ -71,7 +70,7 @@ class Session implements Connection {
     id: number,
     /** The header the client echoes back on every request. It is also the key. */
     readonly sessionId: string,
-    readonly projectDir: string,
+    readonly project: string,
     readonly ide: string,
     /** What the agent is called until `begin` gives it a name of its own. */
     public label: string,
@@ -139,7 +138,7 @@ class Session implements Connection {
       this.#greeting = this.#ask((id) => ({
         type: 'hello',
         id,
-        projectDir: this.projectDir,
+        project: this.project,
         agent: { label, ide: this.ide, pid: 0 },
       })).then(() => undefined)
     }
@@ -310,15 +309,15 @@ async function callTool(
         }],
       })
     }
-    const dir = typeof args.dir === 'string' ? args.dir.trim() : ''
-    if (!dir) {
+    const project = typeof args.absolute_project_path === 'string' ? args.absolute_project_path.trim() : ''
+    if (!project) {
       return void reply(response, id, {
         isError: true,
         content: [{
           type: 'text',
-          text: 'begin needs the project this session is working in: dir, the absolute path of the directory, ' +
-            'as in begin({ session_name: "...", dir: "/Users/you/code/thing" }). It is what decides whose ' +
-            'browser you get, so sessions in two repositories never share one.',
+          text: 'begin needs the project this session is working in: absolute_project_path, as in ' +
+            'begin({ session_name: "...", absolute_project_path: "/Users/you/code/thing" }). It is what ' +
+            'decides whose browser you get, so sessions in two projects never share one.',
         }],
       })
     }
@@ -328,8 +327,10 @@ async function callTool(
     // under the second one's name — that is the one promise this application
     // makes, and it outranks keeping a session alive.
     const carried = sessionOf(request)
-    if (carried && carried.projectDir !== dir) carried.close()
-    const started = carried && carried.projectDir === dir ? carried : opened(request, response, id, dir, options)
+    if (carried && carried.project !== project) carried.close()
+    const started = carried && carried.project === project
+      ? carried
+      : opened(request, response, id, project, options)
     if (!started) return
     try {
       await started.greet(chosen)
@@ -349,9 +350,9 @@ async function callTool(
       content: [{
         type: 'text',
         text: 'begin has not been called yet, so this project\'s window does not know who you are. Call ' +
-          'begin({ session_name: "...", dir: "..." }) first — a few words about what this session is doing, ' +
-          'and the absolute path of the project it works in. It opens your tab and answers with the project, ' +
-          'your tab and the other sessions working here.',
+          'begin({ session_name: "...", absolute_project_path: "..." }) first — a few words about what this ' +
+          'session is doing, and the absolute path of the project it works in. It opens your tab and answers ' +
+          'with that tab and the other sessions working here.',
       }],
     })
   }
@@ -431,17 +432,17 @@ function sessionOf(request: IncomingMessage): Session | null {
 /**
  * The session `begin` is asking for, or an answer saying why there is none.
  *
- * The project directory arrives here as an argument rather than in a header.
- * A header would have to be written once and be right for every repository
- * afterwards, which is what `${PWD}` was for — and a client that does not
- * expand it sends the four characters instead, which no check can repair. The
- * agent knows where it is working, so it says so.
+ * The project arrives here as an argument rather than in a header. A header
+ * would have to be written once and be right for every project afterwards,
+ * which is what `${PWD}` was for — and a client that does not expand it sends
+ * the four characters instead, which no check can repair. The session knows
+ * which project it is in, so it says so, and nothing here second-guesses it.
  */
 function opened(
   request: IncomingMessage,
   response: ServerResponse,
   id: number | string,
-  dir: string,
+  project: string,
   options: McpOptions,
 ): Session | null {
   const sessionId = header(request, 'mcp-session-id')
@@ -456,13 +457,20 @@ function opened(
     })
     return null
   }
-  const complaint = unusable(dir)
+  const complaint = unusable(project)
   if (complaint) {
     reply(response, id, { isError: true, content: [{ type: 'text', text: complaint }] })
     return null
   }
   const ide = header(request, 'x-ide') ?? 'agent'
-  const fresh = new Session(nextConnectionId++, sessionId, dir, ide, `${ide} · ${basename(dir)}`, options.testDoor === true)
+  const fresh = new Session(
+    nextConnectionId++,
+    sessionId,
+    project,
+    ide,
+    `${ide} · ${basename(project)}`,
+    options.testDoor === true,
+  )
   sessions.set(sessionId, fresh)
   options.join(fresh)
   return fresh
@@ -475,30 +483,20 @@ function ours(request: IncomingMessage): Session[] {
 }
 
 /**
- * Why this is not a directory an agent could be working in, if it is not one.
+ * Why this cannot be a project, if it cannot.
  *
- * Every one of these would otherwise be a perfectly good map key, and an agent
- * that lands under a key of its own gets a browser of its own — so two agents
- * naming the same repository two ways would work in two windows, and one
- * nonsense string would collect every agent that sent it into one.
+ * Whether the project is the right one is the session's business, not ours —
+ * it says where it is working and is believed. What is checked is the one
+ * thing the rest of the application cannot work around: the path has to be
+ * absolute. It is the directory a file an agent hands to a page is read from,
+ * and a relative path there would be resolved against the browser's own
+ * working directory, which means nothing to anybody.
  */
-function unusable(projectDir: string): string | null {
-  const named = `Naoba was told this agent works in “${projectDir}”`
-  if (/[$][({]/.test(projectDir)) {
-    return `${named}, which is a shell expression rather than a path. Nothing expands it on the way here: pass ` +
-      'the working directory itself, as in begin({ dir: "/Users/you/code/thing" }).'
-  }
-  if (!projectDir.startsWith('/')) {
-    return `${named}, which is not an absolute path. begin takes the full path from the root, as in ` +
-      'begin({ dir: "/Users/you/code/thing" }).'
-  }
-  try {
-    if (statSync(projectDir).isDirectory()) return null
-  } catch {
-    // Unreadable and missing come to the same thing here, and the sentence for
-    // both is the one below.
-  }
-  return `${named}, and there is no such directory on this Mac.`
+function unusable(project: string): string | null {
+  if (project.startsWith('/')) return null
+  return `Naoba was told this session works in “${project}”, which is not an absolute path. Nothing expands or ` +
+    'resolves it on the way here, so a relative path and a shell expression are both just text: pass the full ' +
+    'path from the root, as in begin({ absolute_project_path: "/Users/you/code/thing" }).'
 }
 
 function header(request: IncomingMessage, name: string): string | undefined {
