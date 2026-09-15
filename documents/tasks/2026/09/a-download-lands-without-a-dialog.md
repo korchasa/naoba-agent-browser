@@ -66,6 +66,22 @@ motivating case — click a button, get the file — is indistinguishable from a
 drive-by at the moment the event fires, so cancelling would refuse the feature
 in order to protect against it.
 
+### A navigation that turns out to be a file
+
+Found on 2026-09-15 by running the built copy against real sites rather than
+fixtures: `api.download` and `api.waitForDownload` both behaved, and
+`api.navigate` pointed straight at GitHub's archive link threw `ERR_FAILED
+(-2)` while the file came down perfectly. `Tab.navigate` forgave only
+`ERR_ABORTED (-3)`, which is what a redirect and a superseded load raise — a
+download raises the other one, so following a link to a file needed a
+`try/catch` around every navigate.
+
+The error code cannot tell the two apart, so the fix does not try to: for the
+length of the call `navigate` listens for `will-download` on its own
+webContents, and a rejection is only believed once a short wait has passed
+without one. The wait exists because the event can arrive after the rejection;
+it is paid only by a navigation that failed anyway.
+
 ## Definition of Done
 
 - [x] A click that starts a download completes with no dialog and no window on
@@ -78,6 +94,8 @@ in order to protect against it.
       already finished or still to come.
 - [x] A download the agent did not ask for is never written inside the project.
 - [x] `reference.mjs` documents both helpers, so the drift test passes.
+- [x] Navigating straight to a file downloads it, leaves the tab where it was,
+      and throws nothing.
 - [x] `deno task check` and `deno task test` are green.
 
 ## Solution
@@ -94,3 +112,5 @@ in order to protect against it.
   they wait for the tab's lease and appear in the panel's call list.
 - `src/main/files.ts` — `resolveWritePath` takes the operation it is deciding
   for, so its refusal names the call the agent made.
+- `src/main/tab.ts` — `navigate` tells a download apart from a failed load by
+  listening for the event rather than by reading the error code.

@@ -239,6 +239,24 @@ test('a file the page built itself is still a download, and never lands in the p
   agent.close()
 })
 
+test('an address that turns out to be a file is a download, not a failed navigation', async () => {
+  const agent = await app.agent(PROJECT_A, 'download-navigate')
+  const page = origin + '/download.html'
+  const outcome = await agent.run(`
+    await api.navigate(${JSON.stringify(page)})
+    // Chromium answers this one with ERR_FAILED, which is indistinguishable
+    // from a page that would not load — except that a file is arriving.
+    const after = await api.navigate(${JSON.stringify(origin + '/report.csv')})
+    return { after, file: await api.waitForDownload() }
+  `)
+  // The tab never left the page it was on, so that is the address navigate
+  // answers with — and following a link to a file needs no try/catch.
+  assert.equal(outcome.value.after, page)
+  assert.equal(outcome.value.file.filename, 'report.csv')
+  assert.equal(String(await readFile(outcome.value.file.path)), 'name,count\nfixture,7\n')
+  agent.close()
+})
+
 test('waiting for a download waits, and says what to do when none comes', async () => {
   const agent = await app.agent(PROJECT_A, 'download-wait')
   const outcome = await agent.run(`

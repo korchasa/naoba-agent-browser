@@ -293,6 +293,10 @@ so a dialog there would be a scenario waiting for an answer that never comes.
 When the file has an address of its own, `api.download(url)` fetches it from the
 tab, with that tab's cookies, and takes a path of your own as a second argument.
 
+Navigating to an address that turns out to be a file downloads it too, and the
+tab stays on the page it was showing — Chromium calls that a failed load, and
+this browser does not pass the error on.
+
 A file lands in a temporary directory unless you name a path, and a path you
 name has to be inside the project — the same boundary `setFiles` reads within. A
 download the page started by itself is never written inside the project at all.

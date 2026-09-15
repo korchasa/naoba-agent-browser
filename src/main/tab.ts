@@ -36,6 +36,13 @@ export interface DialogRule {
 
 const FIRST_PAINT_WAIT_MS = 400
 const INPUT_SETTLE_MS = 16
+/**
+ * How long a failed navigation is given to turn out to be a download. Chromium
+ * rejects the load before it announces the download, and the gap is a few
+ * milliseconds — this is generous, and it is only ever paid by a navigation
+ * that failed anyway.
+ */
+const DOWNLOAD_HANDOVER_MS = 1_000
 
 /**
  * A snapshot ref, bare and in the form `snapshot()` actually prints it: `ref_7`
@@ -219,15 +226,38 @@ export class Tab {
     // A new document has painted nothing yet.
     this.#painted = false
     const target = normalizeUrl(url)
+
+    // An address that turns out to be a file is a download, and the tab stays
+    // on the page it was already showing. Chromium reports that as a load
+    // failure — `ERR_FAILED (-2)` for the GitHub archive link this was measured
+    // on (2026-09-15), not the `ERR_ABORTED` handled below — so the error alone
+    // cannot tell the two apart, and an agent following a link to a file would
+    // otherwise have to wrap every navigate in a try/catch.
+    let becameDownload = false
+    const onDownload = (_event: unknown, _item: unknown, source: WebContents | null) => {
+      if (source === this.wc) becameDownload = true
+    }
+    const session = this.wc.session
+    session.on('will-download', onDownload)
+
     try {
       await this.wc.loadURL(target)
     } catch (error) {
-      // ERR_ABORTED is raised by a redirect, by a page that replaces its own
-      // load, and by a download — none of which is a failed navigation. What
-      // matters is where the tab ended up.
+      // ERR_ABORTED is raised by a redirect and by a page that replaces its own
+      // load, neither of which is a failed navigation. What matters is where
+      // the tab ended up.
       const code = (error as { errno?: number }).errno
-      if (code !== -3) throw error
-      await this.waitForLoad()
+      if (code === -3) {
+        await this.waitForLoad()
+        return
+      }
+      // The event can arrive after the rejection does, so the answer is not
+      // ready at the moment of the throw — it is worth a short wait before
+      // calling this a failure.
+      if (await waitUntil(() => becameDownload, DOWNLOAD_HANDOVER_MS)) return
+      throw error
+    } finally {
+      session.off('will-download', onDownload)
     }
   }
 
@@ -1096,6 +1126,16 @@ const KEYS: Record<string, { code: number; key: string; dom: string; text?: stri
 }
 
 const MODIFIERS: Record<string, number> = { alt: 1, control: 2, ctrl: 2, meta: 4, cmd: 4, command: 4, shift: 8 }
+
+/** Poll `ready` until it answers true, or the time runs out. */
+async function waitUntil(ready: () => boolean, ms: number): Promise<boolean> {
+  const until = Date.now() + ms
+  while (Date.now() < until) {
+    if (ready()) return true
+    await pause(25)
+  }
+  return ready()
+}
 
 export function pause(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))

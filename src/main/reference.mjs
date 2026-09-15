@@ -129,7 +129,10 @@ State
                                      a blob, a POST no url could fetch. Click
                                      first, then call this; one that arrived
                                      while nothing was waiting is still here. It
-                                     is never written inside the project
+                                     is never written inside the project.
+                                     navigate() to an address that turns out to
+                                     be a file downloads it too, and stays on the
+                                     page you were on
   api.resize(width, height)
 
 Watching

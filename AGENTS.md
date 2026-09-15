@@ -372,8 +372,15 @@ state must go through the project's own session, never through
   windows — parked off-screen.
 - **A blank tab needs a real blank page.** A view with no document at all makes
   `executeJavaScript` wait forever.
-- **`ERR_ABORTED` is not a failed navigation.** A redirect, a superseded load
-  and a download all report it.
+- **`ERR_ABORTED` is not a failed navigation**, and a download is not one
+  either — but it does not report `ERR_ABORTED`. A redirect and a superseded
+  load raise `-3`; an address that turns out to be a file raised `ERR_FAILED
+  (-2)` when it was measured against GitHub's archive link on 2026-09-15, while
+  the file itself came down perfectly. The error code alone cannot tell a
+  download from a page that would not load, so `Tab.navigate` listens for
+  `will-download` on its own webContents for the length of the call and waits a
+  beat after a rejection before believing it: the event can arrive after the
+  load has already been rejected.
 - **Response bodies live in the page's buffer.** They are readable until that
   tab navigates, and not one moment longer.
 - **Page-side helpers are defined per call.** A single-page application replaces
