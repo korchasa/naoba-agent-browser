@@ -424,6 +424,15 @@ the decision the test is about, run it, read the numbers in the failure, and
 restore from the copy. `actual: null, expected: 240` is a proof; a missing module
 is a typo.
 
+A green probe taken on the wrong step proves just as little, and it is the
+easier one to be fooled by. A scenario that hangs hangs at one call; a probe
+that exercises a neighbouring one comes back green and reads as "the feature
+works", when all it says is that the step you did not doubt is fine. Reproduce
+the call that hung, by its own selector and its own fixture. Measured
+2026-09-15 while adding downloads: the probe clicked `#slow` and returned a
+file, while the scenario had been stuck on `#made` — one whole probe spent
+confirming the half that was never in question.
+
 Some of what this application does is out of reach of both suites — the panel is
 a view no test drives, and the settings window is another. The accessibility API
 reaches what the code cannot: `osascript -e 'tell application "System Events" to
@@ -454,16 +463,31 @@ rate is worth quoting from this. What the evidence does support: a single red on
 that name is not proof that your change caused it, so run it again before
 hunting for one.
 
-`deno task fmt` formats everything the project owns, and three of those files
-have been unformatted for longer than anyone has looked:
-`src/main/snapshot.ts` and one line of `test/integration.test.mjs`. Running it
-to tidy up after an edit therefore rewrites files nobody asked about and carries
-them into the commit. Check
-your own work with `deno fmt --check` and read past those three. Checking it
-anywhere else does not work: a copy of a file in a scratch directory is
-formatted without this project's `deno.json`, so it comes back with every line
-wrong about quotes and semicolons. A baseline from before the edits is a
-`git worktree` of `HEAD`, not a copy.
+`deno task fmt` formats everything the project owns, and a few of those files
+have been unformatted for longer than anyone has looked. Running it to tidy up
+after an edit therefore rewrites files nobody asked about and carries them into
+the commit. Check your own work with `deno fmt --check` and read past the ones
+that were already wrong. Do not take the list of them from this file: it named
+`src/main/snapshot.ts` and a line of `test/integration.test.mjs` on 2026-09-12,
+both of which are clean now, while `src/main/tools.mjs`, `src/main/updates.ts`,
+`src/main/licence.ts`, `src/main/mcp-http.ts` and one import in
+`test/unit.test.mjs` are the ones that report on 2026-09-15. A list like this
+rots quietly, and a wrong one costs you the same check twice. Ask git instead —
+`git show HEAD:<file>` against what `deno fmt --check` prints tells you whether
+the complaint is yours or older than you. Checking it anywhere else does not
+work: a copy of a file in a scratch directory is formatted without this
+project's `deno.json`, so it comes back with every line wrong about quotes and
+semicolons. A baseline from before the edits is a `git worktree` of `HEAD`, not
+a copy.
+
+An edit made with `sed` or a script is the case that walks into this. The tool
+does not wrap, so a substitution lengthens the line it lands on and the file
+fails the width rule without the diff looking any different; the reply then
+arrives as a list of unrelated-looking files. Run `deno fmt --check <the file
+you changed>` right after such an edit, before any other check, so the
+complaint you read is about the line you just wrote (2026-09-15: four
+assertions in `test/unit.test.mjs` grew past 120 characters this way and were
+rewrapped by hand).
 
 ## Documents
 
