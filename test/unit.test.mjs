@@ -23,12 +23,13 @@ import {
   activateRequest,
   admitsWithoutKey,
   asksWhoYouAre,
-  describeFreeCopy,
   checkRequest,
   deactivateRequest,
   describe,
+  describeFreeCopy,
   GRACE_DAYS,
   newUid,
+  readRefusal,
   recordFrom,
   refreshed,
   verdict,
@@ -1418,6 +1419,57 @@ test('the service asking who you are is three complaints meaning one thing', () 
   assert.equal(asksWhoYouAre('invalid_license_key'), false)
   assert.equal(asksWhoYouAre(undefined), false)
   assert.equal(asksWhoYouAre(null), false)
+})
+
+test('a refusal the service explains outranks everything else the record says', () => {
+  // A refunded key reaches the person as what happened to it, not as the
+  // silence of a check that never came back.
+  const refused = stored({ refusal: 'This licence key was cancelled or refunded.' })
+  const answer = verdict(refused, NOW)
+  assert.equal(answer.state, 'unlicensed')
+  assert.equal(answer.reason, 'This licence key was cancelled or refunded.')
+  assert.equal(describe(refused, NOW).sentence, 'This licence key was cancelled or refunded.')
+  // And a record from before this field existed still reads as a licence.
+  const older = stored()
+  delete older.refusal
+  assert.equal(verdict(older, NOW).state, 'licensed')
+})
+
+test('an answered check clears a refusal, and an accepted key never carries one', () => {
+  const refused = stored({ refusal: 'This licence key was cancelled or refunded.' })
+  const after = refreshed(refused, { is_cancelled: false, expiration: null }, NOW)
+  assert.equal(after.refusal, null)
+  assert.equal(verdict(after, NOW).state, 'licensed')
+  assert.equal(recordFrom({ install_id: 4711 }, 'sk_key', 'a'.repeat(32), NOW).refusal, null)
+})
+
+test('the service refuses in two shapes, and only one of them is a verdict on the key', () => {
+  // Taken from the service on 2026-09-15 with a sandbox purchase. It answers
+  // `invalid_license_key` both to a refunded key and to a key whose install it
+  // has forgotten, so that code alone must not lock anybody out: the copy
+  // activates again to find out which happened.
+  assert.deepEqual(readRefusal('invalid_license_key'), { kind: 'unknown-install' })
+  assert.deepEqual(readRefusal('install_not_found'), { kind: 'unknown-install' })
+
+  // What that second activation can come back with.
+  const refunded = readRefusal('license_expired', 'Your license has expired on 2026-09-15 18:35:21 (id = 2045739).')
+  assert.equal(refunded.kind, 'final')
+  assert.match(refunded.sentence, /cancelled or refunded/)
+
+  const taken = readRefusal('license_utilized', 'Your license quota of 1 production site(s) has been reached.')
+  assert.equal(taken.kind, 'final')
+  assert.match(taken.sentence, /another Mac/)
+
+  const gift = readRefusal('first_name_required')
+  assert.equal(gift.kind, 'final')
+  assert.match(gift.sentence, /no buyer/)
+
+  // A code nobody has seen before still has to reach the person as something,
+  // and the service's own words are the only thing there is.
+  const strange = readRefusal('teapot', 'The service is a teapot.')
+  assert.equal(strange.kind, 'final')
+  assert.match(strange.sentence, /The service is a teapot\./)
+  assert.match(readRefusal('teapot').sentence, /refused this key/)
 })
 
 test('only the downloaded copy replaces itself', () => {

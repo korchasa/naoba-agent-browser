@@ -40,6 +40,12 @@ export interface LicenceRecord {
   /** ISO date, or `null` for a licence that does not expire. */
   expiration: string | null
   cancelled: boolean
+  /**
+   * Why the service last refused this key, in a sentence meant for the person,
+   * or `null` while it stands. Set by a check that was answered rather than
+   * missed, and cleared by the next answer that carries a licence.
+   */
+  refusal?: string | null
   /** When the service last confirmed all of the above. */
   checkedAt: number
 }
@@ -54,6 +60,7 @@ export type Verdict =
  */
 export function verdict(record: LicenceRecord | null, now = Date.now(), graceDays = GRACE_DAYS): Verdict {
   if (!record) return { state: 'unlicensed', reason: 'Naoba has not been unlocked on this Mac yet.' }
+  if (record.refusal) return { state: 'unlicensed', reason: record.refusal }
   if (record.cancelled) {
     return { state: 'unlicensed', reason: 'This licence key was cancelled or refunded.' }
   }
@@ -116,9 +123,7 @@ export function activateRequest(
   buyer: Buyer | null = null,
   productId = PRODUCT_ID,
 ): Request {
-  const who = buyer
-    ? { first_name: buyer.firstName, last_name: buyer.lastName, user_email: buyer.email }
-    : {}
+  const who = buyer ? { first_name: buyer.firstName, last_name: buyer.lastName, user_email: buyer.email } : {}
   return {
     url: `${API_ORIGIN}/v1/products/${productId}/licenses/activate.json`,
     method: 'POST',
@@ -135,6 +140,54 @@ export function activateRequest(
  */
 export function asksWhoYouAre(code: unknown): boolean {
   return code === 'first_name_required' || code === 'last_name_required' || code === 'user_email_required'
+}
+
+/**
+ * What a refusal from the service means, in the two shapes that call for
+ * different answers.
+ *
+ * `unknown-install` is the one that is not a verdict on the key at all: the
+ * service answers `invalid_license_key` both for a key that was cancelled or
+ * refunded and for a key whose installation it no longer holds, and the only
+ * way to tell those apart is to try activating again. Everything else is final
+ * and carries the sentence the person reads.
+ */
+export type Refusal =
+  | { kind: 'unknown-install' }
+  | { kind: 'final'; sentence: string }
+
+/**
+ * Read a refusal, by the code the service names and the message it wrote.
+ *
+ * The codes were taken from the service itself on 2026-09-15, with a sandbox
+ * purchase driven through every ending: a refunded key answers
+ * `invalid_license_key` to a check and `license_expired` to an activation, a
+ * key already in use answers `license_utilized`, and a key nobody bought asks
+ * who is activating it.
+ */
+export function readRefusal(code: unknown, message = ''): Refusal {
+  if (code === 'invalid_license_key' || code === 'install_not_found') return { kind: 'unknown-install' }
+  if (code === 'license_expired') {
+    return { kind: 'final', sentence: 'This licence key was cancelled or refunded.' }
+  }
+  if (code === 'license_utilized') {
+    return {
+      kind: 'final',
+      sentence: 'This licence key is already in use on another Mac. Free it there, then unlock this one.',
+    }
+  }
+  if (asksWhoYouAre(code)) {
+    return {
+      kind: 'final',
+      sentence: "This licence key has no buyer on it. Open Naoba's settings and enter it again.",
+    }
+  }
+  return {
+    kind: 'final',
+    sentence: message
+      ? `The licensing service refused this key: ${message}`
+      : 'The licensing service refused this key.',
+  }
 }
 
 export function checkRequest(record: LicenceRecord, productId = PRODUCT_ID): Request {
@@ -167,6 +220,7 @@ export function recordFrom(answer: unknown, key: string, uid: string, now = Date
     plan: typeof data.license_plan_name === 'string' ? data.license_plan_name : null,
     expiration: typeof data.expiration === 'string' ? data.expiration : null,
     cancelled: data.is_cancelled === true,
+    refusal: null,
     checkedAt: now,
   }
 }
@@ -179,6 +233,7 @@ export function refreshed(record: LicenceRecord, answer: unknown, now = Date.now
     plan: typeof data.plan_name === 'string' ? data.plan_name : record.plan,
     expiration: typeof data.expiration === 'string' ? data.expiration : null,
     cancelled: data.is_cancelled === true,
+    refusal: null,
     checkedAt: now,
   }
 }

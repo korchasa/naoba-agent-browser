@@ -13,8 +13,10 @@ import {
   type LicenceRecord,
   type LicenceState,
   newUid,
+  readRefusal,
   recordFrom,
   refreshed,
+  type Refusal,
   type Request,
   verdict,
 } from './licence.ts'
@@ -117,13 +119,52 @@ export async function check(): Promise<LicenceState> {
   const current = load()
   if (!current) return state()
   try {
-    const answer = await send(checkRequest(current))
-    save(refreshed(current, answer))
-  } catch {
-    // Offline, or the service is down. The stored answer holds until the grace
-    // period in `licence.ts` runs out, and the settings window says when that is.
+    save(refreshed(current, await send(checkRequest(current))))
+  } catch (error) {
+    await afterRefusal(current, error)
   }
   return state()
+}
+
+/**
+ * What to make of a check that did not come back with a licence.
+ *
+ * A failure the service did not put a code on is the network — offline, or the
+ * service is down — and the stored answer holds until the grace period in
+ * `licence.ts` runs out, with the settings window saying when that is.
+ *
+ * A refusal is about this key, and it must not be mistaken for the network:
+ * that is exactly what let a refunded copy stay unlocked for a month and then
+ * blame the internet for it. The service answers the same
+ * `invalid_license_key` to a key that was refunded and to a key whose
+ * installation it has forgotten, so this asks the one question that separates
+ * them — it activates again, on the same key and the same uid. Activation
+ * succeeds for a key that is still good, and the copy carries on with the
+ * installation the service just made. When it fails, the reason it fails with
+ * is the one the person reads.
+ */
+async function afterRefusal(current: LicenceRecord, error: unknown): Promise<void> {
+  const refusal = refusalOf(error)
+  if (!refusal) return
+  if (refusal.kind === 'final') return save(refused(current, refusal.sentence))
+  try {
+    save(recordFrom(await send(activateRequest(current.key, current.uid, hostname())), current.key, current.uid))
+  } catch (again) {
+    const second = refusalOf(again)
+    if (second?.kind === 'final') save(refused(current, second.sentence))
+  }
+}
+
+/** Why the service refused, and the hour it said so. Nothing else about the key changes. */
+function refused(current: LicenceRecord, sentence: string): LicenceRecord {
+  return { ...current, refusal: sentence, checkedAt: Date.now() }
+}
+
+/** The refusal in an error from `send`, or `null` when the service never answered. */
+function refusalOf(error: unknown): Refusal | null {
+  const code = (error as { code?: unknown })?.code
+  if (code === undefined) return null
+  return readRefusal(code, (error as Error).message)
 }
 
 /** Give the activation back, so the key can be used on another Mac. */
