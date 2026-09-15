@@ -121,7 +121,14 @@ export async function check(): Promise<LicenceState> {
   try {
     save(refreshed(current, await send(checkRequest(current))))
   } catch (error) {
-    await afterRefusal(current, error)
+    try {
+      await afterRefusal(current, error)
+    } catch {
+      // Writing the answer down failed — a full disk, or a state directory that
+      // went away. The stored answer holds, as it does when the network is out,
+      // and the next check is in six hours. This is the last catch on the path:
+      // the timer calls check() with nobody waiting on the promise.
+    }
   }
   return state()
 }

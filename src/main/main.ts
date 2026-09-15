@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, ipcMain, Menu, Notification, shell } from 'electron'
+import { app, BrowserWindow, clipboard, ipcMain, Menu, Notification } from 'electron'
 import { dirname, join } from 'node:path'
 import { cpSync, existsSync } from 'node:fs'
 import { Hub } from './hub.ts'
@@ -25,9 +25,6 @@ import {
 } from './licence-store.ts'
 import { admitsWithoutKey, type Buyer, describeFreeCopy } from './licence.ts'
 import { installUpdate, stopWatchingForUpdates, updateState, watchForUpdates } from './updates.ts'
-
-/** Where a key is bought. The plan is a one-off payment; there is nothing else to sell. */
-const CHECKOUT_URL = 'https://checkout.freemius.com/product/39376/plan/67545/'
 
 // Every page an agent visits is somebody else's, and Electron's warning about
 // their content security policy would drown the console an agent reads.
@@ -613,9 +610,6 @@ function wireChrome(hub: Hub, settings: SettingsAccess): void {
   /** Read fresh: the OS may have changed the login item behind our back. */
   ipcMain.handle('ab:settings', () => settingsFor(hub))
 
-  // The person's own browser, not a tab here: a card is usually saved there,
-  // and a payment is not something an agent's browser should be holding.
-  ipcMain.handle('ab:buy-licence', () => shell.openExternal(CHECKOUT_URL))
   ipcMain.handle('ab:activate-licence', async (_event, key: string, buyer: Buyer | null) => {
     // The error reaches the window as a rejected call and is drawn there; the
     // person typed a key, so they are the one who has to be told what happened.

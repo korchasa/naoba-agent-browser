@@ -20,7 +20,6 @@ import type { Buyer } from '../main/licence.ts'
 declare const ab: {
   settings(): Promise<SettingsSnapshot>
   openAtLogin(on: boolean): Promise<unknown>
-  buyLicence(): Promise<unknown>
   activateLicence(key: string, buyer: Buyer | null): Promise<unknown>
   deactivateLicence(): Promise<unknown>
   installUpdate(): Promise<unknown>
@@ -98,13 +97,11 @@ function renderLicence(values: SettingsSnapshot): HTMLElement {
     text.append(el('span', 'hint', `Key ending ${values.licence.tail}${checked}.`))
   }
   node.append(text)
-  // Nothing to buy and nothing to free on a copy that needs no key.
-  if (!values.licence.needsNoKey) {
-    node.append(
-      values.licence.licensed
-        ? button('Deactivate', () => void hand(() => ab.deactivateLicence()), 'Free this key for another Mac')
-        : button('Buy a key', () => void ab.buyLicence(), 'Opens the shop in your own browser'),
-    )
+  // A key can be freed, and a copy that needs none has nothing to free. There is
+  // no button for buying one: Naoba is not on sale, and a button that opened a
+  // shop the site says is closed would be the one place still selling it.
+  if (!values.licence.needsNoKey && values.licence.licensed) {
+    node.append(button('Deactivate', () => void hand(() => ab.deactivateLicence()), 'Free this key for another Mac'))
   }
   group.append(node)
 
@@ -132,8 +129,7 @@ function renderConnect(values: SettingsSnapshot): HTMLElement {
     el(
       'span',
       'hint',
-      'Run this once in a terminal to let Claude Code reach this copy. Other agents take the same address ' +
-        'and the same header.',
+      'Run this once in a terminal to let Claude Code reach this copy. Other agents take the same address.',
     ),
     el('code', 'connect', values.connect),
   )
