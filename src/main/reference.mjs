@@ -117,6 +117,19 @@ State
                                      out if it is worth keeping. A path you name
                                      has to be inside the project, the same
                                      boundary setFiles reads within
+  api.download(url, path?)           takes the file and returns {path, url,
+                                     filename, bytes, mimeType}. Runs in the tab,
+                                     so a file behind a login comes down the way
+                                     it would for the person, and nothing is
+                                     asked — there is no save dialog. With no
+                                     path it lands in a temporary file the system
+                                     clears itself; a path you name has to be
+                                     inside the project
+  api.waitForDownload({timeout})     the file a click produced — an export button,
+                                     a blob, a POST no url could fetch. Click
+                                     first, then call this; one that arrived
+                                     while nothing was waiting is still here. It
+                                     is never written inside the project
   api.resize(width, height)
 
 Watching

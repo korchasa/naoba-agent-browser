@@ -174,6 +174,95 @@ test('a screenshot outside the project is refused, and says where it may go', as
   agent.close()
 })
 
+test('a download the agent asked for arrives with no dialog and nothing asked', async () => {
+  const agent = await app.agent(PROJECT_A, 'download')
+  const outcome = await agent.run(`
+    await api.navigate(${JSON.stringify(origin + '/download.html')})
+    return await api.download(${JSON.stringify(origin + '/report.csv')})
+  `)
+  // With no `will-download` handler this is Electron's own "Save as" panel,
+  // waiting in a window that sits off screen: the call would hang rather than
+  // fail, and no test would ever say why.
+  assert.match(outcome.value.path, /\/naoba\/downloads\/project-a-[\d-]+T[\d-]+Z-report\.csv$/)
+  assert.equal(outcome.value.filename, 'report.csv')
+  assert.equal(outcome.value.mimeType, 'text/csv')
+  const body = 'name,count\nfixture,7\n'
+  assert.equal(String(await readFile(outcome.value.path)), body)
+  assert.equal(outcome.value.bytes, body.length)
+  agent.close()
+})
+
+test('a download may be given a path, and only inside the project', async () => {
+  const agent = await app.agent(PROJECT_A, 'download-path')
+  const target = join(PROJECT_A, 'exports', 'report.csv')
+  const outside = join(outsideDir, 'report.csv')
+  const outcome = await agent.run(`
+    const url = ${JSON.stringify(origin + '/report.csv')}
+    await api.navigate(${JSON.stringify(origin + '/download.html')})
+    const mine = await api.download(url, ${JSON.stringify(target)})
+    let refused = null
+    try {
+      await api.download(url, ${JSON.stringify(outside)})
+    } catch (error) {
+      refused = error.message
+    }
+    return { mine, refused }
+  `)
+  assert.match(outcome.value.mine.path, /naoba-tests\/project-a\/exports\/report\.csv$/)
+  assert.equal(String(await readFile(outcome.value.mine.path)), 'name,count\nfixture,7\n')
+  assert.match(outcome.value.refused, /outside this project/)
+  // The refusal names the call the agent made, not the neighbouring one that
+  // writes under the same boundary.
+  assert.match(outcome.value.refused, /download will not write there/)
+  assert.match(outcome.value.refused, /download\(url\) with no path/)
+  // The refusal is a refusal: nothing was written on the way to it.
+  await assert.rejects(() => readFile(outside))
+  agent.close()
+})
+
+test('a file the page built itself is still a download, and never lands in the project', async () => {
+  const agent = await app.agent(PROJECT_A, 'download-blob')
+  const outcome = await agent.run(`
+    await api.navigate(${JSON.stringify(origin + '/download.html')})
+    await api.click('#made')
+    // A file this small is on disk before the click returns, so this asks for
+    // one that has already arrived rather than one still to come.
+    await api.sleep(600)
+    return await api.waitForDownload()
+  `)
+  assert.equal(outcome.value.filename, 'made.csv')
+  assert.match(outcome.value.path, /\/naoba\/downloads\/project-a-[\d-]+T[\d-]+Z-made\.csv$/)
+  // The boundary that matters: the agent named no address, so whatever this is
+  // came from the page, and a page's own file never reaches the project.
+  assert.ok(!outcome.value.path.startsWith(PROJECT_A), `${outcome.value.path} is inside the project`)
+  assert.equal(String(await readFile(outcome.value.path)), 'made,here\n')
+  agent.close()
+})
+
+test('waiting for a download waits, and says what to do when none comes', async () => {
+  const agent = await app.agent(PROJECT_A, 'download-wait')
+  const outcome = await agent.run(`
+    await api.navigate(${JSON.stringify(origin + '/download.html')})
+    let missing = null
+    try {
+      await api.waitForDownload({ timeout: 1000 })
+    } catch (error) {
+      missing = error.message
+    }
+    await api.click('#slow')
+    const arrived = await api.waitForDownload({ timeout: 20000 })
+    return { missing, arrived }
+  `)
+  // A wait that nothing answers has to leave an agent knowing which of the two
+  // helpers it wanted.
+  assert.match(outcome.value.missing, /no download started in 1s/)
+  assert.match(outcome.value.missing, /download\(url\)/)
+  // The server writes this one 400 ms after its headers, so the wait is a wait.
+  assert.equal(outcome.value.arrived.filename, 'slow.csv')
+  assert.equal(String(await readFile(outcome.value.arrived.path)), 'name,count\nslow,1\n')
+  agent.close()
+})
+
 test('a click lands on the right element when the page is zoomed', async () => {
   const agent = await app.agent(PROJECT_A, 'zoom')
   const outcome = await agent.run(`

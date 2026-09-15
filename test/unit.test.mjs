@@ -3,9 +3,10 @@ import { test } from 'node:test'
 import { createContext, Script } from 'node:vm'
 import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { identify, normalizeRoot, projectIdFor } from '../src/main/project.ts'
-import { resolveUploadPaths, resolveWritePath, within } from '../src/main/files.ts'
+import { resolveUploadPaths, resolveWritePath, SCREENSHOT_WRITE, within } from '../src/main/files.ts'
+import { DownloadLog, temporaryDownloadPath } from '../src/main/downloads.ts'
 import { KeyedQueue, QueueTimeout } from '../src/main/queue.ts'
 import { LeaseTable } from '../src/main/lease.ts'
 import { toTransferable } from '../src/main/serialize.ts'
@@ -94,11 +95,14 @@ test('a screenshot is written inside the project, and nowhere else', async () =>
   symlinkSync(elsewhere, join(project, 'out'))
   const boundary = { roots: [realpathSync(project)], describe: 'the project' }
 
-  assert.equal(await resolveWritePath(join(project, 'page.png'), boundary), join(realpathSync(project), 'page.png'))
+  assert.equal(
+    await resolveWritePath(join(project, 'page.png'), boundary, SCREENSHOT_WRITE),
+    join(realpathSync(project), 'page.png'),
+  )
   // A path with no root of its own belongs to the project, and the directory it
   // names need not exist — a picture usually lands in one that does not.
   assert.equal(
-    await resolveWritePath('pictures/page.png', boundary),
+    await resolveWritePath('pictures/page.png', boundary, SCREENSHOT_WRITE),
     join(realpathSync(project), 'pictures', 'page.png'),
   )
   // A root spelled through a symlink — `/tmp` is `/private/tmp`, and a root that
@@ -106,17 +110,96 @@ test('a screenshot is written inside the project, and nowhere else', async () =>
   // files, because both sides are resolved as far as the directories that exist.
   const unresolved = { roots: [project], describe: 'the project' }
   assert.equal(
-    await resolveWritePath('page.png', unresolved),
+    await resolveWritePath('page.png', unresolved, SCREENSHOT_WRITE),
     join(realpathSync(project), 'page.png'),
   )
 
-  await assert.rejects(() => resolveWritePath(join(elsewhere, 'page.png'), boundary), /outside this project/)
+  await assert.rejects(
+    () => resolveWritePath(join(elsewhere, 'page.png'), boundary, SCREENSHOT_WRITE),
+    /outside this project/,
+  )
   // Inside the project until the symlink is followed.
-  await assert.rejects(() => resolveWritePath(join(project, 'out', 'page.png'), boundary), /outside this project/)
-  await assert.rejects(() => resolveWritePath(`${project}-evil/page.png`, boundary), /outside this project/)
-  await assert.rejects(() => resolveWritePath(project, boundary), /directory/)
-  await assert.rejects(() => resolveWritePath('', boundary), /takes a path/)
+  await assert.rejects(
+    () => resolveWritePath(join(project, 'out', 'page.png'), boundary, SCREENSHOT_WRITE),
+    /outside this project/,
+  )
+  await assert.rejects(
+    () => resolveWritePath(`${project}-evil/page.png`, boundary, SCREENSHOT_WRITE),
+    /outside this project/,
+  )
+  await assert.rejects(() => resolveWritePath(project, boundary, SCREENSHOT_WRITE), /directory/)
+  await assert.rejects(() => resolveWritePath('', boundary, SCREENSHOT_WRITE), /takes a path/)
 })
+
+test('a file the page named cannot choose where it lands', () => {
+  const temp = mkdtempSync(join(tmpdir(), 'ab-downloads-'))
+  // The filename comes from the site's own Content-Disposition header, so
+  // `../../.zshrc` is a name a page is free to send.
+  const escaped = temporaryDownloadPath(temp, 'project a', '../../.zshrc')
+  assert.equal(dirname(escaped), join(temp, 'naoba', 'downloads'))
+  assert.match(basename(escaped), /^project-a-[\d-]+T[\d-]+Z-zshrc$/)
+  // The site's own extension is kept, because a .csv an agent has to guess at
+  // is a .csv nothing will open.
+  assert.match(temporaryDownloadPath(temp, 'work', 'report.csv'), /-report\.csv$/)
+})
+
+test('a download the agent asked for goes where it said; one the page started does not', async () => {
+  const temp = mkdtempSync(join(tmpdir(), 'ab-download-log-'))
+  const log = new DownloadLog((filename) => join(temp, filename))
+  const starter = {}
+
+  // What `download(url, path)` does: a claim, and then the download it started.
+  const claim = log.expect(starter, join(temp, 'named-by-the-agent.csv'))
+
+  // A page starting a download of its own while that claim is open must not
+  // inherit it: the claim belongs to whoever took it, and a file the agent did
+  // not ask for never goes where the agent said. `waitForDownload` collects it
+  // instead, because a small file is on disk before a click call returns.
+  const unasked = fakeItem('https://example.com/surprise.zip', 'surprise.zip')
+  log.accept(unasked, {})
+  assert.equal(unasked.savePath, join(temp, 'surprise.zip'))
+  unasked.finish('completed')
+  assert.equal((await log.next(1000)).filename, 'surprise.zip')
+
+  // The claim is still standing, and the agent's own download takes it.
+  const asked = fakeItem('https://example.com/report.csv', 'report.csv')
+  log.accept(asked, starter)
+  assert.equal(asked.savePath, join(temp, 'named-by-the-agent.csv'))
+  asked.finish('completed')
+  assert.equal((await claim.arrived).path, join(temp, 'named-by-the-agent.csv'))
+
+  // And a download that never finishes is the caller's error, not a silence.
+  const second = log.expect(starter, null)
+  const interrupted = fakeItem('https://example.com/half.bin', 'half.bin')
+  log.accept(interrupted, starter)
+  interrupted.finish('interrupted')
+  await assert.rejects(() => second.arrived, /was interrupted/)
+  await assert.rejects(() => log.next(20), /no download started/)
+})
+
+/** Electron's DownloadItem, as much of it as `DownloadLog` touches. */
+function fakeItem(url, filename) {
+  let done = null
+  return {
+    savePath: '',
+    getURL: () => url,
+    getFilename: () => filename,
+    getMimeType: () => 'application/octet-stream',
+    getReceivedBytes: () => 7,
+    getSavePath() {
+      return this.savePath
+    },
+    setSavePath(path) {
+      this.savePath = path
+    },
+    once(_event, listener) {
+      done = listener
+    },
+    finish(state) {
+      done?.({}, state)
+    },
+  }
+}
 
 test('a directory outside a repository is its own project', () => {
   const base = mkdtempSync(join(tmpdir(), 'ab-loose-'))

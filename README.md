@@ -279,6 +279,24 @@ a couple of hundred kilobytes of base64, which is more than the wire carries in
 one value and more than any agent wants to read as text. Pass a path of your own
 if you care where it lands.
 
+When the page has a file you want:
+
+```js
+await api.navigate('https://example.com/reports')
+await api.click('#export')
+const file = await api.waitForDownload()
+```
+
+The file is saved and you get `{path, url, filename, bytes, mimeType}` back. No
+save dialog appears and nobody is asked — this window normally sits off screen,
+so a dialog there would be a scenario waiting for an answer that never comes.
+When the file has an address of its own, `api.download(url)` fetches it from the
+tab, with that tab's cookies, and takes a path of your own as a second argument.
+
+A file lands in a temporary directory unless you name a path, and a path you
+name has to be inside the project — the same boundary `setFiles` reads within. A
+download the page started by itself is never written inside the project at all.
+
 The tool description carries the shape of a scenario and the few helpers that
 save a round trip. `api.help()` prints the rest — every helper with its
 arguments — and `api.help('click')` prints one of them. The description is kept

@@ -24,6 +24,9 @@ state must go through the project's own session, never through
 - `src/main/api.ts` — the object an agent's script runs against
 - `src/main/files.ts` — what a scenario may hand a website and where it may
   write, and why both are the project's own directory
+- `src/main/downloads.ts` — every file that comes off the web: the save path
+  named before Electron can open a dialog, and why a file the agent did not ask
+  for never reaches the project
 - `src/main/preferences.ts` — what the person sets by hand, described once for
   the main process and the settings window alike
 - `src/main/settings-window.ts` — one settings window, however often it is asked
@@ -274,6 +277,36 @@ state must go through the project's own session, never through
   there, so a root of `/tmp/work` compared against a candidate already resolved
   to `/private/tmp/work` refused the project's own directory. Resolve both sides
   the same way, or neither.
+- **A download needs a save path named synchronously, or the person gets a
+  dialog nobody can see.** Electron shows the system's "Save as" panel for any
+  download whose `will-download` handler returns without calling `setSavePath`,
+  and this window spends its life off screen in the menu bar: the scenario does
+  not fail, it waits for an answer that never comes, until its own timeout
+  (measured 2026-09-15 by removing the handler — 20 s of nothing, `callCount: 2`
+  in the trail). The path therefore has to be decided before the handler
+  returns, which is why `download(url, path)` resolves the path first and takes
+  a claim, and why the temporary path is built and its directory made with the
+  synchronous call. The listener lives on the project's session, which comes
+  from `fromPartition` and outlives the context that put it there — a project
+  unloaded for being idle and admitted again builds a second context on the same
+  session, so the old listener is removed first or the next download is handled
+  twice.
+- **A file the agent did not name the address of never lands in the project.**
+  That asymmetry is the boundary, not an oversight (owner, 2026-09-15). A page
+  can start a download on its own, and `~/Downloads` being the one directory a
+  page can write to unassisted is the argument that rejected the handoff
+  directories for `setFiles`; letting a drive-by download into the project would
+  close the same loop from the other end — the page puts the file in, `setFiles`
+  hands it back out, nobody asked at any point. So only a `download(url, path)`
+  may name a path inside the project, and `waitForDownload()` answers with a
+  temporary file.
+- **An inline `onclick` runs with `document` in its scope chain**, so `URL`
+  inside one is `document.URL` — a string — and `URL.createObjectURL` is "not a
+  function". The download fixture's blob button was written that way and cost a
+  red run whose symptom was a wait that never ended rather than an error
+  (2026-09-15). A fixture's handler goes in a `<script>`, and a page that does
+  nothing when clicked is worth one `getConsoleLogs()` before it is worth a
+  theory.
 - **A fixture that answers instantly cannot prove a wait.** The test server
   hands a whole page back in one write, so an address commits and its document
   is readable in the same breath — and a test that waits for a page and then

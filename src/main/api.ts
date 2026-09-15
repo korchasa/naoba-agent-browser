@@ -1,6 +1,6 @@
 import type { AgentHandle, ProjectContext } from './context.ts'
 import type { ProjectIdentity } from './project.ts'
-import { type FileBoundary, resolveUploadPaths, resolveWritePath } from './files.ts'
+import { DOWNLOAD_WRITE, type FileBoundary, resolveUploadPaths, resolveWritePath, SCREENSHOT_WRITE } from './files.ts'
 import type { Tab } from './tab.ts'
 import { pause } from './tab.ts'
 import type { Holder } from './lease.ts'
@@ -35,6 +35,13 @@ function label(what: string | Point): string {
 }
 
 const DEFAULT_TIMEOUT = 5_000
+
+/**
+ * A download is not a click. The file takes as long as the server and the
+ * connection take, and the five seconds every other call waits would fail on
+ * anything of a real size.
+ */
+const DOWNLOAD_TIMEOUT = 120_000
 
 /**
  * The object an agent's script runs against.
@@ -404,8 +411,58 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
     async screenshot(path?: string) {
       const target = path === undefined
         ? defaultShotPath(context.identity.name)
-        : await resolveWritePath(path, fileBoundary(context.identity))
+        : await resolveWritePath(path, fileBoundary(context.identity), SCREENSHOT_WRITE)
       return guard(`screenshot() to ${target}`, (tab) => tab.screenshot(target))
+    },
+
+    /**
+     * Take a file off the web and get its path back. The fetch runs in the tab,
+     * so the page's own cookies go with it — a report behind a login downloads
+     * the way it would for the person.
+     *
+     * Nothing asks anybody: Electron's "Save as" panel never appears, because
+     * the save path is named before it could. That is deliberate and it is why
+     * an unnamed path lands in a temporary file rather than in the project; a
+     * path an agent does name has to be inside the project, the boundary
+     * `setFiles` reads within. See `downloads.ts`.
+     */
+    async download(url: string, path?: string, options?: { timeout?: number }) {
+      if (typeof url !== 'string' || url.trim() === '') {
+        throw new Error('download takes an address: download("https://example.com/report.pdf")')
+      }
+      const target = path === undefined
+        ? null
+        : await resolveWritePath(path, fileBoundary(context.identity), DOWNLOAD_WRITE)
+      return guard(`download(${url})`, async (tab) => {
+        const claim = context.downloads.expect(tab.wc, target)
+        try {
+          tab.wc.downloadURL(url)
+        } catch (error) {
+          // The claim would otherwise sit there and swallow the next download
+          // the page starts by itself.
+          claim.giveUp()
+          throw error
+        }
+        return await withTimeout(claim.arrived, options?.timeout ?? DOWNLOAD_TIMEOUT, () => {
+          claim.giveUp()
+          return Object.assign(
+            new Error(`${url} did not finish downloading in time`),
+            { code: 'timeout' },
+          )
+        })
+      })
+    },
+
+    /**
+     * The file a click produced. A blob built in script and a POST that answers
+     * with `Content-Disposition` have no address `download(url)` could fetch,
+     * and that is most of what a "Export" button does.
+     *
+     * A small file can be on disk before the click call returns, so an arrival
+     * nobody was waiting for is kept rather than dropped, and this collects it.
+     */
+    async waitForDownload(options?: { timeout?: number }) {
+      return guard('waitForDownload()', () => context.downloads.next(options?.timeout ?? DOWNLOAD_TIMEOUT))
     },
 
     async resize(width: number, height: number) {
@@ -622,6 +679,25 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
 }
 
 export type AgentApi = ReturnType<typeof buildApi>
+
+/**
+ * Wait for work that has no timeout of its own. The loser of the race stays
+ * live — a download that finishes after the wait gave up still settles its
+ * promise — so the rejection is claimed here; an unhandled one takes the whole
+ * process down, and this one is nobody's fault but the clock's.
+ */
+async function withTimeout<T>(work: Promise<T>, ms: number, onTimeout: () => Error): Promise<T> {
+  let timer: NodeJS.Timeout | undefined
+  const expiry = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(onTimeout()), ms)
+  })
+  try {
+    return await Promise.race([work, expiry])
+  } finally {
+    clearTimeout(timer)
+    work.catch(() => {})
+  }
+}
 
 function describeHolder(holder: Holder): string {
   return holder.kind === 'human' ? 'the person at the keyboard' : holder.label

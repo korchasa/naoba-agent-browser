@@ -32,6 +32,27 @@ export async function startFixtureServer(port = 0) {
       setTimeout(() => response.end('<p id="where">arrived</p>'), 400)
       return
     }
+    // A file the server hands over as an attachment, which is what makes a
+    // navigation a download rather than a page.
+    if (url.pathname === '/report.csv') {
+      response.writeHead(200, {
+        'content-type': 'text/csv',
+        'content-disposition': 'attachment; filename="report.csv"',
+      })
+      response.end('name,count\nfixture,7\n')
+      return
+    }
+    // The same attachment, written a beat after the headers. A download that is
+    // already on disk by the time the click returns proves nothing about a wait;
+    // this one is still arriving.
+    if (url.pathname === '/slow.csv') {
+      response.writeHead(200, {
+        'content-type': 'text/csv',
+        'content-disposition': 'attachment; filename="slow.csv"',
+      })
+      setTimeout(() => response.end('name,count\nslow,1\n'), 400)
+      return
+    }
     if (url.pathname === '/dialog') {
       response.writeHead(200, { 'content-type': 'text/html' })
       response.end(

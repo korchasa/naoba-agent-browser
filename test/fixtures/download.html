@@ -1,0 +1,24 @@
+<!doctype html>
+<title>Downloads</title>
+<h1>downloads</h1>
+<!-- A link the server marks as an attachment: the ordinary case. -->
+<a id="link" href="/report.csv">the report</a>
+<!-- The same, written a beat late, so a wait has something to wait for. -->
+<a id="slow" href="/slow.csv">the slow report</a>
+<!--
+  A file the page builds itself. There is no address to fetch it from and no
+  request on the wire, which is why `download(url)` cannot reach it and
+  `waitForDownload()` exists.
+-->
+<button id="made">build one</button>
+<script>
+// Not an inline `onclick`: an attribute handler runs with `document` in its
+// scope chain, so `URL` there is `document.URL`, a string, and
+// `URL.createObjectURL` is not a function. That failure cost a red run.
+document.querySelector('#made').addEventListener('click', () => {
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(new Blob(['made,here\n'], { type: 'text/csv' }))
+  link.download = 'made.csv'
+  link.click()
+})
+</script>

@@ -1,9 +1,10 @@
-import { session as electronSession } from 'electron'
+import { app, session as electronSession } from 'electron'
 import type { Session } from 'electron'
 import { type Holder, holderLabel, LeaseTable } from './lease.ts'
 import { KeyedQueue } from './queue.ts'
 import { partitionFor, type ProjectIdentity } from './project.ts'
 import { Tab } from './tab.ts'
+import { DownloadLog, temporaryDownloadPath } from './downloads.ts'
 import { userAgentFor } from './disguise.ts'
 import type { Shell } from './shell.ts'
 import type { AgentCommand, AgentDescriptor, AgentRow, AppEvent, ServerMessage, TabDescriptor } from './protocol.ts'
@@ -46,6 +47,7 @@ export class ProjectContext {
   readonly queue = new KeyedQueue()
   readonly agents = new Map<string, AgentHandle>()
   readonly pendingHuman = new Map<string, PendingHuman>()
+  readonly downloads: DownloadLog
 
   readonly shell: Shell
   #tabs: Tab[] = []
@@ -72,6 +74,22 @@ export class ProjectContext {
     this.#announceAutomation = paths.announceAutomation ?? false
     this.#orphanCloseMs = paths.orphanCloseMs ?? 0
     this.session.setUserAgent(userAgentFor(this.#announceAutomation))
+    this.downloads = new DownloadLog((filename) =>
+      temporaryDownloadPath(app.getPath('temp'), this.identity.name, filename)
+    )
+    // Naming a save path is what stops the system's "Save as" panel appearing:
+    // this window normally sits off screen in the menu bar, so that panel would
+    // wait where nobody can answer it and the scenario would time out.
+    //
+    // The session comes from `fromPartition` and so outlives this context — a
+    // project unloaded for being idle and loaded again builds a second context
+    // on the same session. Without the removal, that project's next download
+    // would be handled twice, and the second handler would name a save path for
+    // an item Electron had already been given one for.
+    this.session.removeAllListeners('will-download')
+    this.session.on('will-download', (_event, item, webContents) => {
+      this.downloads.accept(item, webContents ?? null)
+    })
     this.leases = new LeaseTable()
     this.leases.onChange((event) => {
       if (event.type === 'claimed') {
@@ -147,6 +165,7 @@ export class ProjectContext {
 
   /** Free the renderers of a project nobody is using; its session stays on disk. */
   unload(): void {
+    this.downloads.clear()
     for (const tab of [...this.#tabs]) this.closeTab(tab.id)
     for (const timer of this.#orphanTimers.values()) clearTimeout(timer)
     this.#orphanTimers.clear()

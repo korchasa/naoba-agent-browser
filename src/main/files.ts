@@ -26,12 +26,42 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
  * write. Free rein over `writeFile` plus `mkdir -p` is enough to overwrite any
  * file this application can reach, and PNG bytes over somebody's notes is a
  * loss whatever the intent behind the path was.
+ *
+ * `download(url, path)` joined them on 2026-09-15 under the same rule and for
+ * the same reason. A file the agent did not name the address of never reaches
+ * this boundary at all: see `downloads.ts`.
  */
 export interface FileBoundary {
   /** Directories a file may come from, and go to. The first is the project. */
   roots: string[]
   /** The boundary in the words an agent should read it in. */
   describe: string
+}
+
+/**
+ * Which call a write is being judged for. Two helpers write under this boundary
+ * now, and a refusal that names the wrong one sends an agent looking at the
+ * wrong line of its own scenario.
+ */
+export interface WriteOperation {
+  /** The helper's name, as an agent calls it. */
+  call: string
+  /** The shortest correct call, shown when the argument is missing. */
+  example: string
+  /** What to do instead, when a path outside the project is refused. */
+  instead: string
+}
+
+export const SCREENSHOT_WRITE: WriteOperation = {
+  call: 'screenshot',
+  example: 'screenshot("shot.png")',
+  instead: 'Call screenshot() with no path for a temporary file the system clears itself',
+}
+
+export const DOWNLOAD_WRITE: WriteOperation = {
+  call: 'download',
+  example: 'download("https://example.com/report.pdf", "report.pdf")',
+  instead: 'Call download(url) with no path for a temporary file the system clears itself',
 }
 
 /**
@@ -112,9 +142,13 @@ export async function resolveUploadPaths(asked: string[], boundary: FileBoundary
  * followed before it is judged: a symlink inside the project pointing out of it
  * is out of it.
  */
-export async function resolveWritePath(asked: string, boundary: FileBoundary): Promise<string> {
+export async function resolveWritePath(
+  asked: string,
+  boundary: FileBoundary,
+  operation: WriteOperation,
+): Promise<string> {
   if (typeof asked !== 'string' || asked.trim() === '') {
-    throw new Error('screenshot takes a path, or nothing at all: screenshot("shot.png")')
+    throw new Error(`${operation.call} takes a path, or nothing at all: ${operation.example}`)
   }
   const roots = await Promise.all(boundary.roots.map(canonical))
   const project = roots[0] ?? resolve('.')
@@ -123,14 +157,13 @@ export async function resolveWritePath(asked: string, boundary: FileBoundary): P
   if (!roots.some((root) => within(root, real))) {
     const link = real === wanted ? '' : ` (it leads to ${real})`
     throw new Error(
-      `${asked} is outside this project${link}, so screenshot will not write there. It writes under ` +
-        `${boundary.describe}. Call screenshot() with no path for a temporary file the system clears itself, ` +
-        `or name a path inside the project.`,
+      `${asked} is outside this project${link}, so ${operation.call} will not write there. It writes under ` +
+        `${boundary.describe}. ${operation.instead}, or name a path inside the project.`,
     )
   }
   const info = await stat(real).catch(() => null)
   if (info?.isDirectory()) {
-    throw new Error(`${asked} is a directory, and screenshot writes a file — name one inside it`)
+    throw new Error(`${asked} is a directory, and ${operation.call} writes a file — name one inside it`)
   }
   return real
 }
