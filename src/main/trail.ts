@@ -217,8 +217,8 @@ function cut(text: string, limit: number): string {
 
 /**
  * Duck-typed, because the thrown value can come from the scenario's own realm,
- * where `instanceof Error` lies (`AGENTS.md`), and because reading `message` is
- * itself a read that can throw.
+ * where `instanceof Error` lies, and because reading `message` is itself a read
+ * that can throw.
  */
 function messageOf(error: unknown): string {
   try {
