@@ -2,6 +2,7 @@ import { app, BrowserWindow, clipboard, ipcMain, Menu, Notification } from 'elec
 import { dirname, join } from 'node:path'
 import { cpSync, existsSync } from 'node:fs'
 import { Hub } from './hub.ts'
+import { recordInsteadOfOpening } from './hand-off.ts'
 import { iconMenu, installTray, waitingForPerson } from './tray.ts'
 import { installDock } from './dock.ts'
 import { readSettings, writeSettings } from './settings.ts'
@@ -55,6 +56,11 @@ const flags = new Set(process.argv.slice(1))
  * from being a way to unlock the product, and there it means nothing.
  */
 const isTestRun = flags.has('--admit-everything') && !app.isPackaged
+
+// A test run drives real pages with real mail links. Opening the owner's mail
+// client eight times in a suite would be a defect of its own, so the hand-off
+// is recorded and not made; everything an assertion reads is written either way.
+if (isTestRun) recordInsteadOfOpening()
 
 // The state directory has to be chosen before anything reads it, and the
 // single-instance lock lives inside it: set it later and a test run fights the
@@ -563,7 +569,14 @@ function wireChrome(hub: Hub, settings: SettingsAccess): void {
     const context = contextOf(projectId)
     const tab = context?.tab(tabId)
     if (!context || !tab) return false
-    await tab.navigate(normalizeUrl(url))
+    try {
+      await tab.navigate(normalizeUrl(url))
+    } catch {
+      // An address this browser does not show throws, and the tab has already
+      // written what happened into its own history. Saying "went to" here would
+      // claim a move that did not happen.
+      return false
+    }
     context.log(YOU, `went to ${url}`, tabId)
     return true
   })

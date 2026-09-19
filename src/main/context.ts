@@ -3,12 +3,26 @@ import type { Session, WebContents } from 'electron'
 import { type Holder, holderLabel, LeaseTable } from './lease.ts'
 import { KeyedQueue } from './queue.ts'
 import { partitionFor, type ProjectIdentity } from './project.ts'
-import { Tab } from './tab.ts'
+import { type HandOff, normalizeUrl, Tab } from './tab.ts'
 import { DownloadLog, temporaryDownloadPath } from './downloads.ts'
 import { userAgentFor } from './disguise.ts'
 import { permitted } from './permissions.ts'
+import { outcomeFor } from './schemes.ts'
 import type { Shell } from './shell.ts'
 import type { AgentCommand, AgentDescriptor, AgentRow, AppEvent, ServerMessage, TabDescriptor } from './protocol.ts'
+
+/**
+ * The actor a line in a tab's history belongs to when neither an agent nor the
+ * person did it — an address handed to the machine, an address refused.
+ */
+const BROWSER = { id: null, label: 'the browser' }
+
+/** The one line the person's panel shows for an address that left, or did not. */
+function describeHandOff(handOff: HandOff): string {
+  return handOff.outcome === 'hand-on'
+    ? `handed ${handOff.url} to this machine`
+    : `refused ${handOff.url} — nothing here opens it`
+}
 
 export interface AgentHandle {
   readonly id: string
@@ -211,7 +225,16 @@ export class ProjectContext {
     // first navigate waits for it and the first real page sees the browser as
     // it should. Each step waits on the one tracked before it; a single chain
     // holding both would be waiting on itself.
-    void tab.track(tab.navigate(url ?? 'about:blank'))
+    // An address this browser does not show throws, and the throw is the agent's
+    // answer when it asked for the navigation itself. Here nobody asked for one
+    // — the tab is being opened — so that one throw is caught: the attempt is
+    // already recorded on the tab, and an unhandled rejection would be filed as
+    // a fault of the application's own. A load that failed for any other reason
+    // is left to reach `faults.ts`, the way it always has.
+    const opening = tab.navigate(url ?? 'about:blank')
+    void tab.track(
+      outcomeFor(normalizeUrl(url ?? 'about:blank')) === 'load' ? opening : opening.catch(() => {}),
+    )
     void tab.track(tab.announceAutomation(this.#announceAutomation))
     return tab
   }
@@ -228,31 +251,59 @@ export class ProjectContext {
     this.#activeTabId = tab.id
     this.shell.attach(tab.view)
 
-    tab.wc.setWindowOpenHandler(() => ({
-      // A page opening a window becomes a tab, never a stray window the agent
-      // cannot see or the person cannot close. It has to be a real child window
-      // all the same. Refusing the open and reopening the address as a fresh
-      // tab looks the same on screen and is not the same page: `window.open`
-      // answers null, and the new page has no `opener`. Signing in through a
-      // provider is built on both. "Sign in with Apple" asks for
-      // `response_mode=web_message` and posts the code back to the window that
-      // opened it, so with a refused open the person signs in and the site
-      // never hears of it — praktiker.bg answered "Apple Sign-In Error" six
-      // seconds after the click (2026-09-19).
-      action: 'allow',
-      // The tab stands on its own, the way it did when it was a fresh tab:
-      // closing the page that opened it leaves it where it is.
-      outlivesOpener: true,
-      // Chromium has already made the renderer and tied it to the page that
-      // opened it; the tab takes that one over rather than building its own.
-      createWindow: (options) => {
-        const pending = (options as { webContents?: WebContents }).webContents
-        const child = this.#adopt(new Tab(this.session, pending), tab.openedBy)
-        child.trackAdoptedLoad()
-        void child.track(child.announceAutomation(this.#announceAutomation))
-        return child.wc
-      },
-    }))
+    tab.onLeft = (handOff: HandOff) => {
+      this.log(BROWSER, describeHandOff(handOff), tab.id)
+    }
+
+    // A click on a link in an address this browser does not show arrives here
+    // and nowhere else: it reaches neither `Tab.navigate` nor the window-open
+    // handler, and `did-fail-load` never fires for it (measured 2026-09-19).
+    // Without this the person clicking "write to us" gets nothing at all.
+    tab.wc.on('will-navigate', (event, url) => {
+      const outcome = outcomeFor(url)
+      if (outcome === 'load') return
+      // Preventing the navigation leaves the tab on the page it was on, which
+      // is what the sentence the agent reads promises.
+      event.preventDefault()
+      void tab.leave(url, outcome)
+    })
+
+    tab.wc.setWindowOpenHandler((details) => {
+      // A window a page opens in an address this browser cannot show is not a
+      // tab: allowing it would leave a blank tab with no document, which nobody
+      // closes and an agent can pick to work in. It takes the same decision a
+      // click does, and the person's panel says so.
+      const outcome = outcomeFor(details.url)
+      if (outcome !== 'load') {
+        void tab.leave(details.url, outcome)
+        return { action: 'deny' as const }
+      }
+      return {
+        // A page opening a window becomes a tab, never a stray window the agent
+        // cannot see or the person cannot close. It has to be a real child window
+        // all the same. Refusing the open and reopening the address as a fresh
+        // tab looks the same on screen and is not the same page: `window.open`
+        // answers null, and the new page has no `opener`. Signing in through a
+        // provider is built on both. "Sign in with Apple" asks for
+        // `response_mode=web_message` and posts the code back to the window that
+        // opened it, so with a refused open the person signs in and the site
+        // never hears of it — praktiker.bg answered "Apple Sign-In Error" six
+        // seconds after the click (2026-09-19).
+        action: 'allow' as const,
+        // The tab stands on its own, the way it did when it was a fresh tab:
+        // closing the page that opened it leaves it where it is.
+        outlivesOpener: true,
+        // Chromium has already made the renderer and tied it to the page that
+        // opened it; the tab takes that one over rather than building its own.
+        createWindow: (options: unknown) => {
+          const pending = (options as { webContents?: WebContents }).webContents
+          const child = this.#adopt(new Tab(this.session, pending), tab.openedBy)
+          child.trackAdoptedLoad()
+          void child.track(child.announceAutomation(this.#announceAutomation))
+          return child.wc
+        },
+      }
+    })
     // A page can close the window it opened, and the sign-in page does exactly
     // that once it has posted the code back. Nothing goes through `closeTab`
     // then, so without this the panel keeps drawing a tab whose renderer is

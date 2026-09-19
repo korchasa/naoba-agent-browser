@@ -6,8 +6,17 @@ import { CommandLog } from './commands.ts'
 import { userAgentFor } from './disguise.ts'
 import { describePattern, matcherFor, type UrlPattern } from './urls.ts'
 import { describeVisits, VisitLog } from './visits.ts'
+import { handOffNotice, outcomeFor, refusalFor, type SchemeOutcome, tooSoon, tooSoonNotice } from './schemes.ts'
+import { openExternally } from './hand-off.ts'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
+
+/** One address this tab tried to leave for, and what this browser did about it. */
+export interface HandOff {
+  readonly url: string
+  readonly outcome: 'hand-on' | 'refuse'
+  readonly at: number
+}
 
 export interface ConsoleEntry {
   level: string
@@ -110,6 +119,23 @@ export class Tab {
   readonly network = new Map<string, NetworkEntry>()
   /** What has been done in this tab, newest first. */
   readonly commands = new CommandLog()
+
+  /**
+   * The addresses this tab tried to leave for, newest last, and what became of
+   * each. History rather than a "where it is now" field, because an attempt is
+   * over the moment it is made and a reader a minute later has to be able to
+   * tell that. It does not ride on `TabDescriptor` — see the comment on that
+   * type — so `status` builds it on demand instead.
+   */
+  readonly leftFor: HandOff[] = []
+  #lastHandOff: number | null = null
+
+  /**
+   * Set by the project when it takes the tab in: the person watching the panel
+   * is told an address left as well as the agents are. The tab does not know
+   * the project, so it says what happened and the project does the telling.
+   */
+  onLeft: ((handOff: HandOff) => void) | null = null
 
   /**
    * The agent that opened this tab, or null when the person did. An agent's
@@ -264,11 +290,51 @@ export class Tab {
     )
   }
 
+  /**
+   * Take the address out of this browser: hand it to the machine, or refuse it.
+   * Answers the sentence an agent reads, and records the attempt either way.
+   *
+   * The flood guard is here rather than in the caller because every caller
+   * needs it: a page can loop a `mailto:` from a click, from `window.open` and
+   * from an agent's own scenario.
+   */
+  async leave(url: string, outcome: SchemeOutcome, now = Date.now()): Promise<string> {
+    const stayedAt = this.url
+    if (outcome === 'hand-on') {
+      if (tooSoon(this.#lastHandOff, now)) {
+        this.#record({ url, outcome: 'refuse', at: now })
+        return tooSoonNotice(url, stayedAt)
+      }
+      this.#lastHandOff = now
+      this.#record({ url, outcome: 'hand-on', at: now })
+      await openExternally(url)
+      return handOffNotice(url, stayedAt)
+    }
+    this.#record({ url, outcome: 'refuse', at: now })
+    return refusalFor(url, stayedAt)
+  }
+
+  #record(handOff: HandOff): void {
+    this.leftFor.push(handOff)
+    // Ten is what a reader can use: an attempt older than that has been
+    // answered, or was never going to be.
+    while (this.leftFor.length > 10) this.leftFor.shift()
+    this.onLeft?.(handOff)
+  }
+
   async navigate(url: string): Promise<void> {
     await this.#ready
+    const target = normalizeUrl(url)
+    // An address this browser does not show is decided before the load, not
+    // after it: a load that fails answers ERR_FAILED (-2) whether the scheme is
+    // unknown or the page is broken, so the code cannot tell them apart
+    // (measured 2026-09-19). Both outcomes throw, because in both the page did
+    // not move, and a scenario carrying on as though it had is the defect this
+    // was written to remove.
+    const outcome = outcomeFor(target)
+    if (outcome !== 'load') throw new Error(await this.leave(target, outcome))
     // A new document has painted nothing yet.
     this.#painted = false
-    const target = normalizeUrl(url)
 
     // An address that turns out to be a file is a download, and the tab stays
     // on the page it was already showing. Chromium reports that as a load

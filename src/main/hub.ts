@@ -398,6 +398,13 @@ export class Hub {
           // that the fault was the browser's rather than the page's — the
           // modal window Electron used to put on screen was addressed to
           // whoever wrote the code, and on this machine that is the agent.
+          // Where a tab tried to leave this browser for another application,
+          // and what became of it. Built here rather than carried on
+          // `TabDescriptor`, which crosses the wire on every title change and
+          // would take a history nobody asked for with it every time.
+          leftFor: context.tabs.flatMap((tab) =>
+            tab.leftFor.map((left) => ({ tabId: tab.id, url: left.url, outcome: left.outcome, at: left.at }))
+          ),
           faults: recentFaults().map((fault) => ({
             kind: fault.kind,
             message: fault.message,

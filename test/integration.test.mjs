@@ -257,6 +257,93 @@ test('an address that turns out to be a file is a download, not a failed navigat
   agent.close()
 })
 
+test('a mail link a page offers is handed to the system and the tab stays where it was', async () => {
+  // The event this rides on is `will-navigate`, and finding that out took a
+  // measurement: a click on a `mailto:` link reaches neither `Tab.navigate` nor
+  // the window-open handler, and `did-fail-load` never fires (2026-09-19).
+  // A test run records the hand-off instead of making it — nothing may open the
+  // owner's mail client — so what is proved here is that the address left, and
+  // the walk in the task file is what proves the mail window appears.
+  const agent = await app.agent(PROJECT_A, 'leaves-by-click')
+  const page = origin + '/leaves.html'
+  const outcome = await agent.run(`
+    await api.navigate(${JSON.stringify(page)})
+    const tab = await api.currentTab()
+    await api.click('#mail')
+    await api.sleep(600)
+    await api.click('#phone')
+    await api.sleep(600)
+    return { tabId: tab.id, where: await api.getUrl() }
+  `)
+  assert.equal(outcome.value.where, page, 'the tab followed the mail link instead of staying')
+
+  const left = (await agent.status()).leftFor
+  const addresses = left.map((entry) => entry.url)
+  assert.ok(addresses.includes('mailto:probe@example.com'), `the mail address is missing from ${JSON.stringify(left)}`)
+  assert.ok(addresses.includes('tel:+35929999999'), `the telephone address is missing from ${JSON.stringify(left)}`)
+  const mail = left.find((entry) => entry.url.startsWith('mailto:'))
+  assert.equal(mail.outcome, 'hand-on')
+  assert.equal(mail.tabId, outcome.value.tabId, 'the record names a tab the agent never worked in')
+  agent.close()
+})
+
+test('an address in a scheme nobody here handles is refused in words, not by a bare error code', async () => {
+  const agent = await app.agent(PROJECT_A, 'leaves-by-navigate')
+  const page = origin + '/leaves.html'
+  const outcome = await agent.run(`
+    await api.navigate(${JSON.stringify(page)})
+    let refused = null
+    try {
+      await api.navigate('x-nothing-here://go')
+    } catch (error) {
+      refused = error.message
+    }
+    let handed = null
+    try {
+      await api.navigate('mailto:typed@example.com')
+    } catch (error) {
+      handed = error.message
+    }
+    return { refused, handed, where: await api.getUrl() }
+  `)
+  // ERR_FAILED (-2) is what both of these used to answer, and it is the same
+  // code an address that turns out to be a file raises.
+  assert.ok(outcome.value.refused, 'navigating to an unhandled scheme said nothing at all')
+  assert.ok(!outcome.value.refused.includes('ERR_FAILED'), outcome.value.refused)
+  assert.ok(outcome.value.refused.includes('x-nothing-here://go'), outcome.value.refused)
+  assert.ok(outcome.value.refused.includes(page), 'the refusal does not say where the tab stayed')
+  assert.ok(outcome.value.handed.includes('mailto:typed@example.com'), outcome.value.handed)
+  assert.equal(outcome.value.where, page, 'the tab moved off the page it was on')
+
+  const left = (await agent.status()).leftFor
+  assert.ok(
+    left.some((entry) => entry.url === 'x-nothing-here://go' && entry.outcome === 'refuse'),
+    `the refusal is not in ${JSON.stringify(left)}`,
+  )
+  agent.close()
+})
+
+test('a page opening a mail window gets no blank tab', async () => {
+  // An allowed open of an address Chromium cannot render leaves a tab with no
+  // document, which nobody closes and an agent can pick to work in.
+  const agent = await app.agent(PROJECT_A, 'leaves-by-window')
+  const outcome = await agent.run(`
+    await api.navigate(${JSON.stringify(origin + '/leaves.html')})
+    const before = (await api.getTabs()).length
+    await api.click('#popup')
+    await api.sleep(800)
+    return { before, after: (await api.getTabs()).length }
+  `)
+  assert.equal(outcome.value.after, outcome.value.before, 'a window a page opened for a mail address became a tab')
+
+  const left = (await agent.status()).leftFor
+  assert.ok(
+    left.some((entry) => entry.url === 'mailto:popup@example.com' && entry.outcome === 'hand-on'),
+    `the window's address is not in ${JSON.stringify(left)}`,
+  )
+  agent.close()
+})
+
 test('waiting for a download waits, and says what to do when none comes', async () => {
   const agent = await app.agent(PROJECT_A, 'download-wait')
   const outcome = await agent.run(`

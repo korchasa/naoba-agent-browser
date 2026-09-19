@@ -92,7 +92,16 @@ Frames
 
 Moving around
   api.navigate(url)                  goes, waits for the load, and returns the
-                                     final URL — no pause of your own afterwards
+                                     final URL — no pause of your own afterwards.
+                                     An address this browser cannot show —
+                                     mailto:, tel:, or anything a native
+                                     application registers — throws a sentence
+                                     saying what happened to it and where the
+                                     tab stayed. mailto:, tel: and sms: go to
+                                     the machine; the rest are refused. A link
+                                     the page followed itself is recorded the
+                                     same way: status() carries it under
+                                     leftFor
   api.goBack() / api.goForward() / api.reload()
   api.waitForLoad({timeout})         the load something else started, a form
                                      submit or a link, rather than a guessed pause

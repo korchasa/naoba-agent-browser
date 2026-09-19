@@ -86,6 +86,9 @@ ours**. A page therefore has nothing of this application's to reach for.
 - `disguise.ts` — what the browser says it is.
 - `permissions.ts` — what a page may ask this browser for, and why the answer is
   always no.
+- `schemes.ts`, `hand-off.ts` — what becomes of an address this browser cannot
+  show: which schemes load, which go to the machine, which are refused — and the
+  one call that hands one over.
 - `licence.ts`, `licence-store.ts` — the rules a licence is judged by, and the
   files, network and clock that feed them.
 - `updates.ts`, `update-rules.ts` — replacing the application with a newer one.
@@ -257,6 +260,36 @@ read for one field, and that is the whole contract.
 `view.webContents` back, because Electron 44 clears that property once the
 renderer is gone and the old code then threw inside `destroy`.
 
+A window opened in an address this browser cannot show is the one case that is
+**denied**. Allowing it would leave a tab with no document — nobody closes it,
+and an agent can pick it to work in — so the handler reads `details.url`, takes
+the same decision `schemes.ts` gives a click and a `navigate`, and hands the
+address on or refuses it instead.
+
+## 7a. An address this browser cannot show
+
+Three outcomes, decided by the scheme alone and the same in every project:
+loaded, handed to the machine, or refused in words. `schemes.ts` holds the
+decision and imports no Electron; `hand-off.ts` holds the one call to
+`shell.openExternal`.
+
+It is taken at three entry points, because an address arrives three ways, and
+the measurement on 2026-09-19 is what says so: a click raises `will-navigate`
+and nothing else (`did-fail-load` never fires); `window.open` reaches the
+window-open handler; an agent's own address goes through `Tab.navigate`. The
+same measurement is why the decision is taken **before** the load — a failed
+load answers `ERR_FAILED (-2)` whether the scheme is unknown or the page is
+broken, and `isProtocolHandled` reports only what the application registered, so
+neither can be asked which schemes Chromium renders. That list is therefore
+written down in `schemes.ts`, and every entry in it was measured by loading it.
+
+`Tab.navigate` throws the sentence, for a hand-off as much as for a refusal:
+the page did not move in either case, and a scenario carrying on as though it
+had is the defect this answers. The attempt is kept on the tab — `leftFor`, the
+last ten — and read out in two places: `status` builds it on demand for the
+agents, and the tab's own history carries a line for the person. It does not
+ride on `TabDescriptor`, which crosses the wire on every title change.
+
 ## 8. The file boundary
 
 The rule that outranks the others is about browsing context, and a file on disk
@@ -328,7 +361,8 @@ The split that makes this testable is **pure modules versus Electron callers**.
 `login.ts`, `dock.ts`, `preferences.ts`, `licence.ts`, `update-rules.ts`,
 `faults.ts`, `files.ts`, `urls.ts`, `serialize.ts`, `trail.ts`, `visits.ts`,
 `commands.ts`, `queue.ts`, `lease.ts`, `mcp-address.ts`, `project.ts`,
-`reference.mjs`, `render.mjs` and the renderer's `tree.ts` import no `electron`.
+`reference.mjs`, `render.mjs`, `schemes.ts` and the renderer's `tree.ts` import
+no `electron`.
 The unit suite loads them directly — 94 tests, about a second.
 
 `main.ts` makes the Electron calls those modules decided about. The integration

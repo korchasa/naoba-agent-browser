@@ -297,6 +297,14 @@ Navigating to an address that turns out to be a file downloads it too, and the
 tab stays on the page it was showing — Chromium calls that a failed load, and
 this browser does not pass the error on.
 
+An address this browser cannot show is answered rather than swallowed. `mailto:`,
+`tel:` and `sms:` go to whatever application the machine opens them with, and
+everything else — including the schemes a native client registers for single
+sign-on — is refused. Either way the tab stays where it was, `api.navigate`
+throws a sentence naming the address and saying what became of it, and a link
+the page followed on its own is recorded: `status` carries the attempts under
+`leftFor`, and the panel shows them in the tab's history.
+
 A file lands in a temporary directory unless you name a path, and a path you
 name has to be inside the project — the same boundary `setFiles` reads within. A
 download the page started by itself is never written inside the project at all.

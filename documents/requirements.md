@@ -132,9 +132,14 @@ requirements disagree, this one wins.
 - **FR-TAB-3.** A page that closes its own window closes the tab with it.
   *Acceptance:* "a window that closes itself takes its tab with it".
 - **FR-TAB-4.** An address in a scheme this browser does not handle is answered
-  rather than swallowed.
-  *Acceptance:* **not yet** —
-  [an address in a scheme nobody here handles](tasks/2026/09/an-address-in-a-scheme-nobody-here-handles.md).
+  rather than swallowed. `mailto:`, `tel:` and `sms:` go to the machine; every
+  other scheme is refused in words naming the address. The tab stays where it
+  was, and the attempt is readable afterwards.
+  *Acceptance:* "a mail link a page offers is handed to the system and the tab
+  stays where it was", "an address in a scheme nobody here handles is refused in
+  words, not by a bare error code", "a page opening a mail window gets no blank
+  tab", "the scheme rule has three outcomes, and every scheme in the rendered
+  list was measured".
 - **FR-TAB-5.** Opening a tab without an address says what is missing instead of
   opening something blank.
   *Acceptance:* "opening a tab without an address says what is missing".

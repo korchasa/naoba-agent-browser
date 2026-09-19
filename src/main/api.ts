@@ -3,6 +3,8 @@ import type { ProjectIdentity } from './project.ts'
 import { DOWNLOAD_WRITE, type FileBoundary, resolveUploadPaths, resolveWritePath, SCREENSHOT_WRITE } from './files.ts'
 import type { Tab } from './tab.ts'
 import { pause } from './tab.ts'
+import { normalizeUrl } from './tab.ts'
+import { outcomeFor } from './schemes.ts'
 import type { Holder } from './lease.ts'
 import { describeVisits, VisitLog } from './visits.ts'
 import { fullReference, helpFor } from './reference.mjs'
@@ -345,6 +347,20 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
       const parked = current ? current.wc.getURL() : null
       const spare = current && !current.destroyed && (parked === '' || parked === 'about:blank') &&
         !context.leases.holderOf(current.id)
+      // An address this browser does not show never becomes a tab: it is dealt
+      // with on the tab the agent is already in, and the agent is told. Opening
+      // one first would hand back a blank tab with no explanation, because the
+      // navigation inside `openTab` is not awaited by anybody.
+      const target = normalizeUrl(url)
+      const leaving = outcomeFor(target)
+      if (leaving !== 'load') {
+        // An agent whose first call this is has no tab to stay on, so one is
+        // opened blank and deals with the address. Without it the sentence
+        // would have nowhere to come from and the address would be lost.
+        const staying = current ?? context.openTab(undefined, agent.id)
+        agent.currentTabId = staying.id
+        throw new Error(await staying.leave(target, leaving))
+      }
       const created = spare ? current : context.openTab(url, agent.id)
       // Navigating a blank tab to `about:blank` is a move to where it already
       // is, which Chromium aborts with ERR_FAILED rather than treating as done.

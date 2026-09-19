@@ -19,6 +19,7 @@ import { buildTree, expandNew, groupKey, projectKey, sortGroups, tabKey } from '
 import { documentedNames, fullReference, helpFor, namesIn, TOOL_DESCRIPTION } from '../src/main/reference.mjs'
 import { TOOLS } from '../src/main/tools.mjs'
 import { permitted } from '../src/main/permissions.ts'
+import { handOffNotice, outcomeFor, refusalFor, schemeOf, tooSoon, tooSoonNotice } from '../src/main/schemes.ts'
 import {
   announcement,
   announces,
@@ -1617,4 +1618,72 @@ test('a fault list does not grow without end', () => {
   assert.equal(recentFaults().length, 20)
   assert.equal(recentFaults()[0].message, 'n49')
   clearFaults()
+})
+
+test('the scheme rule has three outcomes, and every scheme in the rendered list was measured', () => {
+  // The list is not a judgement about what a page deserves: each of these was
+  // loaded in a window on 2026-09-19 and rendered. It is written down because
+  // nothing else says it — `isProtocolHandled` answered false for all of them,
+  // and a failed load comes back ERR_FAILED (-2) whether the scheme is unknown
+  // or the page is broken.
+  for (
+    const url of [
+      'https://example.com/',
+      'http://example.com/',
+      'file:///etc/hosts',
+      'about:blank',
+      'data:text/html,<b>hi</b>',
+      'blob:file:///fe3f1d05-c70d-4acd',
+      'view-source:file:///etc/hosts',
+      'devtools://devtools/bundled/inspector.html',
+    ]
+  ) assert.equal(outcomeFor(url), 'load', `${url} stopped loading`)
+
+  for (const url of ['mailto:probe@example.com', 'tel:+35929999999', 'sms:+35929999999']) {
+    assert.equal(outcomeFor(url), 'hand-on', `${url} was not handed on`)
+  }
+
+  // Everything a native client registers, and everything nobody has heard of.
+  for (const url of ['slack://channel?id=1', 'x-nothing-here://go', 'ftp://example.com/', 'chrome://version']) {
+    assert.equal(outcomeFor(url), 'refuse', `${url} was not refused`)
+  }
+
+  // The scheme is read from the address, not guessed at: an address carrying
+  // the word mailto later on is not a mail address.
+  assert.equal(schemeOf('https://example.com/mailto:x'), 'https')
+  assert.equal(schemeOf('MailTo:Probe@example.com'), 'mailto')
+  assert.equal(outcomeFor('MailTo:Probe@example.com'), 'hand-on')
+})
+
+test('a refusal names the address and says where the tab stayed', () => {
+  const said = refusalFor('slack://channel?id=1', 'https://example.com/contact')
+  assert.ok(said.includes('slack://channel?id=1'), `the address is missing: ${said}`)
+  assert.ok(said.includes('https://example.com/contact'), `where the tab stayed is missing: ${said}`)
+  // An agent reading this has to be able to tell a sign-in hand-off from a typo,
+  // so the scheme is named as the reason rather than left to be inferred.
+  assert.ok(said.includes('slack'), said)
+
+  const handed = handOffNotice('mailto:probe@example.com', 'https://example.com/contact')
+  assert.ok(handed.includes('mailto:probe@example.com'), handed)
+  assert.ok(handed.includes('https://example.com/contact'), handed)
+  assert.notEqual(handed, said)
+})
+
+test('a page cannot open the mail client in a loop', () => {
+  // The guard is one timestamp: the first hand-off from a tab goes, and another
+  // within the second does not. A page that loops `mailto:` would otherwise
+  // leave a column of compose windows on the person's screen.
+  assert.equal(tooSoon(null, 10_000), false)
+  assert.equal(tooSoon(10_000, 10_500), true)
+  assert.equal(tooSoon(10_000, 11_000), false)
+  assert.equal(tooSoon(10_000, 11_001), false)
+
+  // The one the guard stopped is told something else than the one this browser
+  // never hands on. The refusal says the scheme does not go to the machine,
+  // which for a mail address a second after another one would be a lie.
+  const stopped = tooSoonNotice('mailto:probe@example.com', 'https://example.com/contact')
+  assert.ok(stopped.includes('mailto:probe@example.com'), stopped)
+  assert.ok(stopped.includes('https://example.com/contact'), stopped)
+  assert.notEqual(stopped, refusalFor('mailto:probe@example.com', 'https://example.com/contact'))
+  assert.ok(/second/.test(stopped), `it does not say the wait is short: ${stopped}`)
 })
