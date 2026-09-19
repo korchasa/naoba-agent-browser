@@ -1,0 +1,20 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Child</title>
+  </head>
+  <body>
+    <h1>Child page</h1>
+    <p id="opener">unknown</p>
+    <script>
+      const known = window.opener !== null && window.opener !== undefined
+      document.getElementById('opener').textContent = known ? 'has opener' : 'no opener'
+      if (known) window.opener.postMessage('signed in', '*')
+      // A sign-in window closes itself once it has handed the answer over.
+      // Long enough that a scenario can see the tab before it goes, which is
+      // half of what the test is about.
+      if (location.search.includes('close')) setTimeout(() => window.close(), 1200)
+    </script>
+  </body>
+</html>

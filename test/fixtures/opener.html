@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Opener</title>
+  </head>
+  <body>
+    <h1>Opener page</h1>
+    <!--
+      What a sign-in through a provider is made of, with the provider left out.
+      The page opens a window, keeps the handle, and waits for that window to
+      post the answer back. Both halves have to work: a handle of null and a
+      child with no opener each end the flow with nothing delivered.
+    -->
+    <button id="open">open</button>
+    <button id="open-closing">open and close</button>
+    <script>
+      window.__opened = { handle: 'not tried', message: null }
+      window.addEventListener('message', (event) => {
+        window.__opened.message = event.data
+      })
+      const opens = (query) => () => {
+        const child = window.open('/child.html' + query, 'fixture-child', 'width=400,height=400')
+        window.__opened.handle = child === null ? 'null' : 'window'
+      }
+      document.getElementById('open').addEventListener('click', opens(''))
+      document.getElementById('open-closing').addEventListener('click', opens('?close'))
+    </script>
+  </body>
+</html>

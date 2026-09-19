@@ -464,6 +464,55 @@ test('a tab an agent opened leaves with the agent', async () => {
   watcher.close()
 })
 
+test('a window a page opens is a tab that can still talk to the page that opened it', async () => {
+  // Signing in through a provider is this and nothing else: a window opened
+  // from the page, and an answer posted back to the window that opened it.
+  // Refusing the open and reopening the address as a fresh tab looks the same
+  // on screen and breaks both halves — `window.open` answers null and the new
+  // page has no `opener` — so the person signs in and the site never hears of
+  // it. praktiker.bg answered "Apple Sign-In Error" six seconds after the
+  // click, with the Apple page open in a tab of its own (2026-09-19).
+  const agent = await app.agent(PROJECT_A, 'popup-opener')
+  const outcome = await agent.run(`
+    await api.navigate(${JSON.stringify(origin + '/opener.html')})
+    const own = (await api.currentTab()).id
+    await api.click('#open')
+    await api.sleep(1500)
+    const tabs = await api.getTabs()
+    const child = tabs.find((tab) => tab.url.includes('/child.html'))
+    await api.selectTab(child.id)
+    const sawOpener = await api.getText('#opener')
+    await api.selectTab(own)
+    return { ...(await api.eval('window.__opened')), sawOpener, childUrl: child.url }
+  `, 30000)
+
+  assert.equal(outcome.value.handle, 'window', 'window.open must hand the page a window, not null')
+  assert.equal(outcome.value.sawOpener, 'has opener', 'the opened page must know the page that opened it')
+  assert.equal(outcome.value.message, 'signed in', 'the answer must reach the page that opened the window')
+  agent.close()
+})
+
+test('a window that closes itself takes its tab with it', async () => {
+  // A sign-in window closes itself the moment it has handed the answer over.
+  // That never goes through `closeTab`, so without a watch on the renderer the
+  // panel keeps drawing a tab that is gone and an agent can pick it to work in.
+  const agent = await app.agent(PROJECT_A, 'popup-closer')
+  const outcome = await agent.run(`
+    await api.navigate(${JSON.stringify(origin + '/opener.html')})
+    await api.click('#open-closing')
+    await api.sleep(500)
+    const during = (await api.getTabs()).some((tab) => tab.url.includes('/child.html'))
+    await api.sleep(2500)
+    const after = (await api.getTabs()).some((tab) => tab.url.includes('/child.html'))
+    return { during, after, message: (await api.eval('window.__opened')).message }
+  `, 30000)
+
+  assert.equal(outcome.value.during, true, 'the opened window is a tab while it is open')
+  assert.equal(outcome.value.message, 'signed in', 'it hands the answer over before it goes')
+  assert.equal(outcome.value.after, false, 'a window that closed itself leaves no tab behind')
+  agent.close()
+})
+
 test('a request carrying no authorization at all is answered', async () => {
   // There is no secret to present. A program on this Mac runs as this person
   // and could read whatever a secret were kept in, so demanding one bought

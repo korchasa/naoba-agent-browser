@@ -138,8 +138,17 @@ export class Tab {
   // the register of admitted projects, their absolute paths, and the login
   // item. Nothing a page needs comes from a preload anyway: `__abRefs` and the
   // rest are installed per call, because a single-page application drops them.
-  constructor(session: Session) {
-    this.view = new WebContentsView({
+  //
+  // A window a page opened arrives as a renderer Chromium has already made and
+  // already tied to the page that opened it, and `adopted` is that renderer.
+  // Building a fresh one for it instead is refused — "Created window should be
+  // connected to webContents passed with options object" — and what survives
+  // the refusal is a view that never loads anything: the popup goes to a window
+  // of Chromium's own, outside the project. Its preferences come from the page
+  // that opened it, which is another tab of this project, so they are the ones
+  // below already.
+  constructor(session: Session, adopted?: WebContents) {
+    this.view = adopted ? new WebContentsView({ webContents: adopted }) : new WebContentsView({
       webPreferences: {
         session,
         contextIsolation: true,
@@ -219,6 +228,29 @@ export class Tab {
   track(work: Promise<void>): Promise<void> {
     this.#ready = work.catch(() => undefined)
     return work
+  }
+
+  /**
+   * Wait for a load this tab never asked for — the one Chromium runs itself for
+   * a window a page opened.
+   *
+   * `waitForLoad` cannot stand in for it. At the moment the popup's renderer is
+   * handed over the load has not started yet, so `isLoading()` is false and
+   * that wait returns at once, leaving an agent looking at a blank page on a
+   * tab that is about to show a sign-in form.
+   */
+  trackAdoptedLoad(timeoutMs = 30_000): void {
+    void this.track(
+      new Promise<void>((resolve) => {
+        const done = () => {
+          clearTimeout(timer)
+          this.wc.off('did-stop-loading', done)
+          resolve()
+        }
+        const timer = setTimeout(done, timeoutMs)
+        this.wc.on('did-stop-loading', done)
+      }),
+    )
   }
 
   async navigate(url: string): Promise<void> {

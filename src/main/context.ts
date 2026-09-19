@@ -1,5 +1,5 @@
 import { app, session as electronSession } from 'electron'
-import type { Session } from 'electron'
+import type { Session, WebContents } from 'electron'
 import { type Holder, holderLabel, LeaseTable } from './lease.ts'
 import { KeyedQueue } from './queue.ts'
 import { partitionFor, type ProjectIdentity } from './project.ts'
@@ -176,18 +176,63 @@ export class ProjectContext {
   // --------------------------------------------------------------------- tabs
 
   openTab(url?: string, openedBy: string | null = null): Tab {
-    const tab = new Tab(this.session)
+    const tab = this.#adopt(new Tab(this.session), openedBy)
+    // A view with no document at all makes `executeJavaScript` wait forever, so
+    // a blank tab is a real blank page rather than nothing. Tracking the load
+    // is what stops the agent's first navigate from racing it. The disguise
+    // goes on once that blank page is there — a tab with no document cannot
+    // answer the DevTools protocol — and is tracked in turn, so the agent's
+    // first navigate waits for it and the first real page sees the browser as
+    // it should. Each step waits on the one tracked before it; a single chain
+    // holding both would be waiting on itself.
+    void tab.track(tab.navigate(url ?? 'about:blank'))
+    void tab.track(tab.announceAutomation(this.#announceAutomation))
+    return tab
+  }
+
+  /**
+   * Take a tab into the project: put it in the list, give it the window, and
+   * wire everything the panel and the agents read. It says nothing about what
+   * the tab shows — `openTab` sends it to an address, while a window a page
+   * opened is loaded by Chromium itself.
+   */
+  #adopt(tab: Tab, openedBy: string | null): Tab {
     tab.openedBy = openedBy
     this.#tabs.push(tab)
     this.#activeTabId = tab.id
     this.shell.attach(tab.view)
 
-    tab.wc.setWindowOpenHandler(({ url: target }) => {
+    tab.wc.setWindowOpenHandler(() => ({
       // A page opening a window becomes a tab, never a stray window the agent
-      // cannot see or the person cannot close.
-      const child = this.openTab(target, tab.openedBy)
-      void child
-      return { action: 'deny' }
+      // cannot see or the person cannot close. It has to be a real child window
+      // all the same. Refusing the open and reopening the address as a fresh
+      // tab looks the same on screen and is not the same page: `window.open`
+      // answers null, and the new page has no `opener`. Signing in through a
+      // provider is built on both. "Sign in with Apple" asks for
+      // `response_mode=web_message` and posts the code back to the window that
+      // opened it, so with a refused open the person signs in and the site
+      // never hears of it — praktiker.bg answered "Apple Sign-In Error" six
+      // seconds after the click (2026-09-19).
+      action: 'allow',
+      // The tab stands on its own, the way it did when it was a fresh tab:
+      // closing the page that opened it leaves it where it is.
+      outlivesOpener: true,
+      // Chromium has already made the renderer and tied it to the page that
+      // opened it; the tab takes that one over rather than building its own.
+      createWindow: (options) => {
+        const pending = (options as { webContents?: WebContents }).webContents
+        const child = this.#adopt(new Tab(this.session, pending), tab.openedBy)
+        child.trackAdoptedLoad()
+        void child.track(child.announceAutomation(this.#announceAutomation))
+        return child.wc
+      },
+    }))
+    // A page can close the window it opened, and the sign-in page does exactly
+    // that once it has posted the code back. Nothing goes through `closeTab`
+    // then, so without this the panel keeps drawing a tab whose renderer is
+    // gone and an agent can pick it to work in.
+    tab.wc.once('destroyed', () => {
+      if (this.#tabs.includes(tab)) this.closeTab(tab.id)
     })
     tab.wc.on('console-message', (event) => {
       tab.recordConsole({
@@ -208,16 +253,6 @@ export class ProjectContext {
 
     this.broadcast({ type: 'tab-opened', tab: this.describeTab(tab) })
     this.notifyTabs()
-    // A view with no document at all makes `executeJavaScript` wait forever, so
-    // a blank tab is a real blank page rather than nothing. Tracking the load
-    // is what stops the agent's first navigate from racing it. The disguise
-    // goes on once that blank page is there — a tab with no document cannot
-    // answer the DevTools protocol — and is tracked in turn, so the agent's
-    // first navigate waits for it and the first real page sees the browser as
-    // it should. Each step waits on the one tracked before it; a single chain
-    // holding both would be waiting on itself.
-    void tab.track(tab.navigate(url ?? 'about:blank'))
-    void tab.track(tab.announceAutomation(this.#announceAutomation))
     return tab
   }
 
