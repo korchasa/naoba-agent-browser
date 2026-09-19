@@ -1,7 +1,7 @@
 ---
 date: "2026-09-19"
 status: to do
-implements: []
+implements: [FR-TAB-4]
 tags: [agent-browser, naoba, navigation, boundary, agent-experience]
 related_tasks:
   [a-password-prompt-that-never-appears, events-in-the-session-nobody-listens-to]

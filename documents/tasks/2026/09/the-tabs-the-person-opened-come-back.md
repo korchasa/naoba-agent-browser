@@ -1,7 +1,7 @@
 ---
 date: "2026-09-19"
 status: to do
-implements: []
+implements: [FR-PERSIST-3, FR-PERSIST-4]
 tags: [agent-browser, naoba, session, restart, person]
 related_tasks: [events-in-the-session-nobody-listens-to]
 ---

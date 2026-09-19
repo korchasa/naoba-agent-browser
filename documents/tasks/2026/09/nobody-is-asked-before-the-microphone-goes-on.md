@@ -1,7 +1,7 @@
 ---
 date: "2026-09-19"
 status: to do
-implements: []
+implements: [FR-PERMISSION-1]
 tags: [agent-browser, naoba, permissions, safety, session]
 related_tasks:
   [

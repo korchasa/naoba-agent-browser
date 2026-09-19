@@ -1,7 +1,7 @@
 ---
 date: "2026-09-19"
 status: to do
-implements: []
+implements: [FR-PERMISSION-4]
 tags: [agent-browser, naoba, authentication, webauthn, agent-experience]
 related_tasks:
   [

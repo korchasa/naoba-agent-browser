@@ -1,7 +1,7 @@
 ---
 date: "2026-09-19"
 status: to do
-implements: []
+implements: [FR-EVENT-1]
 tags: [agent-browser, naoba, session, reliability, agent-experience]
 related_tasks:
   [

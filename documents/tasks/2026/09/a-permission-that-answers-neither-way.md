@@ -1,7 +1,7 @@
 ---
 date: "2026-09-19"
 status: to do
-implements: []
+implements: [FR-PERMISSION-2]
 tags: [agent-browser, naoba, permissions, geolocation, agent-experience]
 related_tasks:
   [nobody-is-asked-before-the-microphone-goes-on, events-in-the-session-nobody-listens-to]
