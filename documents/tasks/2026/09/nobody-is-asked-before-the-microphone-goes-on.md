@@ -326,8 +326,13 @@ been written down as fact:
   a handler is installed. So the hole the plan set out to close did not exist,
   and the right move was the opposite of the plan's: install nothing there, and
   write down that installing a handler is what would open it. It now answers
-  `NotAllowedError`, because `display-capture` is one of the names the
-  permission handler refuses first.
+  `NotAllowedError`, because the permission handler refuses it first. **Not
+  under the name `display-capture`**, as this paragraph said when it was
+  written: measured 2026-09-19 in [a permission that answers neither
+  way](a-permission-that-answers-neither-way.md), `getDisplayMedia` reaches the
+  handler as `media` with an empty `mediaTypes`, a moment before `getUserMedia`
+  reaches it as `media` with `["audio"]`. The outcome was right and the name was
+  a guess.
 - **Geolocation does not hang.** [A permission that answers neither
   way](a-permission-that-answers-neither-way.md) recorded it as unsettled after
   6 seconds. Measured here on the unchanged build it came back `refused: 3`,
@@ -340,11 +345,15 @@ a decision that never comes.
 
 ## Follow-ups
 
-- **An agent cannot see what a page asked for.** Deliberately dropped at variant
-  selection on 2026-09-19. Every permission request now fails, and nothing
-  records it, so a scenario that breaks because of a refusal gives the agent
-  nothing to read. Closing it means a per-tab log in the shape `console` already
-  has, plus a reader in `api.ts` and a line in `reference.mjs`.
+- **An agent cannot see what a page asked for.** ~~Deliberately dropped at
+  variant selection on 2026-09-19.~~ **Closed the same day** by [a permission
+  that answers neither way](a-permission-that-answers-neither-way.md), which was
+  the task carrying the unchecked item. The per-tab record is
+  `Tab.permissionsAsked`, the reader is `api.getPermissionsAsked()`, `status()`
+  carries the same for every tab at once, and `reference.mjs` has its line. The
+  shape is `leftFor`'s rather than `console`'s, as guessed here: a permission is
+  asked once and Chromium remembers the answer, so there is no run in which an
+  agent could have switched capturing on beforehand.
 - **Harmless permissions are refused with the rest, and the list is longer than
   it looked.** Beyond `clipboard-sanitized-write` (a site's own copy button),
   `fullscreen`, `pointerLock` and `persistent-storage`, the union also carries

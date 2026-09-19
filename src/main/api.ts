@@ -502,6 +502,19 @@ export function buildApi(context: ProjectContext, agent: AgentHandle, log: (text
       return guard('getConsoleLogs()', async (tab) => [...tab.console])
     },
 
+    /**
+     * What the page asked this browser for, and what it was told.
+     *
+     * Unlike the console and the network, this needs nothing switched on
+     * first, and that is the whole of why it exists: a page asks for a
+     * permission once, before there is any reason to suspect it, and Chromium
+     * remembers the answer, so a second run does not ask again. By the time a
+     * scenario has failed it is too late to start capturing.
+     */
+    async getPermissionsAsked() {
+      return guard('getPermissionsAsked()', async (tab) => tab.permissionsAsked.map((ask) => ({ ...ask })))
+    },
+
     async interceptDialog(action: 'accept' | 'dismiss', promptText?: string) {
       return guard(`interceptDialog(${action})`, async (tab) => {
         await tab.enableDialogs()

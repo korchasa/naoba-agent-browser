@@ -405,6 +405,22 @@ export class Hub {
           leftFor: context.tabs.flatMap((tab) =>
             tab.leftFor.map((left) => ({ tabId: tab.id, url: left.url, outcome: left.outcome, at: left.at }))
           ),
+          // What each page asked this browser for and what it was told. Here
+          // rather than on `TabDescriptor` for the reason `leftFor` is: that
+          // type crosses the wire on every title change and would carry a
+          // history nobody asked for with it every time.
+          permissionsAsked: context.tabs.flatMap((tab) =>
+            tab.permissionsAsked.map((ask) => ({
+              tabId: tab.id,
+              permission: ask.permission,
+              kind: ask.kind,
+              url: ask.url,
+              mediaTypes: ask.mediaTypes,
+              outcome: ask.outcome,
+              count: ask.count,
+              at: ask.at,
+            }))
+          ),
           faults: recentFaults().map((fault) => ({
             kind: fault.kind,
             message: fault.message,

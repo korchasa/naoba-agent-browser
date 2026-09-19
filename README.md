@@ -305,6 +305,15 @@ throws a sentence naming the address and saying what became of it, and a link
 the page followed on its own is recorded: `status` carries the attempts under
 `leftFor`, and the panel shows them in the tab's history.
 
+Nothing a page asks for is granted — not the microphone, the camera, the
+screen, the clipboard or a location — and the refusal is prompt, so a page hears
+no rather than waiting on silence. What was asked is written down on the tab
+that asked: `api.getPermissionsAsked()` answers for the tab a scenario is in,
+`status` carries the same for every tab at once, and the panel shows an outright
+ask in the tab's history. Nothing has to be switched on first, unlike the
+console and the network logs — a page asks once, Chromium remembers the answer,
+and there is no second run to start watching in.
+
 A file lands in a temporary directory unless you name a path, and a path you
 name has to be inside the project — the same boundary `setFiles` reads within. A
 download the page started by itself is never written inside the project at all.

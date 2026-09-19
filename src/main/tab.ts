@@ -8,6 +8,7 @@ import { describePattern, matcherFor, type UrlPattern } from './urls.ts'
 import { describeVisits, VisitLog } from './visits.ts'
 import { handOffNotice, outcomeFor, refusalFor, type SchemeOutcome, tooSoon, tooSoonNotice } from './schemes.ts'
 import { openExternally } from './hand-off.ts'
+import { type PermissionAsk, recordAsk } from './permissions.ts'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
@@ -136,6 +137,22 @@ export class Tab {
    * the project, so it says what happened and the project does the telling.
    */
   onLeft: ((handOff: HandOff) => void) | null = null
+
+  /**
+   * What this page asked the browser for, and what it was told. The same shape
+   * as `leftFor` and for the same reason: it is a history of moments already
+   * over, and it stays off `TabDescriptor`, which crosses the wire on every
+   * title change. `status` builds it on demand instead.
+   */
+  readonly permissionsAsked: PermissionAsk[] = []
+
+  /**
+   * Set by the project, the way `onLeft` is: the person watching the panel is
+   * told that a page asked for the microphone as well as the agents are. It
+   * fires only for an ask that was news — a page polling its own permission
+   * state says nothing new and draws no second line.
+   */
+  onAsk: ((ask: PermissionAsk) => void) | null = null
 
   /**
    * The agent that opened this tab, or null when the person did. An agent's
@@ -312,6 +329,15 @@ export class Tab {
     }
     this.#record({ url, outcome: 'refuse', at: now })
     return refusalFor(url, stayedAt)
+  }
+
+  /**
+   * Take down one thing the page asked for. The rule about repeats lives in
+   * `permissions.ts`, which imports no Electron and is tested without one.
+   */
+  recordPermissionAsk(ask: PermissionAsk): void {
+    const news = recordAsk(this.permissionsAsked, ask)
+    if (news) this.onAsk?.(news)
   }
 
   #record(handOff: HandOff): void {

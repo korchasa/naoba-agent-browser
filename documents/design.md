@@ -144,6 +144,20 @@ upgrade while one that does not cannot be overtaken. Unlike the download
 listener three lines above, these are setters, so a second context on the same
 partition replaces them rather than stacking.
 
+Both permission handlers write down what they were asked before they answer
+(**FR-PERMISSION-5**). The record sits on the tab that asked, in `Tab
+.permissionsAsked`, and an agent reads it with `getPermissionsAsked()` or, for
+every tab at once, in `status()`. It is not on `TabDescriptor`, for the reason
+`leftFor` is not: that type crosses the wire on every title change. It needs
+nothing switched on first, unlike the console and the network logs, because a
+page asks once and Chromium remembers the answer — there is no second run to
+start watching in. The rule about what counts as a repeat, and the separate cap
+per kind that stops a polling page evicting what another page asked outright,
+are in `permissions.ts` beside the decision itself, so both are read and tested
+without Electron. Recording is guarded throughout: the page is waiting on the
+answer the recording sits in front of, so a throw costs the record and never the
+decision.
+
 `setDisplayMediaRequestHandler` is deliberately **not** set. Measured 2026-09-19:
 with no handler, `getDisplayMedia` fails on its own, so screen capture is already
 refused and installing a handler is the only way to open it — which would hand a

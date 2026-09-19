@@ -6,7 +6,7 @@ import { partitionFor, type ProjectIdentity } from './project.ts'
 import { type HandOff, normalizeUrl, Tab } from './tab.ts'
 import { DownloadLog, temporaryDownloadPath } from './downloads.ts'
 import { userAgentFor } from './disguise.ts'
-import { permitted } from './permissions.ts'
+import { type PermissionAsk, permitted } from './permissions.ts'
 import { outcomeFor } from './schemes.ts'
 import type { Shell } from './shell.ts'
 import type { AgentCommand, AgentDescriptor, AgentRow, AppEvent, ServerMessage, TabDescriptor } from './protocol.ts'
@@ -22,6 +22,32 @@ function describeHandOff(handOff: HandOff): string {
   return handOff.outcome === 'hand-on'
     ? `handed ${handOff.url} to this machine`
     : `refused ${handOff.url} — nothing here opens it`
+}
+
+/**
+ * The page an ask came from, as precisely as the two handlers allow.
+ *
+ * They do not agree on what they give. The request handler passes a whole
+ * address in `details.requestingUrl`; the check handler passes an origin and
+ * nothing else. An origin taken at face value would make two pages of one site
+ * a single line whose url no longer says which of them asked — and the url is
+ * part of what tells one ask from another. So where the tab is on that origin,
+ * the tab's own address is the truer answer, and the origin is kept only when
+ * it is somebody else's: a frame of another site asking from inside this page.
+ */
+function whoAsked(tabUrl: string, requestingUrl: string | undefined, requestingOrigin: string | undefined): string {
+  if (requestingUrl) return requestingUrl
+  if (requestingOrigin && tabUrl.startsWith(requestingOrigin)) return tabUrl
+  return requestingOrigin || tabUrl
+}
+
+/** The one line the person's panel shows for something a page asked for. */
+function describePermissionAsk(ask: PermissionAsk): string {
+  const answer = ask.outcome === 'refused' ? 'refused' : 'allowed'
+  // `media` is two different requests under one name — the screen with no
+  // types, the microphone or camera with them — so the line says which.
+  const what = ask.mediaTypes.length > 0 ? `${ask.permission} (${ask.mediaTypes.join(', ')})` : ask.permission
+  return `asked for ${what} on ${ask.url} — ${answer}`
 }
 
 export interface AgentHandle {
@@ -112,11 +138,20 @@ export class ProjectContext {
     // Unlike `will-download` three lines above, these are setters rather than
     // listeners — a second context built on the same partition replaces them
     // instead of stacking a second one, so no removal is needed here.
-    this.session.setPermissionRequestHandler((_wc, permission, callback) => callback(permitted(permission)))
+    this.session.setPermissionRequestHandler((wc, permission, callback, details) => {
+      const outcome = permitted(permission)
+      const asked = details as { requestingUrl?: string; mediaTypes?: string[] }
+      this.#noteAsk(wc, permission, 'asked', outcome, asked.requestingUrl, undefined, asked.mediaTypes ?? [])
+      callback(outcome)
+    })
     // The other half. `navigator.permissions.query()` never reaches the request
     // handler, so without this a page is told `granted` for a permission that
     // would be refused the moment it asked for it.
-    this.session.setPermissionCheckHandler((_wc, permission) => permitted(permission))
+    this.session.setPermissionCheckHandler((wc, permission, requestingOrigin) => {
+      const outcome = permitted(permission)
+      this.#noteAsk(wc, permission, 'checked', outcome, undefined, requestingOrigin, [])
+      return outcome
+    })
     // Devices are a separate gate the two handlers above never see: this one
     // answers a permission Electron would otherwise keep in memory once the
     // person had picked a device, without any request being made again.
@@ -251,6 +286,15 @@ export class ProjectContext {
     this.#activeTabId = tab.id
     this.shell.attach(tab.view)
 
+    // Only an outright ask earns a line. A page looking its own permission
+    // state up is not something the person needs told, and `log` writes into
+    // the tab's hundred-entry command history, which is where the record of
+    // what an agent did in this tab lives — a chatty page would empty it.
+    tab.onAsk = (ask) => {
+      if (ask.kind !== 'asked') return
+      this.log(BROWSER, describePermissionAsk(ask), tab.id)
+    }
+
     tab.onLeft = (handOff: HandOff) => {
       this.log(BROWSER, describeHandOff(handOff), tab.id)
     }
@@ -382,6 +426,45 @@ export class ProjectContext {
    * agents doing unrelated work into a queue for no reason. Sharing a tab is
    * something an agent asks for with `selectTab`.
    */
+  /**
+   * Take down what a page asked for, on the tab that asked. The handlers above
+   * both call this before they answer, and that order is the point: recording
+   * must never be able to change the answer, so the whole of it is guarded and
+   * a throw costs the record rather than the decision.
+   *
+   * Electron's types allow a null `webContents` on the check handler. A call
+   * that names no tab is answered and not recorded — there is no tab to record
+   * it on, and a second, tabless log is one nobody would read.
+   */
+  #noteAsk(
+    wc: WebContents | null,
+    permission: string,
+    kind: 'asked' | 'checked',
+    granted: boolean,
+    requestingUrl: string | undefined,
+    requestingOrigin: string | undefined,
+    mediaTypes: readonly string[],
+  ): void {
+    try {
+      if (!wc) return
+      const tab = this.#tabs.find((open) => !open.destroyed && open.wc === wc)
+      if (!tab) return
+      tab.recordPermissionAsk({
+        permission,
+        kind,
+        url: whoAsked(tab.url, requestingUrl, requestingOrigin),
+        mediaTypes,
+        outcome: granted ? 'granted' : 'refused',
+        count: 1,
+        at: Date.now(),
+      })
+    } catch {
+      // Deliberately silent. The page is waiting on the answer this call sits
+      // in front of, and a record nobody took is the smaller loss of the two —
+      // a page left hanging is the defect this line of work began with.
+    }
+  }
+
   tabFor(agent: AgentHandle): Tab {
     if (agent.currentTabId) {
       const chosen = this.tab(agent.currentTabId)

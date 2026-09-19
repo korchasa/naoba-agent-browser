@@ -147,6 +147,15 @@ State
 Watching
   api.captureConsole(true) then api.getConsoleLogs()
   api.captureNetwork(true) then api.getNetworkLog({url, status})
+  api.getPermissionsAsked()          what the page asked this browser for — the
+                                     microphone, a location, the clipboard — and
+                                     what it was told. Every one of them is
+                                     refused. Nothing to switch on first, unlike
+                                     the two above: a page asks once and the
+                                     answer is remembered, so by the time a
+                                     scenario has failed it is too late to start
+                                     watching. status() carries the same under
+                                     permissionsAsked, for every tab at once
   api.getResponseBody(requestId)     only until that tab navigates away
   api.interceptDialog('accept'|'dismiss', promptText?)
 

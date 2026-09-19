@@ -453,6 +453,20 @@ are deliberate.
   the page can act on, not left to time out.
   *Acceptance:* **not yet** —
   [a passkey this browser cannot answer](tasks/2026/09/a-passkey-this-browser-cannot-answer.md).
+- **FR-PERMISSION-5.** An agent can read what a page asked this browser for and
+  what it was told, per tab, without having switched anything on beforehand.
+  The console and the network logs both need `capture…(true)` in advance, and a
+  permission is asked once, before there is any reason to suspect it, with
+  Chromium remembering the answer — so there is no second chance to start
+  watching. `getPermissionsAsked()` answers for one tab and `status()` for every
+  tab at once. `media` carries the types it was asked with, because Electron
+  sends screen capture and the microphone under that one name. A page that asks
+  the same thing twice in a row is one line and not two.
+  *Acceptance:* "an agent can tell from the tab that a page asked and was
+  refused", "the microphone and the screen are not one line, though Electron
+  calls both media" *(unit)*, "a page polling its own permissions cannot push
+  out what it asked for" *(unit)*, "a page that asks for the same permission
+  twice is one line, not two" *(unit)*.
 
 ## 16. The disguise
 

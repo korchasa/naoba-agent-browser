@@ -18,7 +18,7 @@ import { describePattern, matcherFor } from '../src/main/urls.ts'
 import { buildTree, expandNew, groupKey, projectKey, sortGroups, tabKey } from '../src/renderer/tree.ts'
 import { documentedNames, fullReference, helpFor, namesIn, TOOL_DESCRIPTION } from '../src/main/reference.mjs'
 import { TOOLS } from '../src/main/tools.mjs'
-import { permitted } from '../src/main/permissions.ts'
+import { permitted, recordAsk } from '../src/main/permissions.ts'
 import { handOffNotice, outcomeFor, refusalFor, schemeOf, tooSoon, tooSoonNotice } from '../src/main/schemes.ts'
 import {
   announcement,
@@ -1562,6 +1562,90 @@ test('every permission a page can ask for is refused, whatever its name', () => 
   // A name from an Electron nobody here has seen is refused too, because the
   // rule never reads the name.
   assert.equal(permitted('a-permission-invented-after-this-was-written'), false)
+})
+
+const ask = (over = {}) => ({
+  permission: 'geolocation',
+  kind: 'asked',
+  url: 'https://example.com/where',
+  mediaTypes: [],
+  outcome: 'refused',
+  count: 1,
+  at: 1_000,
+  ...over,
+})
+
+test('a page that asks for the same permission twice is one line, not two', () => {
+  // Measured 2026-09-19: one navigator.permissions.query() call reached the
+  // check handler twice. A page that polls its own permission state would fill
+  // the record on its own, and the record is ten entries long.
+  const log = []
+  const first = recordAsk(log, ask())
+  assert.equal(log.length, 1)
+  assert.equal(first, log[0], 'the entry that was appended is what comes back')
+
+  const again = recordAsk(log, ask({ at: 2_000 }))
+  assert.equal(log.length, 1, `the repeat became a second line: ${JSON.stringify(log)}`)
+  assert.equal(again, null, 'a repeat answers null, which is what keeps the panel quiet')
+  assert.equal(log[0].count, 2)
+  assert.equal(log[0].at, 2_000, 'the entry names the most recent of the times, not the first')
+
+  // Any one of the four differing makes it a different thing to say.
+  assert.ok(recordAsk(log, ask({ permission: 'media', at: 3_000 })))
+  assert.ok(recordAsk(log, ask({ kind: 'checked', at: 4_000 })))
+  assert.ok(recordAsk(log, ask({ url: 'https://elsewhere.test/', at: 5_000 })))
+  assert.ok(recordAsk(log, ask({ outcome: 'granted', at: 6_000 })))
+  assert.equal(log.length, 5)
+
+  // Only the newest is compared. A page alternating between two permissions
+  // keeps both, rather than collapsing into whichever came first.
+  const back = recordAsk(log, ask({ at: 7_000 }))
+  assert.ok(back, 'an older match collapsed a line it is not next to')
+  assert.equal(log.length, 6)
+})
+
+test('the record of what a page asked keeps the last ten of each kind', () => {
+  const log = []
+  for (let n = 0; n < 14; n++) recordAsk(log, ask({ permission: `p${n}`, at: n }))
+  assert.equal(log.length, 10)
+  // The oldest go first, so what is left is what happened most recently.
+  assert.equal(log[0].permission, 'p4')
+  assert.equal(log.at(-1).permission, 'p13')
+})
+
+test('a page polling its own permissions cannot push out what it asked for', () => {
+  // The check handler answers navigator.permissions.query(), which a page may
+  // call as often as it likes; the request handler fires when a page asks
+  // outright, which is the rarer and the more interesting of the two. One cap
+  // over both would let the first evict the second, and an agent reading the
+  // record after a failure would see nothing but polling.
+  const log = []
+  recordAsk(log, ask({ permission: 'media', at: 1 }))
+  recordAsk(log, ask({ permission: 'notifications', at: 2 }))
+  for (let n = 0; n < 40; n++) {
+    recordAsk(log, ask({ kind: 'checked', permission: `q${n % 3}`, at: 100 + n }))
+  }
+  const asked = log.filter((entry) => entry.kind === 'asked').map((entry) => entry.permission)
+  assert.deepEqual(asked, ['media', 'notifications'], `what the page asked for was evicted: ${JSON.stringify(log)}`)
+  assert.equal(log.filter((entry) => entry.kind === 'checked').length, 10)
+})
+
+test('the microphone and the screen are not one line, though Electron calls both media', () => {
+  // Measured 2026-09-19: getDisplayMedia and getUserMedia both arrive as the
+  // permission named `media`, from the same page, a moment apart, and are told
+  // the same thing. Only `mediaTypes` tells them apart — empty for the screen,
+  // ['audio'] for the microphone — so an agent reading a record that leaves it
+  // out cannot tell which of the two its page was refused.
+  const log = []
+  recordAsk(log, ask({ permission: 'media', mediaTypes: [], at: 1 }))
+  recordAsk(log, ask({ permission: 'media', mediaTypes: ['audio'], at: 2 }))
+  assert.equal(log.length, 2, `the screen and the microphone became one line: ${JSON.stringify(log)}`)
+  assert.deepEqual(log.map((entry) => entry.mediaTypes), [[], ['audio']])
+
+  // The same two media types in the same order are still one thing asked twice.
+  assert.equal(recordAsk(log, ask({ permission: 'media', mediaTypes: ['audio'], at: 3 })), null)
+  assert.equal(log.length, 2)
+  assert.equal(log.at(-1).count, 2)
 })
 
 test('a fault is recorded whatever was thrown, and the newest is read first', () => {

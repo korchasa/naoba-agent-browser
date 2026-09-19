@@ -678,6 +678,70 @@ test('a page that asks for the microphone is refused, and hears the refusal', as
   agent.close()
 })
 
+test('an agent can tell from the tab that a page asked and was refused', async () => {
+  // The refusal itself was settled by FR-PERMISSION-1. What it left behind is
+  // this: the decision was made and dropped, so a scenario that broke because
+  // of it gave the agent nothing to read. Neither existing log helps — the
+  // console and the network both have to be switched on before the page runs,
+  // and a permission is asked once, with Chromium remembering the answer.
+  const agent = await app.agent(PROJECT_A, 'permission-record')
+  const outcome = await agent.run(`
+    await api.newTab('about:blank')
+    await api.navigate(${JSON.stringify(origin + '/permissions.html')})
+    const tab = await api.currentTab()
+    await api.click('#ask')
+    for (let tries = 0; tries < 60; tries++) {
+      if (await api.eval('window.__asked')) break
+      await api.sleep(250)
+    }
+    // Read it from inside the scenario, which is where an agent is standing
+    // when the thing it was doing stops working.
+    return { tabId: tab.id, asked: await api.getPermissionsAsked() }
+  `)
+  const asked = outcome.value.asked
+  assert.ok(Array.isArray(asked) && asked.length > 0, `the record is empty: ${JSON.stringify(outcome.value)}`)
+
+  // Electron sends getUserMedia and getDisplayMedia under the one name
+  // `media`, from the same page, a moment apart, and refuses both. Only
+  // mediaTypes tells them apart, and an agent that cannot tell them apart
+  // cannot act on either.
+  const microphone = asked.find((ask) => ask.permission === 'media' && ask.mediaTypes.includes('audio'))
+  assert.ok(microphone, `the microphone is missing from ${JSON.stringify(asked)}`)
+  assert.equal(microphone.kind, 'asked')
+  assert.equal(microphone.outcome, 'refused')
+  assert.match(microphone.url, /permissions\.html$/, 'the record names an origin where it could name the page')
+
+  const screen = asked.find((ask) => ask.permission === 'media' && ask.mediaTypes.length === 0)
+  assert.ok(screen, `screen capture is missing from ${JSON.stringify(asked)}`)
+  assert.notEqual(screen, microphone, 'the screen and the microphone are one line')
+
+  // The half that never reaches the request handler. navigator.permissions
+  // .query() is answered by the check handler, so a record built on the other
+  // one alone would be blind to exactly this.
+  const clipboards = asked.filter((ask) => ask.permission === 'clipboard-read')
+  assert.equal(clipboards.length, 1, `the repeated check became several lines: ${JSON.stringify(clipboards)}`)
+  const clipboard = clipboards[0]
+  assert.equal(clipboard.kind, 'checked')
+  assert.equal(clipboard.outcome, 'refused')
+  // That handler is given an origin and nothing else, so a record that took it
+  // at face value would say http://127.0.0.1:PORT/ here and stop saying which
+  // page of the site asked. Both pages of one origin would then be one line.
+  assert.match(
+    clipboard.url,
+    /permissions\.html$/,
+    `the check was recorded against an origin, not a page: ${clipboard.url}`,
+  )
+
+  // And the same record, for every tab at once, in the answer an agent reads
+  // after a scenario has already failed.
+  const fromStatus = (await agent.status()).permissionsAsked
+  assert.ok(
+    fromStatus.some((ask) => ask.tabId === outcome.value.tabId && ask.permission === 'geolocation'),
+    `status() does not name the tab that asked: ${JSON.stringify(fromStatus)}`,
+  )
+  agent.close()
+})
+
 test('a request carrying no authorization at all is answered', async () => {
   // There is no secret to present. A program on this Mac runs as this person
   // and could read whatever a secret were kept in, so demanding one bought
