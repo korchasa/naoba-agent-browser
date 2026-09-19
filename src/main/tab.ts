@@ -105,6 +105,7 @@ const PAGE_HELPERS = `
 export class Tab {
   readonly id = randomUUID()
   readonly view: WebContentsView
+  readonly #contents: WebContents
   readonly console: ConsoleEntry[] = []
   readonly network = new Map<string, NetworkEntry>()
   /** What has been done in this tab, newest first. */
@@ -159,15 +160,25 @@ export class Tab {
         // one tab is available to the agent in the next one.
       },
     })
+    this.#contents = this.view.webContents
     this.#wireDialogs()
   }
 
+  /**
+   * The renderer, held rather than read back from the view each time.
+   *
+   * Electron 44 clears `WebContentsView.webContents` once the renderer is gone,
+   * so a view whose page closed itself answers `undefined` — and every getter
+   * here that went through the view threw `Cannot read properties of undefined`
+   * instead of saying the tab was destroyed. A held reference still answers
+   * `isDestroyed()`, which is the question being asked.
+   */
   get wc(): WebContents {
-    return this.view.webContents
+    return this.#contents
   }
 
   get destroyed(): boolean {
-    return this.#destroyed || this.wc.isDestroyed()
+    return this.#destroyed || this.#contents.isDestroyed()
   }
 
   get title(): string {
