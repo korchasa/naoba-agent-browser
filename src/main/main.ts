@@ -9,6 +9,7 @@ import { normalizeUrl } from './tab.ts'
 import { userAgentFor } from './disguise.ts'
 import { appName, isDevVariant } from './variant.ts'
 import { accepted, decideLoginItem, describeLoginItem } from './login.ts'
+import { announcement, announces, describeFault, record as recordFault, recent as recentFaults } from './faults.ts'
 import { asPresence, type LoginItemState, type Presence, presenceOf, type SettingsSnapshot } from './preferences.ts'
 import { SettingsWindow } from './settings-window.ts'
 import { startMcpServer, stopMcpServer } from './mcp-http.ts'
@@ -118,6 +119,7 @@ async function start(): Promise<void> {
   // used to reach neither this line nor its own quit, and the only way to end
   // the process was to kill it.
   for (const signal of ['SIGTERM', 'SIGINT'] as const) process.on(signal, () => app.quit())
+  catchFaults()
 
   try {
     hub.start()
@@ -218,6 +220,33 @@ async function cannotStart(port: number, error: unknown): Promise<void> {
   // that nothing waits on this process.
   await new Promise((done) => setTimeout(done, 1_500))
   app.exit(1)
+}
+
+/**
+ * Take the main process's own faults off the screen and put them where somebody
+ * can act on them.
+ *
+ * With nothing listening, Electron answers an uncaught exception with a modal
+ * window carrying a stack trace — for an application that lives in the menu bar
+ * that is an interruption addressed to the wrong reader, and the person can do
+ * nothing with it but click OK. See `faults.ts` for the whole of the reasoning.
+ *
+ * The process is left running on purpose. A fault here is usually one handler
+ * of one tab, and quitting would take every other tab, every session and the
+ * work of every agent in the window with it.
+ */
+function catchFaults(): void {
+  const met = (kind: 'exception' | 'rejection') => (thrown: unknown) => {
+    const fault = recordFault(describeFault(kind, thrown, Date.now()))
+    // stderr keeps what the dialog used to show, for a terminal and a test run.
+    console.error(`${appName()} ${kind}:`, fault.stack)
+    if (!announces(fault, recentFaults())) return
+    if (!Notification.isSupported()) return
+    const said = announcement(fault, appName())
+    new Notification({ title: said.title, body: said.body }).show()
+  }
+  process.on('uncaughtException', met('exception'))
+  process.on('unhandledRejection', met('rejection'))
 }
 
 /**

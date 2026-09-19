@@ -18,6 +18,7 @@ import { describePattern, matcherFor } from '../src/main/urls.ts'
 import { buildTree, expandNew, groupKey, projectKey, sortGroups, tabKey } from '../src/renderer/tree.ts'
 import { documentedNames, fullReference, helpFor, namesIn, TOOL_DESCRIPTION } from '../src/main/reference.mjs'
 import { TOOLS } from '../src/main/tools.mjs'
+import { announcement, announces, clear as clearFaults, describeFault, recent as recentFaults, record as recordFault } from '../src/main/faults.ts'
 import { connectCommand, mcpPort, mcpUrl } from '../src/main/mcp-address.ts'
 import {
   activateRequest,
@@ -1529,4 +1530,60 @@ test('the settings window is told what happened, not only that something did', (
   // A key the person can still recognise stays on the row even once it is no
   // good, so they can tell the dead key from one they have not tried yet.
   assert.equal(describe(stored({ cancelled: true }), NOW).tail, '1234')
+})
+
+test('a fault is recorded whatever was thrown, and the newest is read first', () => {
+  clearFaults()
+  const boom = new Error('the tab was already gone')
+  const one = recordFault(describeFault('exception', boom, 1_000))
+  assert.equal(one.message, 'the tab was already gone')
+  assert.match(one.stack, /the tab was already gone/)
+
+  // Anything at all can be thrown, and a browser that crashes on reading its
+  // own crash has nothing left to report with.
+  assert.equal(describeFault('rejection', 'a bare string', 2_000).message, 'a bare string')
+  assert.equal(describeFault('rejection', null, 2_000).message, 'null')
+  assert.equal(describeFault('exception', { code: 7 }, 2_000).message, '{"code":7}')
+  const cyclic = {}
+  cyclic.self = cyclic
+  assert.equal(typeof describeFault('exception', cyclic, 2_000).message, 'string')
+
+  recordFault(describeFault('rejection', 'later', 3_000))
+  assert.deepEqual(recentFaults().map((f) => f.message), ['later', 'the tab was already gone'])
+  clearFaults()
+})
+
+test('only the first of a repeating fault is announced, and every one is kept', () => {
+  clearFaults()
+  // One broken handler fires once per tab, and a notification per tab turns a
+  // defect into a second defect.
+  const first = recordFault(describeFault('exception', new Error('same message'), 1_000))
+  assert.equal(announces(first, recentFaults()), true)
+  const again = recordFault(describeFault('exception', new Error('same message'), 5_000))
+  assert.equal(announces(again, recentFaults()), false)
+  // Far enough apart it is news again.
+  const later = recordFault(describeFault('exception', new Error('same message'), 900_000))
+  assert.equal(announces(later, recentFaults()), true)
+  // Silenced is not dropped: status carries all three.
+  assert.equal(recentFaults().length, 3)
+  clearFaults()
+})
+
+test('what the person reads carries no stack, and says nothing was lost', () => {
+  const said = announcement(describeFault('exception', new Error('a tab went away'), 1_000), 'Naoba')
+  assert.equal(said.title, 'Naoba hit an error')
+  assert.match(said.body, /a tab went away/)
+  assert.match(said.body, /still open/)
+  assert.equal(/\bat \//.test(said.body), false, 'a stack frame is addressed to the wrong reader')
+
+  const unfinished = announcement(describeFault('rejection', new Error('nobody waited'), 1_000), 'Naoba')
+  assert.match(unfinished.title, /unfinished/)
+})
+
+test('a fault list does not grow without end', () => {
+  clearFaults()
+  for (let i = 0; i < 50; i++) recordFault(describeFault('exception', new Error('n' + i), i))
+  assert.equal(recentFaults().length, 20)
+  assert.equal(recentFaults()[0].message, 'n49')
+  clearFaults()
 })

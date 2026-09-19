@@ -513,6 +513,38 @@ test('a window that closes itself takes its tab with it', async () => {
   agent.close()
 })
 
+test('a fault in the browser itself is recorded, not put on screen', async () => {
+  // With nothing listening for `uncaughtException`, Electron answers one with a
+  // modal window carrying a stack trace. This application lives in the menu bar
+  // with its window usually off screen, so that dialog arrives with no context
+  // at all and the person can do nothing with it but click OK. Worse, it blocks
+  // the main process: every agent in every project stops until somebody
+  // notices. Seen on 2026-09-19, when a tab closing itself threw and the owner
+  // met a stack trace in a window they had not opened.
+  const agent = await app.agent(PROJECT_A, 'fault-watcher')
+  const thrown = 'a fault raised on purpose by the test'
+  await agent.fault(thrown)
+  await new Promise((resolve) => setTimeout(resolve, 400))
+
+  // Still answering is the whole point: a modal would have stopped this call.
+  const after = await agent.status()
+  const seen = after.faults.find((fault) => fault.message === thrown)
+  assert.ok(seen, `status carried ${after.faults.length} faults, none of them this one`)
+  assert.equal(seen.kind, 'exception')
+  assert.match(seen.stack, /a fault raised on purpose/)
+
+  // And the browser still works afterwards, rather than limping.
+  const outcome = await agent.run(`return await api.navigate('about:blank')`)
+  assert.equal(outcome.value, 'about:blank')
+
+  // A promise nobody handled is the other half, and reads as its own kind.
+  await agent.fault('a promise nobody waited for', 'rejection')
+  await new Promise((resolve) => setTimeout(resolve, 400))
+  const both = await agent.status()
+  assert.equal(both.faults.find((f) => f.message === 'a promise nobody waited for').kind, 'rejection')
+  agent.close()
+})
+
 test('a request carrying no authorization at all is answered', async () => {
   // There is no secret to present. A program on this Mac runs as this person
   // and could read whatever a secret were kept in, so demanding one bought

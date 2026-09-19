@@ -85,6 +85,7 @@ export async function startApp(
           return session.events
         },
         run: (code, timeout = 20_000) => session.call('eval', { code, timeout }),
+        fault: (message, kind) => session.fault(message, kind),
         status: () => session.call('status', {}),
         close: () => void session.close(),
       }
@@ -163,6 +164,15 @@ export async function connect(port, label = 'test-agent') {
     },
     get sessionKey() {
       return sessionKey
+    },
+    /**
+     * Make the main process throw where nothing catches it. Only a test run can
+     * reach this door, and it is how a test proves a fault is recorded rather
+     * than put on screen.
+     */
+    async fault(message, kind = 'exception') {
+      const { result } = await rpc('naoba/fault', { message, kind })
+      return result
     },
     /** The hub's own call, with the value it produced rather than prose about it. */
     async call(method, params) {

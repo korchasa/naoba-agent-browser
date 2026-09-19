@@ -7,6 +7,7 @@ import { type AgentHandle, ProjectContext } from './context.ts'
 import { Shell, type ShellPaths } from './shell.ts'
 import { identify, normalizeRoot, type ProjectIdentity } from './project.ts'
 import type { AdmissionRecord } from './preferences.ts'
+import { recent as recentFaults } from './faults.ts'
 import {
   type ClientMessage,
   type Connection,
@@ -392,6 +393,17 @@ export class Hub {
             self: other.id === agent.id,
           })),
           tabs: context.describeTabs(),
+          // What the browser itself got wrong since it started. An agent
+          // reading a tab that stopped answering has no other way to learn
+          // that the fault was the browser's rather than the page's — the
+          // modal window Electron used to put on screen was addressed to
+          // whoever wrote the code, and on this machine that is the agent.
+          faults: recentFaults().map((fault) => ({
+            kind: fault.kind,
+            message: fault.message,
+            stack: fault.stack,
+            at: fault.at,
+          })),
         }
 
       /**

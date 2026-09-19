@@ -279,7 +279,7 @@ async function answer(request: IncomingMessage, response: ServerResponse, option
   if (method === 'resources/list') return void reply(response, id, { resources: [] })
   if (method === 'prompts/list') return void reply(response, id, { prompts: [] })
   if (method === 'tools/call') return void (await callTool(request, response, message, options))
-  if (options.testDoor && (method === 'naoba/call' || method === 'naoba/events')) {
+  if (options.testDoor && (method === 'naoba/call' || method === 'naoba/events' || method === 'naoba/fault')) {
     return void (await testDoor(request, response, message, options))
   }
 
@@ -389,6 +389,21 @@ async function testDoor(
   const id = message.id as number | string
   const session = sessionOf(request)
   if (!session) return void fail(response, id, -32002, 'this session has not called begin')
+  if (message.method === 'naoba/fault') {
+    // Make the main process throw where nothing can catch it, so a test can
+    // prove that a fault is recorded rather than put on screen. Only a test run
+    // reaches this — the whole door is shut in a shipped build — and the throw
+    // is deliberately out of this call stack, because an exception a caller
+    // could catch is not the case being tested.
+    const asked = (message.params ?? {}) as Record<string, unknown>
+    const said = String(asked.message ?? 'a fault nobody asked for')
+    const kind = asked.kind === 'rejection' ? 'rejection' : 'exception'
+    setTimeout(() => {
+      if (kind === 'rejection') void Promise.reject(new Error(said))
+      else throw new Error(said)
+    }, 0)
+    return void reply(response, id, { thrown: said, kind })
+  }
   if (message.method === 'naoba/events') {
     // Drained, not read: the caller is polling, and leaving them behind would
     // hand the same event back on every poll.

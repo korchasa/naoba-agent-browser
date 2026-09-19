@@ -61,7 +61,9 @@ export const TOOLS = [
     name: 'status',
     description:
       "What this project's browser looks like right now: the tabs and their state, the agents connected to it, " +
-      'and which of them is you.',
+      'and which of them is you. It also carries anything the browser itself got wrong since it started, newest ' +
+      'first — a tab that stopped answering is sometimes the browser rather than the page, and this is the only ' +
+      'place that says so.',
     inputSchema: { type: 'object', properties: {} },
   },
 ]
