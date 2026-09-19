@@ -1,0 +1,83 @@
+<!doctype html>
+<title>permissions</title>
+<!--
+  A page that asks for everything, on a real click.
+
+  The click matters: `getDisplayMedia` refuses without transient activation, and
+  a refusal for the wrong reason would look exactly like the one under test. The
+  suite clicks this button with a real input event, which is what grants that
+  activation, so the only thing left to decide the answer is the browser's rule.
+
+  Every answer is a string rather than a throw, so one request that behaves
+  unexpectedly does not take the other four with it.
+-->
+<button id="ask">ask for everything</button>
+<script>
+  const said = (kind, error) => `${kind}: ${error.name}`
+
+  async function screenCapture() {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true })
+      for (const track of stream.getTracks()) track.stop()
+      return 'granted'
+    } catch (error) {
+      return said('refused', error)
+    }
+  }
+
+  async function microphone() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // Stop it the instant it arrives: a granted microphone is the defect
+      // under test, not something to leave running for the rest of the suite.
+      for (const track of stream.getTracks()) track.stop()
+      return 'granted'
+    } catch (error) {
+      return said('refused', error)
+    }
+  }
+
+  async function notifications() {
+    try {
+      return await Notification.requestPermission()
+    } catch (error) {
+      return said('threw', error)
+    }
+  }
+
+  async function clipboardRead() {
+    try {
+      return (await navigator.permissions.query({ name: 'clipboard-read' })).state
+    } catch (error) {
+      return said('threw', error)
+    }
+  }
+
+  // Geolocation is the one measured hanging rather than answering, so it is
+  // raced against a clock: "hung" is a result here, not a failure of the page.
+  function geolocation() {
+    return Promise.race([
+      new Promise((resolve) =>
+        navigator.geolocation.getCurrentPosition(
+          () => resolve('granted'),
+          (error) => resolve(`refused: ${error.code}`),
+          { timeout: 2000 },
+        )
+      ),
+      new Promise((resolve) => setTimeout(() => resolve('hung'), 4000)),
+    ])
+  }
+
+  document.querySelector('#ask').addEventListener('click', async () => {
+    // Screen capture first: it is the one that spends the click's activation.
+    const screen = await screenCapture()
+    window.__asked = {
+      screen,
+      microphone: await microphone(),
+      notifications: await notifications(),
+      clipboardRead: await clipboardRead(),
+      geolocation: await geolocation(),
+    }
+    document.title = 'asked'
+  })
+</script>

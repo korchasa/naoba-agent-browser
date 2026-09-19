@@ -422,14 +422,24 @@ are deliberate.
 
 ## 15. Permissions a page asks for
 
-- **FR-PERMISSION-1.** A page asking for the microphone or the camera does not
-  get it without the person being asked.
-  *Acceptance:* **not yet** —
+- **FR-PERMISSION-1.** A page gets no permission it asks for. Every request the
+  browser can be given — the microphone, the camera, clipboard read,
+  notifications, and every other name Electron passes — is refused by this
+  application rather than granted by Electron's default, identically in every
+  project, and the refusal reaches the page promptly instead of leaving it
+  waiting. Nobody is asked, and no site is remembered: the price is that a
+  site's own copy button and its full-screen view are refused with the rest,
+  which is recorded under `## Follow-ups` in
   [nobody is asked before the microphone goes on](tasks/2026/09/nobody-is-asked-before-the-microphone-goes-on.md).
+  *Acceptance:* "every permission a page can ask for is refused, whatever its
+  name" *(unit)*, "a page that asks for the microphone is refused, and hears the
+  refusal".
 - **FR-PERMISSION-2.** A permission request is answered one way or the other,
-  never left hanging.
-  *Acceptance:* **not yet** —
-  [a permission that answers neither way](tasks/2026/09/a-permission-that-answers-neither-way.md).
+  never left hanging. Geolocation was the one measured answering neither way;
+  the refusal in **FR-PERMISSION-1** settles it, and the page's own error
+  callback now runs with `PERMISSION_DENIED` rather than waiting out its clock.
+  *Acceptance:* "a page that asks for the microphone is refused, and hears the
+  refusal" — its last assertion is geolocation's.
 - **FR-PERMISSION-3.** A site's password prompt reaches somebody who can answer
   it.
   *Acceptance:* **not yet** —

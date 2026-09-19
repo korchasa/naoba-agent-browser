@@ -84,6 +84,8 @@ ours**. A page therefore has nothing of this application's to reach for.
   appears, what its icons say, whether it starts at login, and which copy this
   is.
 - `disguise.ts` — what the browser says it is.
+- `permissions.ts` — what a page may ask this browser for, and why the answer is
+  always no.
 - `licence.ts`, `licence-store.ts` — the rules a licence is judged by, and the
   files, network and clock that feed them.
 - `updates.ts`, `update-rules.ts` — replacing the application with a newer one.
@@ -127,6 +129,27 @@ The session outlives the context. A project unloaded for being idle and used
 again builds a second `ProjectContext` on the same session — which is why the
 download handler is removed before it is added, or the project's next download
 would be handled twice.
+
+The same session is where a page is told no. Electron installs no permission
+handler by default and grants whatever a page requests, so `context.ts` sets
+four of them: the permission request handler, the permission check handler that
+answers `navigator.permissions.query()`, the device permission handler, and the
+Bluetooth pairing handler. All four answer from `permissions.ts`, which takes the
+permission's name and ignores it — Electron 44 can pass 46 names and a later
+version adds more, so a rule that reads the name has to be revisited every
+upgrade while one that does not cannot be overtaken. Unlike the download
+listener three lines above, these are setters, so a second context on the same
+partition replaces them rather than stacking.
+
+`setDisplayMediaRequestHandler` is deliberately **not** set. Measured 2026-09-19:
+with no handler, `getDisplayMedia` fails on its own, so screen capture is already
+refused and installing a handler is the only way to open it — which would hand a
+page the screen of a browser holding the person's live sessions.
+
+The cost is that a site's own copy button, its full-screen view, a map's pointer
+lock and the Storage Access API a third-party sign-in frame uses are refused with
+the rest. That was weighed and accepted; when a page is found broken by one of
+them, the exception belongs in `permissions.ts` with its reason beside it.
 
 ## 4. An agent arrives
 

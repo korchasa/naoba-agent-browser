@@ -6,6 +6,7 @@ import { partitionFor, type ProjectIdentity } from './project.ts'
 import { Tab } from './tab.ts'
 import { DownloadLog, temporaryDownloadPath } from './downloads.ts'
 import { userAgentFor } from './disguise.ts'
+import { permitted } from './permissions.ts'
 import type { Shell } from './shell.ts'
 import type { AgentCommand, AgentDescriptor, AgentRow, AppEvent, ServerMessage, TabDescriptor } from './protocol.ts'
 
@@ -90,6 +91,31 @@ export class ProjectContext {
     this.session.on('will-download', (_event, item, webContents) => {
       this.downloads.accept(item, webContents ?? null)
     })
+    // Nothing a page asks for is granted, and the refusal is prompt: the
+    // callback is what makes it so, and a request left unanswered reads to an
+    // agent as a page that will not finish rather than as a decision.
+    //
+    // Unlike `will-download` three lines above, these are setters rather than
+    // listeners — a second context built on the same partition replaces them
+    // instead of stacking a second one, so no removal is needed here.
+    this.session.setPermissionRequestHandler((_wc, permission, callback) => callback(permitted(permission)))
+    // The other half. `navigator.permissions.query()` never reaches the request
+    // handler, so without this a page is told `granted` for a permission that
+    // would be refused the moment it asked for it.
+    this.session.setPermissionCheckHandler((_wc, permission) => permitted(permission))
+    // Devices are a separate gate the two handlers above never see: this one
+    // answers a permission Electron would otherwise keep in memory once the
+    // person had picked a device, without any request being made again.
+    this.session.setDevicePermissionHandler(() => false)
+    // And pairing, which is its own setter again. `confirmed: false` is how a
+    // pairing is turned down; answering at all is what keeps it from waiting.
+    this.session.setBluetoothPairingHandler((_details, callback) => callback({ confirmed: false }))
+    // `setDisplayMediaRequestHandler` is deliberately NOT set. Measured
+    // 2026-09-19: with no handler, `getDisplayMedia` fails with
+    // `NotSupportedError`, so screen capture is already refused — installing a
+    // handler is the only way to open it. A later session adding one would be
+    // granting this browser's own screen, sessions and all, to a page.
+
     this.leases = new LeaseTable()
     this.leases.onChange((event) => {
       if (event.type === 'claimed') {

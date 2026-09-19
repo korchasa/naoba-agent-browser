@@ -473,7 +473,8 @@ test('a window a page opens is a tab that can still talk to the page that opened
   // it. praktiker.bg answered "Apple Sign-In Error" six seconds after the
   // click, with the Apple page open in a tab of its own (2026-09-19).
   const agent = await app.agent(PROJECT_A, 'popup-opener')
-  const outcome = await agent.run(`
+  const outcome = await agent.run(
+    `
     await api.navigate(${JSON.stringify(origin + '/opener.html')})
     const own = (await api.currentTab()).id
     await api.click('#open')
@@ -484,7 +485,9 @@ test('a window a page opens is a tab that can still talk to the page that opened
     const sawOpener = await api.getText('#opener')
     await api.selectTab(own)
     return { ...(await api.eval('window.__opened')), sawOpener, childUrl: child.url }
-  `, 30000)
+  `,
+    30000,
+  )
 
   assert.equal(outcome.value.handle, 'window', 'window.open must hand the page a window, not null')
   assert.equal(outcome.value.sawOpener, 'has opener', 'the opened page must know the page that opened it')
@@ -497,7 +500,8 @@ test('a window that closes itself takes its tab with it', async () => {
   // That never goes through `closeTab`, so without a watch on the renderer the
   // panel keeps drawing a tab that is gone and an agent can pick it to work in.
   const agent = await app.agent(PROJECT_A, 'popup-closer')
-  const outcome = await agent.run(`
+  const outcome = await agent.run(
+    `
     await api.navigate(${JSON.stringify(origin + '/opener.html')})
     await api.click('#open-closing')
     await api.sleep(500)
@@ -505,7 +509,9 @@ test('a window that closes itself takes its tab with it', async () => {
     await api.sleep(2500)
     const after = (await api.getTabs()).some((tab) => tab.url.includes('/child.html'))
     return { during, after, message: (await api.eval('window.__opened')).message }
-  `, 30000)
+  `,
+    30000,
+  )
 
   assert.equal(outcome.value.during, true, 'the opened window is a tab while it is open')
   assert.equal(outcome.value.message, 'signed in', 'it hands the answer over before it goes')
@@ -542,6 +548,46 @@ test('a fault in the browser itself is recorded, not put on screen', async () =>
   await new Promise((resolve) => setTimeout(resolve, 400))
   const both = await agent.status()
   assert.equal(both.faults.find((f) => f.message === 'a promise nobody waited for').kind, 'rejection')
+  agent.close()
+})
+
+test('a page that asks for the microphone is refused, and hears the refusal', async () => {
+  // With no permission handler installed, Electron grants whatever a page asks
+  // for and tells nobody. That matters more here than in an ordinary browser:
+  // the window normally sits off screen in the menu bar, so no indicator is
+  // being watched, and the page doing the asking was chosen by an agent rather
+  // than opened by the person. Measured on 2026-09-19 against the unchanged
+  // build: the microphone, notifications and clipboard read all came back
+  // granted, and nothing recorded that anything had been asked.
+  const agent = await app.agent(PROJECT_A, 'permissions')
+  const outcome = await agent.run(`
+    await api.newTab('about:blank')
+    await api.navigate(${JSON.stringify(origin + '/permissions.html')})
+    // A real click, because getDisplayMedia refuses outright without transient
+    // activation and that refusal would look exactly like the one under test.
+    await api.click('#ask')
+    for (let tries = 0; tries < 60; tries++) {
+      const asked = await api.eval('window.__asked')
+      if (asked) return asked
+      await api.sleep(250)
+    }
+    return { timedOut: true }
+  `)
+  const asked = outcome.value
+  assert.ok(!asked.timedOut, 'the page never finished asking')
+
+  // The microphone is the one the requirement is named after.
+  assert.match(asked.microphone, /^refused: /, `microphone answered ${asked.microphone}`)
+  // Screen capture is a separate gate with its own setter, and the sharper one:
+  // a page that could film this browser would be filming the person's own
+  // logged-in sessions.
+  assert.match(asked.screen, /^refused: /, `screen capture answered ${asked.screen}`)
+  assert.equal(asked.notifications, 'denied', `notifications answered ${asked.notifications}`)
+  assert.equal(asked.clipboardRead, 'denied', `clipboard read answered ${asked.clipboardRead}`)
+  // Geolocation, measured on the unchanged build in a project tab, came back
+  // "refused: 3" — the page's own timeout, not a decision. Code 1 is
+  // PERMISSION_DENIED, which is the browser answering rather than the clock.
+  assert.equal(asked.geolocation, 'refused: 1', `geolocation answered ${asked.geolocation}`)
   agent.close()
 })
 

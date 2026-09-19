@@ -1,6 +1,6 @@
 ---
 date: "2026-09-19"
-status: to do
+status: in progress
 implements: [FR-PERMISSION-2]
 tags: [agent-browser, naoba, permissions, geolocation, agent-experience]
 related_tasks:
@@ -41,16 +41,39 @@ A refusal is a real answer here, and probably the right one. This browser drives
 somebody else's sessions from a machine in one place; a site that wants a
 location can have a denial promptly and fall back to asking.
 
+## What the permission handler did to it (2026-09-19)
+
+Settled by [nobody is asked before the microphone goes
+on](nobody-is-asked-before-the-microphone-goes-on.md), which refuses every
+permission on the project's session. Two things in the Overview above turned out
+to be wrong, and are corrected here rather than quietly dropped.
+
+**It was not hanging.** Measured again on the unchanged build, in a project tab,
+with the page's own timeout at 2 seconds: the error callback ran with code 3,
+`TIMEOUT`. The earlier probe used a 3-second timeout and 6 seconds of patience
+and saw nothing, so "still unsettled after 6 s" was either a different session or
+a slower run. What is certain is that the answer came from the page's clock, not
+from the browser, and it said the wrong thing — a site reading `TIMEOUT` retries,
+where a site reading `PERMISSION_DENIED` falls back.
+
+**It is now refused promptly.** After the change the same probe returns code 1,
+`PERMISSION_DENIED`, with no wait. That is the refusal this task argued was
+probably the right answer.
+
+What is still open is the last item below: an agent cannot see that a page asked
+and was refused. That was dropped deliberately at variant selection on
+2026-09-19 and is recorded under `## Follow-ups` in the task above.
+
 ## Definition of Done
 
-- [ ] The cause is pinned rather than assumed: the request is traced far enough
+- [x] The cause is pinned rather than assumed: the request is traced far enough
       to say whether it is the missing location service or something above it.
-- [ ] A page asking for a location gets a settled answer within a second or two,
+- [x] A page asking for a location gets a settled answer within a second or two,
       whatever that answer is.
 - [ ] An agent can tell from the tab that a page asked and was refused.
-- [ ] Every other permission is checked for the same silence, and what each one
+- [x] Every other permission is checked for the same silence, and what each one
       does is written down.
-- [ ] An integration test proves a page's own geolocation callback runs.
+- [x] An integration test proves a page's own geolocation callback runs.
 
 ## Solution
 

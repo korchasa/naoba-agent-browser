@@ -322,6 +322,23 @@ Tabs the person opened stay. That also means a tab you take over from an agent
 goes away when that agent's session ends — copy the address out if you want to
 keep it.
 
+## What a page is not allowed to do
+
+A page gets nothing it asks for. The microphone, the camera, the screen,
+reading the clipboard, notifications, a location — all refused, in every
+project, with no way to turn one on. A browser that normally sits off screen in
+the menu bar has nobody watching for a microphone indicator, and the page doing
+the asking was usually chosen by an agent rather than opened by you.
+
+The refusal is prompt, which matters more than it sounds: a request nobody
+answers reads to an agent as a page that will not finish loading, and the cause
+is nowhere near the page.
+
+Some ordinary things go with it. A site's own "copy" button, its full-screen
+view and a map's drag-to-look are asked for the same way and are refused the
+same way. If you find a page that needs one of them, that is worth reporting
+rather than working around.
+
 ## Commands
 
 - `deno task check` — types and build

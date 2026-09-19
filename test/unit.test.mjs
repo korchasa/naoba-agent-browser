@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import { createContext, Script } from 'node:vm'
-import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { identify, normalizeRoot, projectIdFor } from '../src/main/project.ts'
@@ -18,7 +18,15 @@ import { describePattern, matcherFor } from '../src/main/urls.ts'
 import { buildTree, expandNew, groupKey, projectKey, sortGroups, tabKey } from '../src/renderer/tree.ts'
 import { documentedNames, fullReference, helpFor, namesIn, TOOL_DESCRIPTION } from '../src/main/reference.mjs'
 import { TOOLS } from '../src/main/tools.mjs'
-import { announcement, announces, clear as clearFaults, describeFault, recent as recentFaults, record as recordFault } from '../src/main/faults.ts'
+import { permitted } from '../src/main/permissions.ts'
+import {
+  announcement,
+  announces,
+  clear as clearFaults,
+  describeFault,
+  recent as recentFaults,
+  record as recordFault,
+} from '../src/main/faults.ts'
 import { connectCommand, mcpPort, mcpUrl } from '../src/main/mcp-address.ts'
 import {
   activateRequest,
@@ -1530,6 +1538,29 @@ test('the settings window is told what happened, not only that something did', (
   // A key the person can still recognise stays on the row even once it is no
   // good, so they can tell the dead key from one they have not tried yet.
   assert.equal(describe(stored({ cancelled: true }), NOW).tail, '1234')
+})
+
+test('every permission a page can ask for is refused, whatever its name', () => {
+  // The names are read from the Electron this copy is built against rather than
+  // copied into the test, so an upgrade that adds a permission is covered the
+  // day it lands instead of the day somebody remembers. On its own this proves
+  // little — `permitted` returns false — and it is not the evidence that the
+  // handlers are wired to a session; the integration test is. What it guards is
+  // a later edit that lets one name through without a test saying so.
+  const typings = readFileSync(new URL('../node_modules/electron/electron.d.ts', import.meta.url), 'utf8')
+  const union = typings.match(
+    /setPermissionRequestHandler\(handler: \(\(webContents: WebContents, permission: ([^,]+),/,
+  )
+  assert.ok(union, 'the permission union moved in electron.d.ts — this test is reading nothing')
+  const names = [...union[1].matchAll(/'([^']+)'/g)].map((m) => m[1])
+  // An empty or truncated match would make every assertion below vacuous.
+  assert.ok(names.length >= 40, `read only ${names.length} permission names`)
+  assert.ok(names.includes('media'), 'the microphone and camera name is missing from what was read')
+
+  for (const name of names) assert.equal(permitted(name), false, `${name} was allowed`)
+  // A name from an Electron nobody here has seen is refused too, because the
+  // rule never reads the name.
+  assert.equal(permitted('a-permission-invented-after-this-was-written'), false)
 })
 
 test('a fault is recorded whatever was thrown, and the newest is read first', () => {
